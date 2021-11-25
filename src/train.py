@@ -52,7 +52,7 @@ PARAMS = {
     "gradclip": 1.,
     
     "beta": 1.,
-    "lambda1": 5, 
+    "lambda1": 10, 
     "lambda2": 10, 
     "activation": 'tanh',
     "observation": 'mse',
@@ -113,7 +113,7 @@ y_test_onehot = to_categorical(y_test, num_classes=PARAMS['class_num'])
 test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(PARAMS['batch_size'])
 #%%
 @tf.function
-def train_step(x_batch, x_batch_L, y_batch_L, beta, PARAMS):
+def train_step(x_batch, x_batch_L, y_batch_L, PARAMS):
     with tf.GradientTape(persistent=True) as tape:
         z, c, prob, xhat = autoencoder(x_batch)
         prior_args = prior(z, c)
@@ -206,7 +206,7 @@ for _ in progress_bar:
     x_batch = np.array([np.load(data_dir + '/x_{}.npy'.format(i)) for i in idx])
     x_batch = (tf.cast(x_batch, tf.float32) - 127.5) / 127.5
     
-    losses, outputs = train_step(x_batch, y_batch, PARAMS) 
+    losses, outputs = train_step(x_batch, x_batch_L, y_batch_L, PARAMS) 
     
     step += 1
         
@@ -231,7 +231,7 @@ for _ in progress_bar:
         ))
         
     if step % 10000 == 0:
-        x = np.load(data_dir + '/x_{}.npy'.format(0))
+        x = np.load(data_dir + '/x_{}.npy'.format(0))[None, ...]
         x = (tf.cast(x, tf.float32) - 127.5) / 127.5
         generate_and_save_images(x, step)
     
