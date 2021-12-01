@@ -137,7 +137,7 @@ def test_cls_error(model, test_dataset):
         error_count += len(np.where(np.squeeze(y_batch) - np.argmax(prob.numpy(), axis=-1) != 0)[0])
     return error_count / len(y_test)
 #%%
-@tf.function
+# @tf.function
 def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
                         ew, kl_beta_z, kl_beta_y, pwm, mix_weight,
                         optimizer):
@@ -153,8 +153,8 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
         elif PARAMS['observation'] == 'abs':
             recon_loss = tf.reduce_mean(tf.reduce_sum(tf.abs(xhat - x_batch), axis=[1, 2, 3]))
         elif PARAMS['observation'] == 'bce':
-            recon_loss = tf.reduce_mean(tf.reduce_sum(x_batch_L * tf.math.log(xhat + eps) + 
-                                       (1. - x_batch_L) * tf.math.log(1 - xhat + eps), axis=[1, 2, 3]))
+            recon_loss = tf.reduce_mean(- tf.reduce_sum(x_batch_L * tf.math.log(xhat + eps) + 
+                                                        (1. - x_batch_L) * tf.math.log(1 - xhat + eps), axis=[1, 2, 3]))
         else:
             assert 0, "Unsupported observation model: {}".format(PARAMS['observation'])
             
@@ -185,8 +185,8 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
         
         posterior_loss_z = tf.reduce_mean(tf.square(smoothed_mean_mix - mean_mix))
         posterior_loss_z += tf.reduce_mean(tf.square(tf.sqrt(tf.math.exp(smoothed_logvar_mix)) - var_mix))
-        posterior_loss_y = tf.reduce_mean(mix_weight * tf.reduce_sum(y_batch_L_shuffle * tf.math.log(smoothed_prob_mix + eps), axis=-1))
-        posterior_loss_y += tf.reduce_mean((1. - mix_weight) * tf.reduce_sum(y_batch_L * tf.math.log(smoothed_prob_mix + eps), axis=-1))
+        posterior_loss_y = - tf.reduce_mean(mix_weight * tf.reduce_sum(y_batch_L_shuffle * tf.math.log(smoothed_prob_mix + eps), axis=-1))
+        posterior_loss_y += - tf.reduce_mean((1. - mix_weight) * tf.reduce_sum(y_batch_L * tf.math.log(smoothed_prob_mix + eps), axis=-1))
         
         elbo_loss_L += kl_beta_z * pwm * posterior_loss_z
         loss_supervised = ew * elbo_loss_L + posterior_loss_y
@@ -197,7 +197,7 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
     return [[loss_supervised, recon_loss, kl_z, kl_y, posterior_loss_z, posterior_loss_y], 
             [mean, logvar, prob, z, y, xhat]]
 #%%
-@tf.function
+# @tf.function
 def unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, logvar_shuffle, prob_shuffle, PARAMS,
                         ew, kl_beta_z, kl_beta_y, pwm, mix_weight,
                         optimizer):
@@ -213,8 +213,8 @@ def unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, logvar_shuff
         elif PARAMS['observation'] == 'abs':
             recon_loss = tf.reduce_mean(tf.reduce_sum(tf.abs(xhat - x_batch), axis=[1, 2, 3]))
         elif PARAMS['observation'] == 'bce':
-            recon_loss = tf.reduce_mean(tf.reduce_sum(x_batch_L * tf.math.log(xhat + eps) + 
-                                       (1. - x_batch_L) * tf.math.log(1 - xhat + eps), axis=[1, 2, 3]))
+            recon_loss = tf.reduce_mean(- tf.reduce_sum(x_batch_L * tf.math.log(xhat + eps) + 
+                                                        (1. - x_batch_L) * tf.math.log(1 - xhat + eps), axis=[1, 2, 3]))
         else:
             assert 0, "Unsupported observation model: {}".format(PARAMS['observation'])
             
@@ -236,7 +236,7 @@ def unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, logvar_shuff
         posterior_loss_z = tf.reduce_mean(tf.square(smoothed_mean_mix - mean_mix))
         posterior_loss_z += tf.reduce_mean(tf.square(tf.sqrt(tf.math.exp(smoothed_logvar_mix)) - var_mix))
         pseudo_label = mix_weight * prob_shuffle + (1. - mix_weight) * prob
-        posterior_loss_y = tf.reduce_mean(tf.reduce_sum(pseudo_label * tf.math.log(smoothed_prob_mix + eps), axis=-1))
+        posterior_loss_y = - tf.reduce_mean(tf.reduce_sum(pseudo_label * tf.math.log(smoothed_prob_mix + eps), axis=-1))
         
         elbo_loss_U += kl_beta_z * pwm * posterior_loss_z
         loss_unsupervised = ew * elbo_loss_U + posterior_loss_y
