@@ -33,7 +33,6 @@ PARAMS = {
     "data_dim": 32,
     "channel": 3, 
     "class_num": 10,
-    "labeled": 5000,
     "temperature": 0.67,
     "latent_dim": 128,
     "sigma": 1.,
@@ -46,6 +45,9 @@ PARAMS = {
     "aew": 400, # the epoch to adjust elbo weight to max
     "pwm": 1, # posterior weight max
     "apw": 200, # adjust posterior weight
+    "wrd": 1., # the max weight for the optimal transport estimation of discrete variable 
+    "wmf": 0.4, # the weight factor: epoch to adjust the weight for the optimal transport estimation of discrete variable to max
+    "dmi": 2.3, # threshold of discrete kl-divergence
     
     "learning_rate": 0.1, 
     "beta_1": 0.9, # beta_1 in SGD
@@ -60,8 +62,6 @@ PARAMS = {
     "widen_factor": 2,
     "depth": 28,
 }
-
-data_dir = r'D:\cifar10_{}'.format(PARAMS['labeled'])
 
 asset_path = 'weights_{}'.format(date_time)
 #%%
@@ -139,8 +139,8 @@ def test_cls_error(model, test_dataset):
 #%%
 # @tf.function
 def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
-                        ew, kl_beta_z, kl_beta_y, pwm, mix_weight,
-                        optimizer):
+                            ew, kl_beta_z, kl_beta_y, pwm, mix_weight,
+                            optimizer):
     eps = 1e-8
     
     with tf.GradientTape(persistent=True) as tape:
@@ -154,7 +154,7 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
             recon_loss = tf.reduce_mean(tf.reduce_sum(tf.abs(xhat - x_batch), axis=[1, 2, 3]))
         elif PARAMS['observation'] == 'bce':
             recon_loss = tf.reduce_mean(- tf.reduce_sum(x_batch_L * tf.math.log(xhat + eps) + 
-                                                        (1. - x_batch_L) * tf.math.log(1 - xhat + eps), axis=[1, 2, 3]))
+                                                        (1. - x_batch_L) * tf.math.log(1. - xhat + eps), axis=[1, 2, 3]))
         else:
             assert 0, "Unsupported observation model: {}".format(PARAMS['observation'])
             
@@ -165,7 +165,7 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
                                                     - logvar
                                                     - 1), axis=-1))
         kl_y = tf.reduce_mean(tf.reduce_sum(prob * tf.math.log(prob * PARAMS['class_num'] + 1e-8), axis=1))
-        elbo_loss_L = recon_loss + kl_beta_z * kl_z + kl_beta_y * kl_y
+        elbo_loss_L = recon_loss + kl_beta_z * kl_z + kl_beta_y * tf.math.abs(kl_y - PARAMS['dmi'])
         
         '''mix-up'''
         # no-gradient error!!!
@@ -180,11 +180,11 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
         
         x_batch_L_mix = mix_weight * x_batch_L_shuffle + (1 - mix_weight) * x_batch_L
         mean_mix = mix_weight * mean_shuffle + (1 - mix_weight) * mean
-        var_mix = mix_weight * tf.sqrt(tf.math.exp(logvar_shuffle)) + (1 - mix_weight) * tf.sqrt(tf.math.exp(logvar))
+        std_mix = mix_weight * tf.sqrt(tf.math.exp(logvar_shuffle)) + (1 - mix_weight) * tf.sqrt(tf.math.exp(logvar))
         smoothed_mean_mix, smoothed_logvar_mix, smoothed_prob_mix, _, _, _ = model(x_batch_L_mix)
         
         posterior_loss_z = tf.reduce_mean(tf.square(smoothed_mean_mix - mean_mix))
-        posterior_loss_z += tf.reduce_mean(tf.square(tf.sqrt(tf.math.exp(smoothed_logvar_mix)) - var_mix))
+        posterior_loss_z += tf.reduce_mean(tf.square(tf.sqrt(tf.math.exp(smoothed_logvar_mix)) - std_mix))
         posterior_loss_y = - tf.reduce_mean(mix_weight * tf.reduce_sum(y_batch_L_shuffle * tf.math.log(smoothed_prob_mix + eps), axis=-1))
         posterior_loss_y += - tf.reduce_mean((1. - mix_weight) * tf.reduce_sum(y_batch_L * tf.math.log(smoothed_prob_mix + eps), axis=-1))
         
@@ -199,8 +199,8 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
 #%%
 # @tf.function
 def unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, logvar_shuffle, prob_shuffle, PARAMS,
-                        ew, kl_beta_z, kl_beta_y, pwm, mix_weight,
-                        optimizer):
+                            ew, kl_beta_z, kl_beta_y, pwm, ucw, mix_weight,
+                            optimizer):
     eps = 1e-8
     
     with tf.GradientTape(persistent=True) as tape:
@@ -214,7 +214,7 @@ def unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, logvar_shuff
             recon_loss = tf.reduce_mean(tf.reduce_sum(tf.abs(xhat - x_batch), axis=[1, 2, 3]))
         elif PARAMS['observation'] == 'bce':
             recon_loss = tf.reduce_mean(- tf.reduce_sum(x_batch_L * tf.math.log(xhat + eps) + 
-                                                        (1. - x_batch_L) * tf.math.log(1 - xhat + eps), axis=[1, 2, 3]))
+                                                        (1. - x_batch_L) * tf.math.log(1. - xhat + eps), axis=[1, 2, 3]))
         else:
             assert 0, "Unsupported observation model: {}".format(PARAMS['observation'])
             
@@ -225,21 +225,21 @@ def unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, logvar_shuff
                                                     - logvar
                                                     - 1), axis=-1))
         kl_y = tf.reduce_mean(tf.reduce_sum(prob * tf.math.log(prob * PARAMS['class_num'] + 1e-8), axis=1))
-        elbo_loss_U = recon_loss + kl_beta_z * kl_z + kl_beta_y * kl_y
+        elbo_loss_U = recon_loss + kl_beta_z * kl_z + kl_beta_y * tf.math.abs(kl_y - PARAMS['dmi'])
         
         '''mix-up'''
         x_batch_mix = mix_weight * x_batch_shuffle + (1 - mix_weight) * x_batch
         mean_mix = mix_weight * mean_shuffle + (1 - mix_weight) * mean
-        var_mix = mix_weight * tf.sqrt(tf.math.exp(logvar_shuffle)) + (1 - mix_weight) * tf.sqrt(tf.math.exp(logvar))
+        std_mix = mix_weight * tf.sqrt(tf.math.exp(logvar_shuffle)) + (1 - mix_weight) * tf.sqrt(tf.math.exp(logvar))
         smoothed_mean_mix, smoothed_logvar_mix, smoothed_prob_mix, _, _, _ = model(x_batch_mix)
         
         posterior_loss_z = tf.reduce_mean(tf.square(smoothed_mean_mix - mean_mix))
-        posterior_loss_z += tf.reduce_mean(tf.square(tf.sqrt(tf.math.exp(smoothed_logvar_mix)) - var_mix))
+        posterior_loss_z += tf.reduce_mean(tf.square(tf.sqrt(tf.math.exp(smoothed_logvar_mix)) - std_mix))
         pseudo_label = mix_weight * prob_shuffle + (1. - mix_weight) * prob
         posterior_loss_y = - tf.reduce_mean(tf.reduce_sum(pseudo_label * tf.math.log(smoothed_prob_mix + eps), axis=-1))
         
         elbo_loss_U += kl_beta_z * pwm * posterior_loss_z
-        loss_unsupervised = ew * elbo_loss_U + posterior_loss_y
+        loss_unsupervised = ew * elbo_loss_U + ucw * posterior_loss_y
             
     grad = tape.gradient(loss_unsupervised, model.trainable_weights)
     optimizer.apply_gradients(zip(grad, model.trainable_weights))
@@ -295,6 +295,8 @@ for epoch in range(PARAMS['epochs']):
     kl_beta_y = weight_schedule(epoch, PARAMS['epochs'], PARAMS['kbmd'])
     # unsupervised classification weight
     pwm = weight_schedule(epoch, PARAMS['epochs'], PARAMS['pwm'])
+    # optimal transport weight
+    ucw = weight_schedule(epoch, int(PARAMS['wmf'] * PARAMS['epochs']), PARAMS['wrd'])
         
     step = 0
     progress_bar = tqdm(range(PARAMS['iterations']))
@@ -334,7 +336,7 @@ for epoch in range(PARAMS['epochs']):
         
         '''unlabeled dataset training'''
         unsupervised_losses, unsupervised_outputs = unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, logvar_shuffle, prob_shuffle, PARAMS,
-                                                                            ew, kl_beta_z, kl_beta_y, pwm, mix_weight[1], optimizer)
+                                                                            ew, kl_beta_z, kl_beta_y, pwm, ucw, mix_weight[1], optimizer)
         
         step += 1
         

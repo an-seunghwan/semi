@@ -137,7 +137,7 @@ class VAE(K.models.Model):
             prob = self.prob_layer(h)
             y = self.gumbel_max_sample(prob)
         
-        noise = tf.random.normal((tf.shape(x)[0], self.params["latent_dim"]))
+        noise = tf.random.normal((x.shape[0], self.params["latent_dim"]))
         z = mean + tf.math.exp(logvar / 2) * noise 
         
         xhat = self.Decoder(tf.concat([z, y], axis=-1), training=training) 
