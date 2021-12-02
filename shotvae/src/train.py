@@ -124,7 +124,7 @@ def augmentation(image):
     return image
 #%%
 def gaussian_kl_divergence(mean1, mean2, log_sigma1, log_sigma2):
-    return 0.5 * tf.reduce_sum(tf.square(mean1 - mean2) / tf.math.exp(2. * log_sigma2)
+    return 0.5 * tf.reduce_sum(tf.math.square(mean1 - mean2) / tf.math.exp(2. * log_sigma2)
                                + tf.math.exp(2. * log_sigma1) / tf.math.exp(2. * log_sigma2) 
                                - 1 
                                + 2. * log_sigma2 
@@ -150,7 +150,7 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
         
         '''reconstruction'''
         if PARAMS['observation'] == 'mse':
-            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.square(xhat - x_batch_L) / 2., axis=[1, 2, 3]))
+            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(xhat - x_batch_L) / 2., axis=[1, 2, 3]))
         elif PARAMS['observation'] == 'abs':
             recon_loss = tf.reduce_mean(tf.reduce_sum(tf.abs(xhat - x_batch_L), axis=[1, 2, 3]))
         elif PARAMS['observation'] == 'bce':
@@ -160,7 +160,7 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
             assert 0, "Unsupported observation model: {}".format(PARAMS['observation'])
             
         '''prior: KL-divergence'''
-        kl_z = tf.reduce_mean(tf.reduce_sum(0.5 * (tf.square(mean) / PARAMS['sigma'] 
+        kl_z = tf.reduce_mean(tf.reduce_sum(0.5 * (tf.math.square(mean) / PARAMS['sigma'] 
                                                     + tf.math.exp(2 * log_sigma) / PARAMS['sigma'] 
                                                     + tf.math.log(PARAMS['sigma'])
                                                     - 2. * log_sigma
@@ -184,8 +184,8 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
         sigma_mix = mix_weight * tf.math.exp(log_sigma_shuffle) + (1. - mix_weight) * tf.math.exp(log_sigma)
         smoothed_mean_mix, smoothed_log_sigma_mix, smoothed_log_prob_mix, _, _, _ = model(x_batch_L_mix)
         
-        posterior_loss_z = tf.reduce_mean(tf.square(smoothed_mean_mix - mean_mix))
-        posterior_loss_z += tf.reduce_mean(tf.square(tf.math.exp(smoothed_log_sigma_mix) - sigma_mix))
+        posterior_loss_z = tf.reduce_mean(tf.math.square(smoothed_mean_mix - mean_mix))
+        posterior_loss_z += tf.reduce_mean(tf.math.square(tf.math.exp(smoothed_log_sigma_mix) - sigma_mix))
         posterior_loss_y = - tf.reduce_mean(mix_weight * tf.reduce_sum(y_batch_L_shuffle * smoothed_log_prob_mix, axis=-1))
         posterior_loss_y += - tf.reduce_mean((1. - mix_weight) * tf.reduce_sum(y_batch_L * smoothed_log_prob_mix, axis=-1))
         
@@ -210,7 +210,7 @@ def unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, log_sigma_sh
         
         '''reconstruction'''
         if PARAMS['observation'] == 'mse':
-            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.square(xhat - x_batch) / 2., axis=[1, 2, 3]))
+            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(xhat - x_batch) / 2., axis=[1, 2, 3]))
         elif PARAMS['observation'] == 'abs':
             recon_loss = tf.reduce_mean(tf.reduce_sum(tf.abs(xhat - x_batch), axis=[1, 2, 3]))
         elif PARAMS['observation'] == 'bce':
@@ -220,7 +220,7 @@ def unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, log_sigma_sh
             assert 0, "Unsupported observation model: {}".format(PARAMS['observation'])
             
         '''prior: KL-divergence'''
-        kl_z = tf.reduce_mean(tf.reduce_sum(0.5 * (tf.square(mean) / PARAMS['sigma'] 
+        kl_z = tf.reduce_mean(tf.reduce_sum(0.5 * (tf.math.square(mean) / PARAMS['sigma'] 
                                                     + tf.math.exp(2 * log_sigma) / PARAMS['sigma'] 
                                                     + tf.math.log(PARAMS['sigma'])
                                                     - 2. * log_sigma
@@ -235,8 +235,8 @@ def unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, log_sigma_sh
         pseudo_label = mix_weight * tf.math.exp(log_prob_shuffle) + (1. - mix_weight) * tf.math.exp(log_prob)
         smoothed_mean_mix, smoothed_log_sigma_mix, smoothed_log_prob_mix, _, _, _ = model(x_batch_mix)
         
-        posterior_loss_z = tf.reduce_mean(tf.square(smoothed_mean_mix - mean_mix))
-        posterior_loss_z += tf.reduce_mean(tf.square(tf.math.exp(smoothed_log_sigma_mix) - sigma_mix))
+        posterior_loss_z = tf.reduce_mean(tf.math.square(smoothed_mean_mix - mean_mix))
+        posterior_loss_z += tf.reduce_mean(tf.math.square(tf.math.exp(smoothed_log_sigma_mix) - sigma_mix))
         posterior_loss_y = - tf.reduce_mean(tf.reduce_sum(pseudo_label * smoothed_log_prob_mix, axis=-1))
         
         elbo_loss_U += kl_beta_z * pwm * posterior_loss_z
