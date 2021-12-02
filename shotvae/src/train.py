@@ -3,7 +3,6 @@ import tensorflow as tf
 import tensorflow.keras as K
 from tensorflow.keras import layers
 from tensorflow.keras.utils import to_categorical
-from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 print('TensorFlow version:', tf.__version__)
 print('Eager Execution Mode:', tf.executing_eagerly())
 print('available GPU:', tf.config.list_physical_devices('GPU'))
