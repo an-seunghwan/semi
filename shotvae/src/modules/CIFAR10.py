@@ -107,9 +107,9 @@ class VAE(K.models.Model):
         self.FeatureExtractor = WideResNet(self.params)
         self.mean_layer = layers.Dense(self.params['latent_dim'], 
                                        kernel_regularizer=K.regularizers.l2(self.params['weight_decay'])) 
-        self.logvar_layer = layers.Dense(self.params['latent_dim'], 
+        self.logsigma_layer = layers.Dense(self.params['latent_dim'], 
                                          kernel_regularizer=K.regularizers.l2(self.params['weight_decay'])) 
-        self.prob_layer = layers.Dense(self.params['class_num'], activation='softmax', 
+        self.prob_layer = layers.Dense(self.params['class_num'],
                                        kernel_regularizer=K.regularizers.l2(self.params['weight_decay'])) 
         self.Decoder = Decoder(self.params)
         
@@ -117,8 +117,8 @@ class VAE(K.models.Model):
         U = tf.random.uniform(shape, minval=0, maxval=1)
         return -tf.math.log(-tf.math.log(U + 1e-8) + 1e-8)
 
-    def gumbel_max_sample(self, probs): 
-        y = tf.math.log(probs + 1e-8) + self.sample_gumbel(tf.shape(probs))
+    def gumbel_max_sample(self, log_prob): 
+        y = log_prob + self.sample_gumbel(tf.shape(log_prob))
         y = tf.nn.softmax(y / self.params['temperature'])
         if self.params['hard']:
             y_hard = tf.cast(tf.equal(y, tf.math.reduce_max(y, 1, keepdims=True)), y.dtype)
@@ -128,18 +128,18 @@ class VAE(K.models.Model):
     def call(self, x, label=None, training=True):
         h = self.FeatureExtractor(x, training=training)
         mean = self.mean_layer(h)
-        logvar = self.logvar_layer(h)
+        log_sigma = self.logsigma_layer(h)
         if label is not None:
-            prob = label
+            log_prob = label
             '''NOT Gumbel-Softmax'''
             y = label
         else:
-            prob = self.prob_layer(h)
-            y = self.gumbel_max_sample(prob)
+            log_prob = tf.nn.log_softmax(self.prob_layer(h))
+            y = self.gumbel_max_sample(log_prob)
         
         noise = tf.random.normal((x.shape[0], self.params["latent_dim"]))
-        z = mean + tf.math.exp(logvar / 2) * noise 
+        z = mean + tf.math.exp(log_sigma) * noise 
         
         xhat = self.Decoder(tf.concat([z, y], axis=-1), training=training) 
-        return mean, logvar, prob, z, y, xhat
+        return mean, log_sigma, log_prob, z, y, xhat
 #%%
