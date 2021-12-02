@@ -67,6 +67,7 @@ class WideResNet(K.models.Model):
                                             [BasicBlock(self.params, self.nChannels[3], self.nChannels[3], strides=1, slope=self.params['slope'])])
         
         self.norm = layers.BatchNormalization()
+        self.pooling = layers.GlobalAveragePooling2D()
         
     def call(self, x, training=True):
         h = self.conv(x)
@@ -74,7 +75,7 @@ class WideResNet(K.models.Model):
         h = self.block2(h, training=training)
         h = self.block3(h, training=training)
         h = tf.nn.leaky_relu(self.norm(h, training=training), alpha=self.params['slope'])
-        h = layers.Flatten()(h)
+        h = self.pooling(h)
         return h
 #%%
 class Decoder(K.models.Model):

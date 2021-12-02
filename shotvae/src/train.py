@@ -50,7 +50,7 @@ PARAMS = {
     "wmf": 0.4, # the weight factor: epoch to adjust the weight for the optimal transport estimation of discrete variable to max
     "dmi": 2.3, # threshold of discrete kl-divergence
     
-    "learning_rate": 0.01, 
+    "learning_rate": 0.1, 
     "beta_1": 0.9, # beta_1 in SGD or Adam
     "adjust_lr": [400, 500, 550], # the milestone list for adjust learning rate
     "weight_decay": 5e-4 / 2, 
@@ -317,8 +317,8 @@ for epoch in range(PARAMS['epochs']):
         x_batch = augmentation(x_batch)
 
         '''mix-up weight'''
-        mix_weight = [tf.constant(np.random.beta(PARAMS['epsilon'], PARAMS['epsilon'])), 
-                      tf.constant(np.random.beta(PARAMS['epsilon'], PARAMS['epsilon']))]
+        mix_weight = [tf.constant(np.random.beta(PARAMS['epsilon'], PARAMS['epsilon'])), # labeled
+                      tf.constant(np.random.beta(2.0, 2.0))] # unlabeled
         
         '''labeled dataset training'''
         supervised_losses, supervised_outputs = supervised_train_step(x_batch_L, y_batch_L, PARAMS,
