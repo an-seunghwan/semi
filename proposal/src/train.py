@@ -189,7 +189,7 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
         posterior_loss_y = - tf.reduce_mean(mix_weight * tf.reduce_sum(y_batch_L_shuffle * tf.math.log(smoothed_prob_mix + eps), axis=-1))
         posterior_loss_y += - tf.reduce_mean((1. - mix_weight) * tf.reduce_sum(y_batch_L * tf.math.log(smoothed_prob_mix + eps), axis=-1))
         
-        loss_supervised = ew * (recon_loss + classification_loss) + posterior_loss_y
+        loss_supervised = ew * recon_loss + classification_loss + posterior_loss_y
         
     grad = tape.gradient(loss_supervised, model.AE.trainable_weights)
     optimizer.apply_gradients(zip(grad, model.AE.trainable_weights))
