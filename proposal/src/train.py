@@ -60,7 +60,7 @@ PARAMS = {
     # "beta": 1.,
     # "lambda1": 10, 
     # "lambda2": 10, 
-    "learning_rate1": 0.1, 
+    "learning_rate1": 0.01, 
     "learning_rate2": 0.0001,
     "beta_1": 0.9, # beta_1 in SGD or Adam
     "adjust_lr": [400, 500, 550], # the milestone list for adjust learning rate
@@ -276,7 +276,7 @@ def generate_and_save_images(xhat, epoch):
     plt.figure(figsize=(5, 5))
     for i in range(25):
         plt.subplot(5, 5, i+1)
-        plt.imshow((xhat[i] + 1) / 2)
+        plt.imshow(xhat[i])
         plt.axis('off')
     plt.savefig('./assets/{}/image_at_epoch_{}.png'.format(PARAMS['data'], epoch))
     # plt.show()
@@ -369,7 +369,7 @@ for epoch in range(PARAMS['epochs']):
     test_error.append(test_cls_error(model, test_dataset))
         
     if epoch % 50 == 0:
-        generate_and_save_images(unsupervised_outputs[-1], epoch)
+        generate_and_save_images(unsupervised_outputs[2], epoch)
 #%%
 '''save model'''
 # model.save_weights('./assets/{}/{}/weights'.format(PARAMS['data'], asset_path))

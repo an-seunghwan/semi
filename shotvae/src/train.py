@@ -279,7 +279,7 @@ def generate_and_save_images(xhat, epoch):
     plt.figure(figsize=(5, 5))
     for i in range(25):
         plt.subplot(5, 5, i+1)
-        plt.imshow((xhat[i] + 1) / 2)
+        plt.imshow(xhat[i])
         plt.axis('off')
     plt.savefig('./assets/{}/image_at_epoch_{}.png'.format(PARAMS['data'], epoch))
     # plt.show()
