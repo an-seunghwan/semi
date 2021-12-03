@@ -28,7 +28,7 @@ from modules import CIFAR10
 #%%
 PARAMS = {
     "data": 'cifar10',
-    "batch_size": 768,
+    "batch_size": 512,
     "epochs": 600,
     "data_dim": 32,
     "channel": 3, 
@@ -281,6 +281,10 @@ def generate_and_save_images(xhat, epoch):
 #%%
 test_error = [test_cls_error(model, test_dataset)] # initial test classification error
 
+learning_rate_fn = K.optimizers.schedules.PiecewiseConstantDecay(
+    PARAMS['adjust_lr'], [PARAMS['learning_rate'] * t for t in [1., 0.1, 0.01, 0.001]]
+)
+
 for epoch in range(PARAMS['epochs']):
     
     '''warm-up'''
@@ -289,7 +293,9 @@ for epoch in range(PARAMS['epochs']):
                                     momentum=PARAMS['beta_1'])
         # optimizer = K.optimizers.Adam(learning_rate=PARAMS['learning_rate'] * 0.2,
         #                             beta_1=PARAMS['beta_1'])
-    
+    else:
+        optimizer.lr.assign(learning_rate_fn(epoch))
+
     '''weights of loss terms'''
     # elbo part weight
     ew = weight_schedule(epoch, PARAMS['epochs'], PARAMS['ewm'])
@@ -299,7 +305,7 @@ for epoch in range(PARAMS['epochs']):
     # unsupervised classification weight
     pwm = weight_schedule(epoch, PARAMS['epochs'], PARAMS['pwm'])
     # optimal transport weight
-    ucw = weight_schedule(epoch, int(PARAMS['wmf'] * PARAMS['epochs']), PARAMS['wrd'])
+    ucw = weight_schedule(epoch, round(PARAMS['wmf'] * PARAMS['epochs']), PARAMS['wrd'])
         
     step = 0
     progress_bar = tqdm(range(PARAMS['iterations']))
@@ -358,15 +364,6 @@ for epoch in range(PARAMS['epochs']):
         
     if epoch % 50 == 0:
         generate_and_save_images(unsupervised_outputs[-1], epoch)
-    
-    if epoch == 0:
-        learning_rate_fn = K.optimizers.schedules.PiecewiseConstantDecay(
-            PARAMS['adjust_lr'], [PARAMS['learning_rate'] * t for t in [1., 0.1, 0.01, 0.001]]
-        )
-        optimizer = K.optimizers.SGD(learning_rate=learning_rate_fn,
-                                    momentum=PARAMS['beta_1'])
-        # optimizer = K.optimizers.Adam(learning_rate=learning_rate_fn,
-        #                             beta_1=PARAMS['beta_1'])
 #%%
 '''save model'''
 # model.save_weights('./assets/{}/{}/weights'.format(PARAMS['data'], asset_path))
