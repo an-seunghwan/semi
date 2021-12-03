@@ -177,6 +177,10 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
         '''supervised learning: classifier'''
         classification_loss = - tf.reduce_mean(tf.reduce_sum(tf.multiply(y_batch_L, tf.math.log(prob + eps)), axis=-1))
         
+        '''mutual information: reconstruction'''
+        recon_prob = model.AE.get_prob(xhat)
+        classification_loss += - tf.reduce_mean(tf.reduce_sum(tf.multiply(y_batch_L, tf.math.log(recon_prob + eps)), axis=-1))
+        
         '''mix-up'''
         x_batch_L_shuffle = tf.gather(x_batch_L, tf.random.shuffle(tf.range(x_batch_L.shape[0])))
         y_batch_L_shuffle = tf.gather(y_batch_L, tf.random.shuffle(tf.range(y_batch_L.shape[0])))
@@ -184,10 +188,6 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
         smoothed_prob_mix = model.AE.get_prob(x_batch_L_mix)
         posterior_loss_y = - tf.reduce_mean(mix_weight * tf.reduce_sum(y_batch_L_shuffle * tf.math.log(smoothed_prob_mix + eps), axis=-1))
         posterior_loss_y += - tf.reduce_mean((1. - mix_weight) * tf.reduce_sum(y_batch_L * tf.math.log(smoothed_prob_mix + eps), axis=-1))
-        
-        '''mutual information: reconstruction'''
-        recon_prob = model.AE.get_prob(xhat)
-        classification_loss += - tf.reduce_mean(tf.reduce_sum(tf.multiply(y_batch_L, tf.math.log(recon_prob + eps)), axis=-1))
         
         loss_supervised = ew * (recon_loss + classification_loss) + posterior_loss_y
         
