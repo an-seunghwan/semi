@@ -1,6 +1,7 @@
 #%%
 import tensorflow as tf
 import tensorflow.keras as K
+from tensorflow.keras.utils import to_categorical
 print('TensorFlow version:', tf.__version__)
 print('Eager Execution Mode:', tf.executing_eagerly())
 print('available GPU:', tf.config.list_physical_devices('GPU'))
@@ -13,6 +14,7 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime
+from pprint import pprint
 import sys
 import json
 import os
@@ -25,15 +27,20 @@ from modules import CIFAR10
 #%%
 PARAMS = {
     "data": 'cifar10',
-    "batch_size": 128,
-    "labeled_batch_size": 16,
-    "iterations": 100000, 
-    "learning_rate1": 0.001, 
-    "learning_rate2": 0.0001, 
+    "batch_size": 512,
+    "epochs": 600,
     "data_dim": 32,
     "channel": 3, 
     "class_num": 10,
-    "labeled": 5000,
+    "latent_dim": 128,
+    "annotated_ratio": 0.1,
+    
+    "ewm": 1e-3, # elbo weight max
+    "aew": 400, # the epoch to adjust elbo weight to max
+    "pwm": 1, # posterior weight max
+    "apw": 200, # adjust posterior weight
+    "wrd": 1., # the max weight for the optimal transport estimation of discrete variable 
+    "wmf": 0.4, # the weight factor: epoch to adjust the weight for the optimal transport estimation of discrete variable to max
     
     "z_mask": 'checkerboard',
     "c_mask": 'half',
@@ -44,85 +51,119 @@ PARAMS = {
     "K1": 8,
     "K2": 8,
     "coupling_MLP_num": 4,
-    
     "reg": 0.01,
-    "BN_in_NF": False,
-    "decay_steps": 500,
+    "decay_steps": 20,
     "decay_rate": 0.95,
     "gradclip": 1.,
+    "BN_in_NF": False,
     
-    "beta": 1.,
-    "lambda1": 10, 
-    "lambda2": 10, 
-    "activation": 'tanh',
-    "observation": 'mse',
-    
+    # "beta": 1.,
+    # "lambda1": 10, 
+    # "lambda2": 10, 
+    "learning_rate1": 0.1, 
+    "learning_rate2": 0.0001,
+    "beta_1": 0.9, # beta_1 in SGD or Adam
+    "adjust_lr": [400, 500, 550], # the milestone list for adjust learning rate
+    "weight_decay": 5e-4 / 2, 
+    "epsilon": 0.1, # the label smoothing epsilon for labeled dataset
+    "activation": 'sigmoid',
+    "observation": 'bce',
     "ema": True,
-    "slope": 0.1,
+    
+    "slope": 0.01, # pytorch default
     "widen_factor": 2,
+    "depth": 28,
 }
 PARAMS['z_nf_dim'] = PARAMS['z_dim'] // 2
 PARAMS['c_nf_dim'] = PARAMS['c_dim'] // 2
 
-data_dir = r'D:\cifar10_{}'.format(PARAMS['labeled'])
-
-with open('./assets/{}/params_{}_{}.json'.format(PARAMS['data'], PARAMS['lambda1'], PARAMS['lambda2']), 'w') as f:
-    json.dump(PARAMS, f, indent=4, separators=(',', ': '))
-    
 asset_path = 'weights_{}'.format(date_time)
 #%%
-'''triaining log file'''
-sys.stdout = open("./assets/{}/log_{}_{}.txt".format(PARAMS['data'], PARAMS['lambda1'], PARAMS['lambda2']), "w")
+# '''triaining log file'''
+# sys.stdout = open("./assets/{}/log_{}_{}.txt".format(PARAMS['data'], PARAMS['lambda1'], PARAMS['lambda2']), "w")
 
-print(
-'''
-semi-supervised learning with flow-based model
-'''
-)
-
-from pprint import pprint
-pprint(PARAMS)
+# print(
+# '''
+# semi-supervised learning with flow-based model
+# '''
+# )
 #%%
-autoencoder = CIFAR10.AutoEncoder(PARAMS) 
-prior = CIFAR10.Prior(PARAMS)
-prior.build_graph()
-
-optimizer = K.optimizers.Adam(PARAMS["learning_rate1"])
-
-if PARAMS['gradclip'] is None:
-    if PARAMS['decay_steps'] is None:
-        optimizer_NF = K.optimizers.Adam(PARAMS['learning_rate2']) 
-    else:
-        learning_rate = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=PARAMS["learning_rate2"], decay_steps=PARAMS['decay_steps'], decay_rate=PARAMS['decay_rate'])
-        optimizer_NF = K.optimizers.Adam(learning_rate) 
-else:
-    if PARAMS['decay_steps'] is None:
-        optimizer_NF = K.optimizers.Adam(PARAMS['learning_rate2'], clipvalue=PARAMS['gradclip'])
-    else:
-        learning_rate = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=PARAMS["learning_rate2"], decay_steps=PARAMS['decay_steps'], decay_rate=PARAMS['decay_rate'])
-        optimizer_NF = K.optimizers.Adam(learning_rate, clipvalue=PARAMS['gradclip']) 
-
+model = CIFAR10.DeterministicVAE(PARAMS) 
+model.Prior.build_graph()
 if PARAMS['ema']:
     ema = tf.train.ExponentialMovingAverage(decay=0.9999)
 #%%
-'''test dataset'''
-(_, _), (x_test, y_test) = K.datasets.cifar10.load_data()
-x_test = (x_test.astype('float32') - 127.5) / 127.5
-from tensorflow.keras.utils import to_categorical
-y_test_onehot = to_categorical(y_test, num_classes=PARAMS['class_num'])
-test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(PARAMS['batch_size'])
+def weight_schedule(epoch, epochs, weight_max):
+    return weight_max * tf.math.exp(-5 * (1 - min(1, epoch/epochs)) ** 2)
 #%%
-@tf.function
-def train_step(x_batch, x_batch_L, y_batch_L, PARAMS):
+'''dataset'''
+(x_train, y_train), (x_test, y_test) = K.datasets.cifar10.load_data()
+
+if PARAMS['activation'] == 'tanh':
+    x_train = (x_train.astype('float32') - 127.5) / 127.5
+    x_test = (x_test.astype('float32') - 127.5) / 127.5
+elif PARAMS['activation'] == 'sigmoid':
+    x_train = x_train.astype('float32') / 255.
+    x_test = x_test.astype('float32') / 255.
+else:
+    assert 0, "Unsupported observation model: {}".format(PARAMS['observation'])
+y_train_onehot = to_categorical(y_train, num_classes=PARAMS['class_num'])
+y_test_onehot = to_categorical(y_test, num_classes=PARAMS['class_num'])
+
+np.random.seed(1)
+'''ensure that all classes are balanced '''
+lidx = np.concatenate([np.random.choice(np.where(y_train == i)[0], 
+                                        int((len(x_train) * PARAMS['annotated_ratio']) / PARAMS['class_num']), 
+                                        replace=False) 
+                        for i in range(PARAMS['class_num'])])
+x_train_L = x_train[lidx]
+y_train_L = y_train_onehot[lidx]
+
+train_L_dataset = tf.data.Dataset.from_tensor_slices((x_train_L, y_train_L)).shuffle(len(x_train_L), reshuffle_each_iteration=True).batch(PARAMS['batch_size'])
+train_dataset = tf.data.Dataset.from_tensor_slices((x_train)).shuffle(len(x_train), reshuffle_each_iteration=True).batch(PARAMS['batch_size'])
+test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(PARAMS['batch_size'])
+
+PARAMS['iterations'] = len(train_dataset)
+#%%
+with open('./assets/{}/params_{}_{}.json'.format(PARAMS['data'], PARAMS['lambda1'], PARAMS['lambda2']), 'w') as f:
+    json.dump(PARAMS, f, indent=4, separators=(',', ': '))
+pprint(PARAMS)
+#%%
+def augmentation(image):
+    paddings = tf.constant([[0, 0],
+                            [4, 4],
+                            [4, 4],
+                            [0, 0]])
+    image = tf.pad(image, paddings, 'REFLECT')
+    image = tf.image.random_flip_left_right(image)
+    image = tf.image.random_crop(image, (image.shape[0], 32, 32, image.shape[-1]))
+    return image
+#%%
+def test_cls_error(model, test_dataset):
+    '''test classification error''' 
+    error_count = 0
+    for x_batch, y_batch in test_dataset:
+        _, _, log_prob, _, _, _ = model(x_batch, training=False)
+        error_count += len(np.where(np.squeeze(y_batch) - np.argmax(log_prob.numpy(), axis=-1) != 0)[0])
+    return error_count / len(y_test)
+#%%
+# @tf.function
+def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
+                          mix_weight, ew, optimizer):
+    eps = 1e-8
+    
     with tf.GradientTape(persistent=True) as tape:
-        z, c, prob, xhat = autoencoder(x_batch)
-        prior_args = prior(z, c)
+        
+        [[z, c, prob, xhat], prior_args] = model(x_batch_L)
         
         '''reconstruction'''
         if PARAMS['observation'] == 'mse':
-            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.square(xhat - x_batch) / 2., axis=[1, 2, 3]))
+            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.square(xhat - x_batch_L) / 2., axis=[1, 2, 3]))
         elif PARAMS['observation'] == 'abs':
-            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.abs(xhat - x_batch), axis=[1, 2, 3]))
+            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.abs(xhat - x_batch_L), axis=[1, 2, 3]))
+        elif PARAMS['observation'] == 'bce':
+            recon_loss = tf.reduce_mean(- tf.reduce_sum(x_batch_L * tf.math.log(xhat + eps) + 
+                                                        (1. - x_batch_L) * tf.math.log(1. - xhat + eps), axis=[1, 2, 3]))
         else:
             assert 0, "Unsupported observation model: {}".format(PARAMS['observation'])
         
@@ -134,124 +175,209 @@ def train_step(x_batch, x_batch_L, y_batch_L, PARAMS):
         prior_loss = z_prior_loss + c_prior_loss
         
         '''supervised learning: classifier'''
-        prob_L = tf.nn.softmax(autoencoder.Classifier(x_batch_L, training=True))
-        cce = tf.reduce_mean(- tf.reduce_sum(tf.multiply(y_batch_L, tf.math.log(prob_L + 1e-8)), axis=-1))
+        classification_loss = - tf.reduce_mean(tf.reduce_sum(tf.multiply(y_batch_L, tf.math.log(prob + eps)), axis=-1))
         
-        '''unsupervised learning: consistency training'''
-        lambda_ = tf.random.uniform((), minval=0.5)
-        x1, x2 = tf.split(x_batch, 2, axis=0)
-        x_tilde = lambda_ * x1 + (1 - lambda_) * x2
-        epsilon = prior.cNF(c)[0]
-        e1, e2 = tf.split(epsilon, 2, axis=0)
-        e_tilde = lambda_ * e1 + (1 - lambda_) * e2
-        c_tilde = prior.cNF.inverse(e_tilde)
+        '''mix-up'''
+        x_batch_L_shuffle = tf.gather(x_batch_L, tf.random.shuffle(tf.range(x_batch_L.shape[0])))
+        y_batch_L_shuffle = tf.gather(y_batch_L, tf.random.shuffle(tf.range(y_batch_L.shape[0])))
+        x_batch_L_mix = mix_weight * x_batch_L_shuffle + (1. - mix_weight) * x_batch_L
+        [[_, _, smoothed_prob_mix, _], _] = model(x_batch_L_mix)
+        posterior_loss_y = - tf.reduce_mean(mix_weight * tf.reduce_sum(y_batch_L_shuffle * tf.math.log(smoothed_prob_mix + eps), axis=-1))
+        posterior_loss_y += - tf.reduce_mean((1. - mix_weight) * tf.reduce_sum(y_batch_L * tf.math.log(smoothed_prob_mix + eps), axis=-1))
         
-        prob1 = tf.nn.softmax(autoencoder.Classifier(x_tilde))
-        prob2 = tf.nn.softmax(c_tilde)
-        kl = tf.reduce_mean(tf.reduce_sum(prob1 * (tf.math.log(prob1 + 1e-8) - tf.math.log(prob2 + 1e-8)), axis=1))
+        '''mutual information: reconstruction'''
+        recon_prob = model.AE.get_prob(xhat)
+        classification_loss += - tf.reduce_mean(tf.reduce_sum(tf.multiply(y_batch_L, tf.math.log(recon_prob + eps)), axis=-1))
         
-        loss = recon_loss / PARAMS['beta'] + PARAMS['lambda1'] * cce + PARAMS['lambda2'] * kl
+        loss_supervised = ew * (recon_loss + classification_loss) + posterior_loss_y
         
-    grad = tape.gradient(loss, autoencoder.trainable_weights)
-    optimizer.apply_gradients(zip(grad, autoencoder.trainable_weights))
+    grad = tape.gradient(loss_supervised, model.AE.trainable_weights)
+    optimizer[0].apply_gradients(zip(grad, model.AE.trainable_weights))
     if PARAMS['ema']:
-        ema.apply(autoencoder.trainable_weights)
+        ema.apply(model.AE.trainable_weights)
     
-    grad = tape.gradient(prior_loss, prior.trainable_weights)
-    optimizer_NF.apply_gradients(zip(grad, prior.trainable_weights))
-    return [[loss, recon_loss, z_prior_loss, c_prior_loss, cce, kl], 
+    grad = tape.gradient(prior_loss, model.Prior.trainable_weights)
+    optimizer[1].apply_gradients(zip(grad, model.Prior.trainable_weights))
+    
+    return [[loss_supervised, recon_loss, z_prior_loss, c_prior_loss, classification_loss, posterior_loss_y], 
             [z, c, xhat] + prior_args]
 #%%
-def generate_and_save_images(x, epochs):
-    z = autoencoder.zEncoder(x, training=False)
+# @tf.function
+def unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
+                            mix_weight, ew, ucw, optimizer):
+    eps = 1e-8
     
-    plt.figure(figsize=(10, 2))
-    plt.subplot(1, PARAMS['class_num']+1, 1)
-    plt.imshow((x[0] + 1) / 2)
-    plt.title('original')
-    plt.axis('off')
-    for i in range(PARAMS['class_num']):
-        label = np.zeros((z.shape[0], PARAMS['class_num']))
-        label[:, i] = 1
-        xhat = autoencoder.Decoder(z, label, training=False)
-        plt.subplot(1, PARAMS['class_num']+1, i+2)
-        plt.imshow((xhat[0] + 1) / 2)
-        plt.title('{}'.format(i))
+    with tf.GradientTape(persistent=True) as tape:
+        
+        [[z, c, prob, xhat], prior_args] = model(x_batch)
+        
+        '''reconstruction'''
+        if PARAMS['observation'] == 'mse':
+            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.square(xhat - x_batch) / 2., axis=[1, 2, 3]))
+        elif PARAMS['observation'] == 'abs':
+            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.abs(xhat - x_batch), axis=[1, 2, 3]))
+        elif PARAMS['observation'] == 'bce':
+            recon_loss = tf.reduce_mean(- tf.reduce_sum(x_batch * tf.math.log(xhat + eps) + 
+                                                        (1. - x_batch) * tf.math.log(1. - xhat + eps), axis=[1, 2, 3]))
+        else:
+            assert 0, "Unsupported observation model: {}".format(PARAMS['observation'])
+        
+        '''prior'''
+        z_prior_loss = tf.reduce_mean(tf.reduce_sum(tf.square(prior_args[0] - 0) / 2., axis=1))
+        z_prior_loss -= tf.reduce_mean(prior_args[1], axis=-1)
+        c_prior_loss = tf.reduce_mean(tf.reduce_sum(tf.square(prior_args[2] - 0) / 2., axis=1))
+        c_prior_loss -= tf.reduce_mean(prior_args[3], axis=-1)
+        prior_loss = z_prior_loss + c_prior_loss
+        
+        '''mix up'''
+        x_batch_shuffle = tf.gather(x_batch, unsupervised_mix_up_index)
+        prob_shuffle = tf.gather(prob, unsupervised_mix_up_index)
+        x_batch_mix = mix_weight * x_batch_shuffle + (1. - mix_weight) * x_batch
+        pseudo_label = mix_weight * prob_shuffle + (1. - mix_weight) * prob
+        [[_, _, smoothed_prob_mix, _], _] = model(x_batch_mix)
+        posterior_loss_y = - tf.reduce_mean(tf.reduce_sum(pseudo_label * tf.math.log(smoothed_prob_mix + eps), axis=-1))
+        
+        loss_unsupervised = ew * recon_loss + ucw * posterior_loss_y
+        
+    grad = tape.gradient(loss_unsupervised, model.AE.trainable_weights)
+    optimizer[0].apply_gradients(zip(grad, model.AE.trainable_weights))
+    if PARAMS['ema']:
+        ema.apply(model.AE.trainable_weights)
+    
+    grad = tape.gradient(prior_loss, model.Prior.trainable_weights)
+    optimizer[1].apply_gradients(zip(grad, model.Prior.trainable_weights))
+    
+    return [[loss_unsupervised, recon_loss, z_prior_loss, c_prior_loss, posterior_loss_y], 
+            [z, c, xhat] + prior_args]
+#%%
+# def generate_and_save_images(x, epochs):
+#     z = autoencoder.zEncoder(x, training=False)
+    
+#     plt.figure(figsize=(10, 2))
+#     plt.subplot(1, PARAMS['class_num']+1, 1)
+#     plt.imshow((x[0] + 1) / 2)
+#     plt.title('original')
+#     plt.axis('off')
+#     for i in range(PARAMS['class_num']):
+#         label = np.zeros((z.shape[0], PARAMS['class_num']))
+#         label[:, i] = 1
+#         xhat = autoencoder.Decoder(z, label, training=False)
+#         plt.subplot(1, PARAMS['class_num']+1, i+2)
+#         plt.imshow((xhat[0] + 1) / 2)
+#         plt.title('{}'.format(i))
+#         plt.axis('off')
+#     plt.savefig('./assets/{}/image_at_epoch_{}.png'.format(PARAMS['data'], epochs))
+#     # plt.show()
+#     plt.close()
+
+def generate_and_save_images(xhat, epoch):
+    xhat = xhat.numpy()
+    
+    plt.figure(figsize=(5, 5))
+    for i in range(25):
+        plt.subplot(5, 5, i+1)
+        plt.imshow((xhat[i] + 1) / 2)
         plt.axis('off')
-    plt.savefig('./assets/{}/image_at_epoch_{}.png'.format(PARAMS['data'], epochs))
+    plt.savefig('./assets/{}/image_at_epoch_{}.png'.format(PARAMS['data'], epoch))
     # plt.show()
     plt.close()
 #%%
-step = 0
-progress_bar = tqdm(range(PARAMS['iterations']))
-progress_bar.set_description('iteration {}/{} | current loss ?'.format(step, PARAMS['iterations']))
+test_error = [test_cls_error(model, test_dataset)] # initial test classification error
 
-test_error = []
+learning_rate_fn = [
+    K.optimizers.schedules.PiecewiseConstantDecay(
+    PARAMS['adjust_lr'], [PARAMS['learning_rate1'] * t for t in [1., 0.1, 0.01, 0.001]]
+    ),
+    K.optimizers.schedules.ExponentialDecay(
+        initial_learning_rate=PARAMS["learning_rate2"], 
+        decay_steps=PARAMS['decay_steps'], 
+        decay_rate=PARAMS['decay_rate']
+    )
+]
 
-'''test classification error''' 
-error_count = 0
-for x_batch, y_batch in test_dataset:
-    prob = autoencoder.Classifier(x_batch, training=False)
-    error_count += len(np.where(np.squeeze(y_batch) - np.argmax(prob.numpy(), axis=-1) != 0)[0])
-test_error.append(error_count / len(y_test))
+for epoch in range(PARAMS['epochs']):
+    
+    '''define optimizer and warm-up'''
+    if epoch == 0:
+        optimizer = [K.optimizers.SGD(learning_rate=PARAMS['learning_rate1'] * 0.2,
+                                    momentum=PARAMS['beta_1']),
+                     K.optimizers.Adam(learning_rate_fn[1](epoch), 
+                                       clipvalue=PARAMS['gradclip'])]
+    else:
+        optimizer[0].lr.assign(learning_rate_fn[0](epoch))
+        optimizer[1].lr.assign(learning_rate_fn[1](epoch))
 
-for _ in progress_bar:
-    # label 
-    idx = np.random.choice(np.arange(PARAMS['labeled']), PARAMS['labeled_batch_size'], replace=False)
-    x_batch_L = np.array([np.load(data_dir + '/x_labeled_{}.npy'.format(i)) for i in idx])
-    x_batch_L = (tf.cast(x_batch_L, tf.float32) - 127.5) / 127.5
-    y_batch_L = np.array([np.load(data_dir + '/y_labeled_{}.npy'.format(i)) for i in idx])
-    # label and unlabel
-    idx = np.random.choice(np.arange(50000), PARAMS['batch_size'], replace=False)
-    x_batch = np.array([np.load(data_dir + '/x_{}.npy'.format(i)) for i in idx])
-    x_batch = (tf.cast(x_batch, tf.float32) - 127.5) / 127.5
-    
-    losses, outputs = train_step(x_batch, x_batch_L, y_batch_L, PARAMS) 
-    
-    step += 1
+    '''weights of loss terms'''
+    # elbo part weight
+    ew = weight_schedule(epoch, PARAMS['epochs'], PARAMS['ewm'])
+    # optimal transport weight
+    ucw = weight_schedule(epoch, round(PARAMS['wmf'] * PARAMS['epochs']), PARAMS['wrd'])
         
-    progress_bar.set_description('iteration {}/{} | loss {:.3f}, recon {:.3f}, z prior {:.3f}, c prior {:.3f}, cls {:.3f}, kl {:.3f}, test {:.3f}'.format(
-        step, PARAMS['iterations'], 
-        losses[0].numpy(), losses[1].numpy(), losses[2].numpy(), losses[3].numpy(), losses[4].numpy(), losses[5].numpy(), test_error[-1]
-    )) 
+    step = 0
+    progress_bar = tqdm(range(PARAMS['iterations']))
+    progress_bar.set_description('iterations {}/{} | current loss ?'.format(step, PARAMS['iterations']))
     
-    step += 1
+    for _ in progress_bar:
     
-    if step % 5000 == 0:
-        '''test classification error''' 
-        error_count = 0
-        for x_batch, y_batch in test_dataset:
-            prob = autoencoder.Classifier(x_batch, training=False)
-            error_count += len(np.where(np.squeeze(y_batch) - np.argmax(prob.numpy(), axis=-1) != 0)[0])
-        test_error.append(error_count / len(y_test))
+        '''mini-batch'''
+        x_batch_L, y_batch_L = next(iter(train_L_dataset))
+        x_batch = next(iter(train_dataset))
         
-        print('iteration {}/{} | loss {:.3f}, recon {:.3f}, z prior {:.3f}, c prior {:.3f}, cls {:.3f}, kl {:.3f}, test {:.3f}'.format(
-            step, PARAMS['iterations'], 
-            losses[0].numpy(), losses[1].numpy(), losses[2].numpy(), losses[3].numpy(), losses[4].numpy(), losses[5].numpy(), test_error[-1]
-        ))
+        '''augmentation'''
+        x_batch_L = augmentation(x_batch_L)
+        x_batch = augmentation(x_batch)
+
+        '''mix-up weight'''
+        mix_weight = [tf.constant(np.random.beta(PARAMS['epsilon'], PARAMS['epsilon'])), # labeled
+                      tf.constant(np.random.beta(2.0, 2.0))] # unlabeled
         
-    if step % 10000 == 0:
-        x = np.load(data_dir + '/x_{}.npy'.format(0))[None, ...]
-        x = (tf.cast(x, tf.float32) - 127.5) / 127.5
-        generate_and_save_images(x, step)
-    
-    if step == PARAMS['iterations']: break
+        '''labeled dataset training'''
+        supervised_losses, supervised_outputs = supervised_train_step(x_batch_L, y_batch_L, PARAMS,
+                                                ew, mix_weight[0], optimizer) 
+        
+        '''mix-up: optimal match'''
+        [[z, _, _, _], _] = model(x_batch)
+        z = z.numpy()
+        l2_metric = np.zeros((x_batch.shape[0], x_batch.shape[0]))
+        for i in range(x_batch.shape[0]):
+            l2_metric[i, :] = tf.reduce_sum(tf.square(z - z[i]), axis=1).numpy()
+        unsupervised_mix_up_index = np.argsort(l2_metric, axis=1)[:, 1]
+        
+        '''unlabeled dataset training'''
+        unsupervised_losses, unsupervised_outputs = unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
+                                                                            ew, ucw, mix_weight[1], optimizer)
+        
+        step += 1
+        
+        progress_bar.set_description('epoch: {} | iteration {}/{} | supervised {:.3f}, unsupervised {:.3f}, test {:.3f}'.format(
+            epoch, step, PARAMS['iterations'], 
+            supervised_losses[0].numpy(), unsupervised_losses[0].numpy(), test_error[-1]
+        )) 
+        
+        if step % 10 == 0:
+            print('epoch: {} | iteration {}/{} | supervised {:.3f}, unsupervised {:.3f}, test {:.3f}'.format(
+                epoch, step, PARAMS['iterations'], 
+                supervised_losses[0].numpy(), unsupervised_losses[0].numpy(), test_error[-1]
+            ))
+        
+    test_error.append(test_cls_error(model, test_dataset))
+        
+    if epoch % 50 == 0:
+        generate_and_save_images(unsupervised_outputs[-1], epoch)
 #%%
-autoencoder.zEncoder.save_weights('./assets/{}/{}/weights_zEncoder/weights'.format(PARAMS['data'], asset_path))
-autoencoder.cEncoder.save_weights('./assets/{}/{}/weights_cEncoder/weights'.format(PARAMS['data'], asset_path))
-autoencoder.Decoder.save_weights('./assets/{}/{}/weights_Decoder/weights'.format(PARAMS['data'], asset_path))
-
-autoencoder.summary()
-print('\n')
-autoencoder.zEncoder.summary()
-print('\n')
-autoencoder.cEncoder.summary()
-print('\n')
-autoencoder.Decoder.summary()
-print('\n')
-
-prior.save_weights('./assets/{}/{}/weights_Prior/weights'.format(PARAMS['data'], asset_path))
-prior.summary()
+'''save model'''
+# model.save_weights('./assets/{}/{}/weights'.format(PARAMS['data'], asset_path))
+os.makedirs('./assets/{}/{}'.format(PARAMS['data'], asset_path))
+model.save_weights('./assets/{}/{}/model.h5'.format(PARAMS['data'], asset_path), save_format="h5")
+model.summary()
+#%%
+'''import model'''
+# imported = CIFAR10.VAE(PARAMS)
+# dummy = tf.random.normal((1, 32, 32, 3))
+# '''call the model first'''
+# _ = imported(dummy)
+# imported.load_weights('./assets/{}/{}/model.h5'.format(PARAMS['data'], asset_path))
+# imported(x_batch_L)
 #%%
 '''test classification error phase'''
 plt.rc('xtick', labelsize=10)   

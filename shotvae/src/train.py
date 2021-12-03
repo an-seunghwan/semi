@@ -19,7 +19,8 @@ from datetime import datetime
 import sys
 import json
 import os
-os.chdir(r'D:\semi\shotvae')
+# os.chdir(r'D:\semi\shotvae')
+os.chdir('/home1/prof/jeon/an/semi/shotvae')
 
 now = datetime.now() 
 date_time = now.strftime("%y%m%d_%H%M%S")
@@ -198,7 +199,7 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
             [mean, log_sigma, log_prob, z, y, xhat]]
 #%%
 # @tf.function
-def unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, log_sigma_shuffle, log_prob_shuffle, PARAMS,
+def unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
                             ew, kl_beta_z, kl_beta_y, pwm, ucw, mix_weight,
                             optimizer):
     eps = 1e-8
@@ -228,6 +229,11 @@ def unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, log_sigma_sh
         elbo_loss_U = recon_loss + kl_beta_z * kl_z + kl_beta_y * tf.math.abs(kl_y - PARAMS['dmi'])
         
         '''mix-up'''
+        x_batch_shuffle = tf.gather(x_batch, unsupervised_mix_up_index)
+        mean_shuffle = tf.gather(mean, unsupervised_mix_up_index)
+        log_sigma_shuffle = tf.gather(log_sigma, unsupervised_mix_up_index)
+        log_prob_shuffle = tf.gather(log_prob, unsupervised_mix_up_index)
+        
         x_batch_mix = mix_weight * x_batch_shuffle + (1. - mix_weight) * x_batch
         mean_mix = mix_weight * mean_shuffle + (1. - mix_weight) * mean
         sigma_mix = mix_weight * tf.math.exp(log_sigma_shuffle) + (1 - mix_weight) * tf.math.exp(log_sigma)
@@ -287,7 +293,7 @@ learning_rate_fn = K.optimizers.schedules.PiecewiseConstantDecay(
 
 for epoch in range(PARAMS['epochs']):
     
-    '''warm-up'''
+    '''define optimizer and warm-up'''
     if epoch == 0:
         optimizer = K.optimizers.SGD(learning_rate=PARAMS['learning_rate'] * 0.2,
                                     momentum=PARAMS['beta_1'])
@@ -302,7 +308,7 @@ for epoch in range(PARAMS['epochs']):
     # kl-divergence weight
     kl_beta_z = weight_schedule(epoch, PARAMS['epochs'], PARAMS['kbmc'])
     kl_beta_y = weight_schedule(epoch, PARAMS['epochs'], PARAMS['kbmd'])
-    # unsupervised classification weight
+    # continuous latent posterior weight
     pwm = weight_schedule(epoch, PARAMS['epochs'], PARAMS['pwm'])
     # optimal transport weight
     ucw = weight_schedule(epoch, round(PARAMS['wmf'] * PARAMS['epochs']), PARAMS['wrd'])
@@ -338,13 +344,9 @@ for epoch in range(PARAMS['epochs']):
             kl_metric[i, :] = gaussian_kl_divergence(mean, mean[i],
                                                     log_sigma, log_sigma[i]).numpy()
         unsupervised_mix_up_index = np.argsort(kl_metric, axis=1)[:, 1]
-        x_batch_shuffle = tf.gather(x_batch, unsupervised_mix_up_index)
-        mean_shuffle = tf.gather(mean, unsupervised_mix_up_index)
-        log_sigma_shuffle = tf.gather(log_sigma, unsupervised_mix_up_index)
-        log_prob_shuffle = tf.gather(log_prob, unsupervised_mix_up_index)
         
         '''unlabeled dataset training'''
-        unsupervised_losses, unsupervised_outputs = unsupervised_train_step(x_batch, x_batch_shuffle, mean_shuffle, log_sigma_shuffle, log_prob_shuffle, PARAMS,
+        unsupervised_losses, unsupervised_outputs = unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
                                                                             ew, kl_beta_z, kl_beta_y, pwm, ucw, mix_weight[1], optimizer)
         
         step += 1
