@@ -18,7 +18,7 @@ from pprint import pprint
 import sys
 import json
 import os
-os.chdir(r'D:\semi')
+os.chdir(r'D:\semi\proposal')
 
 now = datetime.now() 
 date_time = now.strftime("%y%m%d_%H%M%S")
@@ -79,14 +79,14 @@ PARAMS['c_nf_dim'] = PARAMS['c_dim'] // 2
 
 asset_path = 'weights_{}'.format(date_time)
 #%%
-# '''triaining log file'''
-# sys.stdout = open("./assets/{}/log_{}_{}.txt".format(PARAMS['data'], PARAMS['lambda1'], PARAMS['lambda2']), "w")
+'''triaining log file'''
+sys.stdout = open("./assets/{}/log_{}.txt".format(PARAMS['data'], date_time), "w")
 
-# print(
-# '''
-# semi-supervised learning with flow-based model
-# '''
-# )
+print(
+'''
+semi-supervised learning with flow-based model
+'''
+)
 #%%
 model = CIFAR10.DeterministicVAE(PARAMS) 
 model.Prior.build_graph()
@@ -125,7 +125,7 @@ test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(PARAMS
 
 PARAMS['iterations'] = len(train_dataset)
 #%%
-with open('./assets/{}/params_{}_{}.json'.format(PARAMS['data'], PARAMS['lambda1'], PARAMS['lambda2']), 'w') as f:
+with open('./assets/{}/params_{}.json'.format(PARAMS['data'], date_time), 'w') as f:
     json.dump(PARAMS, f, indent=4, separators=(',', ': '))
 pprint(PARAMS)
 #%%
@@ -143,8 +143,8 @@ def test_cls_error(model, test_dataset):
     '''test classification error''' 
     error_count = 0
     for x_batch, y_batch in test_dataset:
-        _, _, log_prob, _, _, _ = model(x_batch, training=False)
-        error_count += len(np.where(np.squeeze(y_batch) - np.argmax(log_prob.numpy(), axis=-1) != 0)[0])
+        prob = model.AE.get_prob(x_batch, training=False)
+        error_count += len(np.where(np.squeeze(y_batch) - np.argmax(prob.numpy(), axis=-1) != 0)[0])
     return error_count / len(y_test)
 #%%
 # @tf.function
@@ -181,7 +181,7 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
         x_batch_L_shuffle = tf.gather(x_batch_L, tf.random.shuffle(tf.range(x_batch_L.shape[0])))
         y_batch_L_shuffle = tf.gather(y_batch_L, tf.random.shuffle(tf.range(y_batch_L.shape[0])))
         x_batch_L_mix = mix_weight * x_batch_L_shuffle + (1. - mix_weight) * x_batch_L
-        [[_, _, smoothed_prob_mix, _], _] = model(x_batch_L_mix)
+        smoothed_prob_mix = model.AE.get_prob(x_batch_L_mix)
         posterior_loss_y = - tf.reduce_mean(mix_weight * tf.reduce_sum(y_batch_L_shuffle * tf.math.log(smoothed_prob_mix + eps), axis=-1))
         posterior_loss_y += - tf.reduce_mean((1. - mix_weight) * tf.reduce_sum(y_batch_L * tf.math.log(smoothed_prob_mix + eps), axis=-1))
         
@@ -234,7 +234,7 @@ def unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
         prob_shuffle = tf.gather(prob, unsupervised_mix_up_index)
         x_batch_mix = mix_weight * x_batch_shuffle + (1. - mix_weight) * x_batch
         pseudo_label = mix_weight * prob_shuffle + (1. - mix_weight) * prob
-        [[_, _, smoothed_prob_mix, _], _] = model(x_batch_mix)
+        smoothed_prob_mix = model.AE.get_prob(x_batch_mix)
         posterior_loss_y = - tf.reduce_mean(tf.reduce_sum(pseudo_label * tf.math.log(smoothed_prob_mix + eps), axis=-1))
         
         loss_unsupervised = ew * recon_loss + ucw * posterior_loss_y
@@ -349,15 +349,21 @@ for epoch in range(PARAMS['epochs']):
         
         step += 1
         
-        progress_bar.set_description('epoch: {} | iteration {}/{} | supervised {:.3f}, unsupervised {:.3f}, test {:.3f}'.format(
+        progress_bar.set_description('epoch: {} | iteration {}/{} | supervised {:.3f}, unsupervised {:.3f}, z_prior {:.3f}, c_prior {:.3f}, test {:.3f}'.format(
             epoch, step, PARAMS['iterations'], 
-            supervised_losses[0].numpy(), unsupervised_losses[0].numpy(), test_error[-1]
+            supervised_losses[0].numpy(), unsupervised_losses[0].numpy(), 
+            supervised_losses[2].numpy() + unsupervised_losses[2].numpy(), 
+            supervised_losses[3].numpy() + unsupervised_losses[3].numpy(), 
+            test_error[-1]
         )) 
         
         if step % 10 == 0:
-            print('epoch: {} | iteration {}/{} | supervised {:.3f}, unsupervised {:.3f}, test {:.3f}'.format(
+            print('epoch: {} | iteration {}/{} | supervised {:.3f}, unsupervised {:.3f}, z_prior {:.3f}, c_prior {:.3f}, test {:.3f}'.format(
                 epoch, step, PARAMS['iterations'], 
-                supervised_losses[0].numpy(), unsupervised_losses[0].numpy(), test_error[-1]
+                supervised_losses[0].numpy(), unsupervised_losses[0].numpy(), 
+                supervised_losses[2].numpy() + unsupervised_losses[2].numpy(), 
+                supervised_losses[3].numpy() + unsupervised_losses[3].numpy(), 
+                test_error[-1]
             ))
         
     test_error.append(test_cls_error(model, test_dataset))
