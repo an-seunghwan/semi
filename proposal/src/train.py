@@ -60,11 +60,11 @@ PARAMS = {
     # "beta": 1.,
     # "lambda1": 10, 
     # "lambda2": 10, 
-    "learning_rate1": 0.01, 
+    "learning_rate1": 0.001, 
     "learning_rate2": 0.0001,
     "beta_1": 0.9, # beta_1 in SGD or Adam
-    "adjust_lr": [400, 500, 550], # the milestone list for adjust learning rate
-    "weight_decay": 5e-4 / 2, 
+    # "adjust_lr": [400, 500, 550], # the milestone list for adjust learning rate
+    "weight_decay": 5e-4, 
     "epsilon": 0.1, # the label smoothing epsilon for labeled dataset
     "activation": 'sigmoid',
     "observation": 'bce',
@@ -149,7 +149,7 @@ def test_cls_error(model, test_dataset):
 #%%
 # @tf.function
 def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
-                          mix_weight, ew, optimizer):
+                          mix_weight, ew, optimizer, optimizer_NF):
     eps = 1e-8
     
     with tf.GradientTape(persistent=True) as tape:
@@ -192,19 +192,19 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
         loss_supervised = ew * (recon_loss + classification_loss) + posterior_loss_y
         
     grad = tape.gradient(loss_supervised, model.AE.trainable_weights)
-    optimizer[0].apply_gradients(zip(grad, model.AE.trainable_weights))
+    optimizer.apply_gradients(zip(grad, model.AE.trainable_weights))
     if PARAMS['ema']:
         ema.apply(model.AE.trainable_weights)
     
     grad = tape.gradient(prior_loss, model.Prior.trainable_weights)
-    optimizer[1].apply_gradients(zip(grad, model.Prior.trainable_weights))
+    optimizer_NF.apply_gradients(zip(grad, model.Prior.trainable_weights))
     
     return [[loss_supervised, recon_loss, z_prior_loss, c_prior_loss, classification_loss, posterior_loss_y], 
             [z, c, xhat] + prior_args]
 #%%
 # @tf.function
 def unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
-                            mix_weight, ew, ucw, optimizer):
+                            mix_weight, ew, ucw, optimizer, optimizer_NF):
     eps = 1e-8
     
     with tf.GradientTape(persistent=True) as tape:
@@ -240,12 +240,12 @@ def unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
         loss_unsupervised = ew * recon_loss + ucw * posterior_loss_y
         
     grad = tape.gradient(loss_unsupervised, model.AE.trainable_weights)
-    optimizer[0].apply_gradients(zip(grad, model.AE.trainable_weights))
+    optimizer.apply_gradients(zip(grad, model.AE.trainable_weights))
     if PARAMS['ema']:
         ema.apply(model.AE.trainable_weights)
     
     grad = tape.gradient(prior_loss, model.Prior.trainable_weights)
-    optimizer[1].apply_gradients(zip(grad, model.Prior.trainable_weights))
+    optimizer_NF.apply_gradients(zip(grad, model.Prior.trainable_weights))
     
     return [[loss_unsupervised, recon_loss, z_prior_loss, c_prior_loss, posterior_loss_y], 
             [z, c, xhat] + prior_args]
@@ -284,28 +284,32 @@ def generate_and_save_images(xhat, epoch):
 #%%
 test_error = [test_cls_error(model, test_dataset)] # initial test classification error
 
-learning_rate_fn = [
-    K.optimizers.schedules.PiecewiseConstantDecay(
-    PARAMS['adjust_lr'], [PARAMS['learning_rate1'] * t for t in [1., 0.1, 0.01, 0.001]]
-    ),
-    K.optimizers.schedules.ExponentialDecay(
-        initial_learning_rate=PARAMS["learning_rate2"], 
-        decay_steps=PARAMS['decay_steps'], 
-        decay_rate=PARAMS['decay_rate']
-    )
-]
+# learning_rate_fn = [
+#     K.optimizers.schedules.PiecewiseConstantDecay(
+#     PARAMS['adjust_lr'], [PARAMS['learning_rate1'] * t for t in [1., 0.1, 0.01, 0.001]]
+#     ),
+#     K.optimizers.schedules.ExponentialDecay(
+#         initial_learning_rate=PARAMS["learning_rate2"], 
+#         decay_steps=PARAMS['decay_steps'], 
+#         decay_rate=PARAMS['decay_rate']
+#     )
+# ]
+learning_rate_fn = K.optimizers.schedules.ExponentialDecay(
+    initial_learning_rate=PARAMS["learning_rate2"], 
+    decay_steps=PARAMS['decay_steps'], 
+    decay_rate=PARAMS['decay_rate']
+)
 
 for epoch in range(PARAMS['epochs']):
     
     '''define optimizer and warm-up'''
     if epoch == 0:
-        optimizer = [K.optimizers.SGD(learning_rate=PARAMS['learning_rate1'] * 0.2,
-                                    momentum=PARAMS['beta_1']),
-                     K.optimizers.Adam(learning_rate_fn[1](epoch), 
-                                       clipvalue=PARAMS['gradclip'])]
+        optimizer = K.optimizers.Adam(learning_rate=PARAMS['learning_rate1'] * 0.2,
+                                    beta_1=PARAMS['beta_1'])
+        optimizer_NF = K.optimizers.Adam(learning_rate_fn(epoch), 
+                                       clipvalue=PARAMS['gradclip'])
     else:
-        optimizer[0].lr.assign(learning_rate_fn[0](epoch))
-        optimizer[1].lr.assign(learning_rate_fn[1](epoch))
+        optimizer_NF.lr = learning_rate_fn(epoch)
 
     '''weights of loss terms'''
     # elbo part weight
@@ -333,7 +337,7 @@ for epoch in range(PARAMS['epochs']):
         
         '''labeled dataset training'''
         supervised_losses, supervised_outputs = supervised_train_step(x_batch_L, y_batch_L, PARAMS,
-                                                ew, mix_weight[0], optimizer) 
+                                                ew, mix_weight[0], optimizer, optimizer_NF) 
         
         '''mix-up: optimal match'''
         [[z, _, _, _], _] = model(x_batch)
@@ -345,7 +349,7 @@ for epoch in range(PARAMS['epochs']):
         
         '''unlabeled dataset training'''
         unsupervised_losses, unsupervised_outputs = unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
-                                                                            ew, ucw, mix_weight[1], optimizer)
+                                                                            ew, ucw, mix_weight[1], optimizer, optimizer_NF)
         
         step += 1
         
