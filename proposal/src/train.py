@@ -60,8 +60,8 @@ PARAMS = {
     # "beta": 1.,
     # "lambda1": 10, 
     # "lambda2": 10, 
-    "learning_rate1": 0.01, 
-    "learning_rate2": 0.001,
+    "learning_rate1": 0.001, 
+    "learning_rate2": 0.0001,
     "beta_1": 0.9, # beta_1 in SGD or Adam
     # "adjust_lr": [400, 500, 550], # the milestone list for adjust learning rate
     "weight_decay": 5e-4, 
