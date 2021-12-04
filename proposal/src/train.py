@@ -37,8 +37,8 @@ PARAMS = {
     
     "ewm": 1e-3, # elbo weight max
     "aew": 400, # the epoch to adjust elbo weight to max
-    "pwm": 1, # posterior weight max
-    "apw": 200, # adjust posterior weight
+    # "pwm": 1, # posterior weight max
+    # "apw": 200, # adjust posterior weight
     "wrd": 1., # the max weight for the optimal transport estimation of discrete variable 
     "wmf": 0.4, # the weight factor: epoch to adjust the weight for the optimal transport estimation of discrete variable to max
     
@@ -60,8 +60,8 @@ PARAMS = {
     # "beta": 1.,
     # "lambda1": 10, 
     # "lambda2": 10, 
-    "learning_rate1": 0.001, 
-    "learning_rate2": 0.0001,
+    "learning_rate1": 0.01, 
+    "learning_rate2": 0.001,
     "beta_1": 0.9, # beta_1 in SGD or Adam
     # "adjust_lr": [400, 500, 550], # the milestone list for adjust learning rate
     "weight_decay": 5e-4, 
@@ -309,11 +309,12 @@ for epoch in range(PARAMS['epochs']):
         optimizer_NF = K.optimizers.Adam(learning_rate_fn(epoch), 
                                        clipvalue=PARAMS['gradclip'])
     else:
+        optimizer.lr = PARAMS['learning_rate1']
         optimizer_NF.lr = learning_rate_fn(epoch)
 
     '''weights of loss terms'''
     # elbo part weight
-    ew = weight_schedule(epoch, PARAMS['epochs'], PARAMS['ewm'])
+    ew = weight_schedule(epoch, PARAMS['aew'], PARAMS['ewm'])
     # optimal transport weight
     ucw = weight_schedule(epoch, round(PARAMS['wmf'] * PARAMS['epochs']), PARAMS['wrd'])
         
