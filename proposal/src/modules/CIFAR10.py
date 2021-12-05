@@ -225,7 +225,7 @@ class AutoEncoder(K.models.Model):
         self.params = params
         
         self.FeatureExtractor = WideResNet(self.params)
-        self.z_layer = layers.Dense(self.params['latent_dim'], 
+        self.z_layer = layers.Dense(self.params['z_dim'], 
                                     kernel_regularizer=K.regularizers.l2(self.params['weight_decay'])) 
         self.c_layer = layers.Dense(self.params['class_num'], 
                                     kernel_regularizer=K.regularizers.l2(self.params['weight_decay'])) 

@@ -32,7 +32,6 @@ PARAMS = {
     "data_dim": 32,
     "channel": 3, 
     "class_num": 10,
-    "latent_dim": 128,
     "annotated_ratio": 0.1,
     
     "ewm": 1e-3, # elbo weight max
@@ -44,7 +43,7 @@ PARAMS = {
     
     "z_mask": 'checkerboard',
     "c_mask": 'half',
-    "z_dim": 128, 
+    "z_dim": 64, 
     "c_dim": 10,
     "z_embedding_dim": 256,
     "c_embedding_dim": 256,
