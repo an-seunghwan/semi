@@ -93,9 +93,6 @@ model.Prior.build_graph()
 if PARAMS['ema']:
     ema = tf.train.ExponentialMovingAverage(decay=0.9999)
 #%%
-def weight_schedule(epoch, epochs, weight_max):
-    return weight_max * tf.math.exp(-5 * (1 - min(1, epoch/epochs)) ** 2)
-#%%
 '''dataset'''
 (x_train, y_train), (x_test, y_test) = K.datasets.cifar10.load_data()
 
@@ -128,6 +125,9 @@ PARAMS['iterations'] = len(train_dataset)
 with open('./assets/{}/params_{}.json'.format(PARAMS['data'], date_time), 'w') as f:
     json.dump(PARAMS, f, indent=4, separators=(',', ': '))
 pprint(PARAMS)
+#%%
+def weight_schedule(epoch, epochs, weight_max):
+    return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
 #%%
 def augmentation(image):
     paddings = tf.constant([[0, 0],
