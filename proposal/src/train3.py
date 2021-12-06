@@ -26,7 +26,7 @@ from modules import CIFAR10
 #%%
 PARAMS = {
     "data": 'cifar10',
-    "batch_size": 512,
+    "batch_size": 128,
     "epochs": 600,
     "data_dim": 32,
     "channel": 3, 
@@ -56,15 +56,15 @@ PARAMS = {
     "BN_in_NF": False,
     
     "beta": 1.,
-    "lambda1": 10, 
-    "lambda2": 10, 
+    "lambda1": 1., 
+    "lambda2": 1., 
     "learning_rate1": 0.001, 
     "learning_rate2": 0.0001,
     "beta_1": 0.5, # beta_1 in SGD or Adam
     # "adjust_lr": [400, 500, 550], # the milestone list for adjust learning rate
-    "weight_decay": 5e-4, 
+    "weight_decay": 5e-4 / 2, 
     # "epsilon": 0.1, # the label smoothing epsilon for labeled dataset
-    "activation": 'sigmoid',
+    "activation": 'tanh',
     "observation": 'mse',
     "ema": True,
     
@@ -74,8 +74,6 @@ PARAMS = {
 }
 PARAMS['z_nf_dim'] = PARAMS['z_dim'] // 2
 PARAMS['c_nf_dim'] = PARAMS['c_dim'] // 2
-
-asset_path = 'weights_{}'.format(current_time)
 #%%
 model = CIFAR10.DeterministicVAE(PARAMS) 
 model.Prior.build_graph()
@@ -111,10 +109,6 @@ test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(PARAMS
 
 PARAMS['iterations'] = len(train_dataset)
 #%%
-with open('./assets/{}/params_{}.json'.format(PARAMS['data'], current_time), 'w') as f:
-    json.dump(PARAMS, f, indent=4, separators=(',', ': '))
-pprint(PARAMS)
-#%%
 # def weight_schedule(epoch, epochs, weight_max):
 #     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
 #%%
@@ -138,10 +132,10 @@ train_c_prior = K.metrics.Mean('train_c_prior', dtype=tf.float32)
 train_prior = K.metrics.Mean('train_prior', dtype=tf.float32)
 test_accuracy = K.metrics.CategoricalAccuracy('test_accuracy')
 #%%
-train_log_dir = 'logs/gradient_tape/' + current_time + '/train'
-test_log_dir = 'logs/gradient_tape/' + current_time + '/test'
-train_summary_writer = tf.summary.create_file_writer(train_log_dir)
-test_summary_writer = tf.summary.create_file_writer(test_log_dir)
+log_dir = 'logs/{}/{}'.format(PARAMS['data'], current_time)
+summary_writer = tf.summary.create_file_writer(log_dir)
+asset_path = 'weights_{}'.format(current_time)
+pprint(PARAMS)
 #%%
 # @tf.function
 def supervised_loss(outputs, x_batch_L, y_batch_L, PARAMS):
@@ -354,7 +348,7 @@ for epoch in range(PARAMS['epochs']):
                                                                             # unsupervised_mix_up_index, 
                                                                             # ew, ucw, mix_weight[1], 
                                                                             optimizer, optimizer_NF)
-    with train_summary_writer.as_default():
+    with summary_writer.as_default():
         tf.summary.scalar('loss', train_loss.result(), step=epoch)
         tf.summary.scalar('train_accuracy', train_accuracy.result(), step=epoch)
         tf.summary.scalar('reconstruction', train_recon.result(), step=epoch)
@@ -366,7 +360,7 @@ for epoch in range(PARAMS['epochs']):
         
     for (x_test_batch, y_test_batch) in test_dataset:
         test_step(model, x_test_batch, y_test_batch)
-    with test_summary_writer.as_default():
+    with summary_writer.as_default():
         tf.summary.scalar('test_accuracy', test_accuracy.result(), step=epoch)
         
     template = 'Epoch {}, loss {:.3f}, recon {:.3f}, z_prior {:.3f}, c_prior {:.3f}, train accuracy {:.3f}%. test accuracy {:.3f}%'
@@ -387,11 +381,14 @@ for epoch in range(PARAMS['epochs']):
     train_accuracy.reset_states()
     test_accuracy.reset_states()
 #%%
-'''save model'''
+'''save model and configs'''
 # model.save_weights('./assets/{}/{}/weights'.format(PARAMS['data'], asset_path))
 os.makedirs('./assets/{}/{}'.format(PARAMS['data'], asset_path))
 model.save_weights('./assets/{}/{}/model.h5'.format(PARAMS['data'], asset_path), save_format="h5")
 model.summary()
+
+with open('./assets/{}/{}/params.json'.format(PARAMS['data'], asset_path), 'w') as f:
+    json.dump(PARAMS, f, indent=4, separators=(',', ': '))
 #%%
 '''import model'''
 # imported = CIFAR10.VAE(PARAMS)
