@@ -29,7 +29,7 @@ from modules import CIFAR10
 #%%
 PARAMS = {
     "data": 'cifar10',
-    "batch_size": 512,
+    "batch_size": 128, # default: 768
     "epochs": 600,
     "data_dim": 32,
     "channel": 3, 
@@ -41,11 +41,11 @@ PARAMS = {
     
     "kbmc": 1e-3, # kl beta max continuous
     "kbmd": 1e-3, # kl beta max discrete
-    "akb": 200, # the max epoch to adjust kl beta
+    "akb": 200., # the max epoch to adjust kl beta
     "ewm": 1e-3, # elbo weight max
-    "aew": 400, # the epoch to adjust elbo weight to max
-    "pwm": 1, # posterior weight max
-    "apw": 200, # adjust posterior weight
+    "aew": 400., # the epoch to adjust elbo weight to max
+    "pwm": 1., # posterior weight max
+    "apw": 200., # adjust posterior weight
     "wrd": 1., # the max weight for the optimal transport estimation of discrete variable 
     "wmf": 0.4, # the weight factor: epoch to adjust the weight for the optimal transport estimation of discrete variable to max
     "dmi": 2.3, # threshold of discrete kl-divergence
@@ -53,7 +53,7 @@ PARAMS = {
     "learning_rate": 0.1, 
     "beta_1": 0.9, # beta_1 in SGD or Adam
     "adjust_lr": [400, 500, 550], # the milestone list for adjust learning rate
-    "weight_decay": 5e-4 / 2, 
+    "weight_decay": 5e-4, 
     "epsilon": 0.1, # the label smoothing epsilon for labeled dataset
     "activation": 'sigmoid',
     "observation": 'bce',
@@ -76,9 +76,6 @@ reproduce of SHOT-VAE
 )
 #%%
 model = CIFAR10.VAE(PARAMS) 
-#%%
-def weight_schedule(epoch, epochs, weight_max):
-    return weight_max * tf.math.exp(-5 * (1 - min(1, epoch/epochs)) ** 2)
 #%%
 '''dataset'''
 (x_train, y_train), (x_test, y_test) = K.datasets.cifar10.load_data()
@@ -103,8 +100,8 @@ lidx = np.concatenate([np.random.choice(np.where(y_train == i)[0],
 x_train_L = x_train[lidx]
 y_train_L = y_train_onehot[lidx]
 
-train_L_dataset = tf.data.Dataset.from_tensor_slices((x_train_L, y_train_L)).shuffle(len(x_train_L), reshuffle_each_iteration=True).batch(PARAMS['batch_size'])
-train_dataset = tf.data.Dataset.from_tensor_slices((x_train)).shuffle(len(x_train), reshuffle_each_iteration=True).batch(PARAMS['batch_size'])
+train_L_dataset = tf.data.Dataset.from_tensor_slices((x_train_L, y_train_L)).shuffle(len(x_train_L), reshuffle_each_iteration=True).batch(PARAMS['batch_size'], drop_remainder=False)
+train_dataset = tf.data.Dataset.from_tensor_slices((x_train)).shuffle(len(x_train), reshuffle_each_iteration=True).batch(PARAMS['batch_size'], drop_remainder=False)
 test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(PARAMS['batch_size'])
 
 PARAMS['iterations'] = len(train_dataset)
@@ -112,6 +109,9 @@ PARAMS['iterations'] = len(train_dataset)
 with open('./assets/{}/params_{}.json'.format(PARAMS['data'], date_time), 'w') as f:
     json.dump(PARAMS, f, indent=4, separators=(',', ': '))
 pprint(PARAMS)
+#%%
+def weight_schedule(epoch, epochs, weight_max):
+    return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
 #%%
 def augmentation(image):
     paddings = tf.constant([[0, 0],
@@ -138,7 +138,7 @@ def test_cls_error(model, test_dataset):
         error_count += len(np.where(np.squeeze(y_batch) - np.argmax(log_prob.numpy(), axis=-1) != 0)[0])
     return error_count / len(y_test)
 #%%
-# @tf.function
+@tf.function
 def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
                             ew, kl_beta_z, kl_beta_y, pwm, mix_weight,
                             optimizer):
@@ -198,7 +198,7 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
     return [[loss_supervised, recon_loss, kl_z, kl_y, posterior_loss_z, posterior_loss_y], 
             [mean, log_sigma, log_prob, z, y, xhat]]
 #%%
-# @tf.function
+@tf.function
 def unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
                             ew, kl_beta_z, kl_beta_y, pwm, ucw, mix_weight,
                             optimizer):
@@ -288,27 +288,28 @@ def generate_and_save_images(xhat, epoch):
 test_error = [test_cls_error(model, test_dataset)] # initial test classification error
 
 learning_rate_fn = K.optimizers.schedules.PiecewiseConstantDecay(
-    PARAMS['adjust_lr'], [PARAMS['learning_rate'] * t for t in [1., 0.1, 0.01, 0.001]]
+    PARAMS['adjust_lr'], 
+    [PARAMS['learning_rate'] * t for t in [1., 0.1, 0.01, 0.001]]
 )
 
 for epoch in range(PARAMS['epochs']):
     
-    '''define optimizer and warm-up'''
+    '''warm-up'''
     if epoch == 0:
         optimizer = K.optimizers.SGD(learning_rate=PARAMS['learning_rate'] * 0.2,
                                     momentum=PARAMS['beta_1'])
         # optimizer = K.optimizers.Adam(learning_rate=PARAMS['learning_rate'] * 0.2,
         #                             beta_1=PARAMS['beta_1'])
     else:
-        optimizer.lr.assign(learning_rate_fn(epoch))
+        optimizer.lr = learning_rate_fn(epoch)
 
     '''weights of loss terms'''
     # elbo part weight
-    ew = weight_schedule(epoch, PARAMS['epochs'], PARAMS['ewm'])
+    ew = weight_schedule(epoch, PARAMS['aew'], PARAMS['ewm'])
     # kl-divergence weight
     kl_beta_z = weight_schedule(epoch, PARAMS['epochs'], PARAMS['kbmc'])
     kl_beta_y = weight_schedule(epoch, PARAMS['epochs'], PARAMS['kbmd'])
-    # continuous latent posterior weight
+    # unsupervised classification weight
     pwm = weight_schedule(epoch, PARAMS['epochs'], PARAMS['pwm'])
     # optimal transport weight
     ucw = weight_schedule(epoch, round(PARAMS['wmf'] * PARAMS['epochs']), PARAMS['wrd'])
@@ -366,6 +367,10 @@ for epoch in range(PARAMS['epochs']):
         
     if epoch % 50 == 0:
         generate_and_save_images(unsupervised_outputs[-1], epoch)
+#%%
+'''final test classification error'''
+test_error.append(test_cls_error(model, test_dataset))
+print('final test classification error:', test_error[-1])
 #%%
 '''save model'''
 # model.save_weights('./assets/{}/{}/weights'.format(PARAMS['data'], asset_path))
