@@ -146,7 +146,7 @@ class AutoEncoder(K.models.Model):
         z = self.z_layer(h)
         c = self.c_layer(h)
         prob = tf.nn.softmax(c)
-        xhat = self.Decoder(z, prob, training=training) 
+        xhat = self.Decoder([z, prob], training=training) 
         return z, c, prob, xhat
 #%%
 class CouplingLayer(K.models.Model):

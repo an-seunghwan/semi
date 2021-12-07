@@ -129,22 +129,32 @@ def colored_mnist(image, PARAMS):
         else:
             assert 0, "Unsupported observation model: {}".format(PARAMS['observation'])
 #%%
+# tf.random.set_seed(1)
+# cx_train = []
+# for i in tqdm(range(len(x_train)), desc='generating train colored mnist'):
+#     cx_train.append(colored_mnist(x_train[i], PARAMS))
+# cx_train = np.array(cx_train)
+
+# # plt.imshow(cx_train[10])
+# # plt.show()
+
+# cx_test = []
+# for i in tqdm(range(len(x_test)), desc='generating test colored mnist'):
+#     cx_test.append(colored_mnist(x_test[i], PARAMS))
+# cx_test = np.array(cx_test)
+
 tf.random.set_seed(1)
-cx_train = []
 for i in tqdm(range(len(x_train)), desc='generating train colored mnist'):
-    cx_train.append(colored_mnist(x_train[i], PARAMS))
-cx_train = np.array(cx_train)
+    x_train[i] = colored_mnist(x_train[i], PARAMS)
 
 # plt.imshow(cx_train[10])
 # plt.show()
 
-cx_test = []
 for i in tqdm(range(len(x_test)), desc='generating test colored mnist'):
-    cx_test.append(colored_mnist(x_test[i], PARAMS))
-cx_test = np.array(cx_test)
+    x_test[i] = colored_mnist(x_test[i], PARAMS)
 #%%
-x_train = cx_train.astype('float32')
-x_test = cx_test.astype('float32') 
+x_train = x_train.astype('float32')
+x_test = x_test.astype('float32') 
 y_train_onehot = to_categorical(y_train, num_classes=PARAMS['class_num'])
 y_test_onehot = to_categorical(y_test, num_classes=PARAMS['class_num'])
 
@@ -180,7 +190,7 @@ summary_writer = tf.summary.create_file_writer(log_dir)
 asset_path = 'weights_{}'.format(current_time)
 pprint(PARAMS)
 #%%
-@tf.function
+# @tf.function
 def supervised_loss(outputs, x_batch_L, y_batch_L, 
                     mix_weight,
                     PARAMS):
@@ -225,7 +235,7 @@ def supervised_loss(outputs, x_batch_L, y_batch_L,
     
     return [loss_supervised, recon_loss, z_prior_loss, c_prior_loss, classification_loss, prior_loss]
 #%%
-@tf.function
+# @tf.function
 def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
                           mix_weight,
                           optimizer, optimizer_NF):
