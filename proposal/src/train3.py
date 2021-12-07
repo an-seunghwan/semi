@@ -19,7 +19,8 @@ from itertools import cycle
 import json
 import io
 import os
-os.chdir(r'D:\semi\proposal')
+# os.chdir(r'D:\semi\proposal')
+os.chdir('/home1/prof/jeon/an/semi/proposal')
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from modules import CIFAR10
@@ -56,8 +57,8 @@ PARAMS = {
     "BN_in_NF": False,
     
     "beta": 1.,
-    "lambda1": 1., 
-    "lambda2": 1., 
+    "lambda1": 10., 
+    "lambda2": 10., 
     "learning_rate1": 0.001, 
     "learning_rate2": 0.0001,
     "beta_1": 0.5, # beta_1 in SGD or Adam
