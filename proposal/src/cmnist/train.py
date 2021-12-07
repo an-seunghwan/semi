@@ -129,32 +129,22 @@ def colored_mnist(image, PARAMS):
         else:
             assert 0, "Unsupported observation model: {}".format(PARAMS['observation'])
 #%%
-# tf.random.set_seed(1)
-# cx_train = []
-# for i in tqdm(range(len(x_train)), desc='generating train colored mnist'):
-#     cx_train.append(colored_mnist(x_train[i], PARAMS))
-# cx_train = np.array(cx_train)
-
-# # plt.imshow(cx_train[10])
-# # plt.show()
-
-# cx_test = []
-# for i in tqdm(range(len(x_test)), desc='generating test colored mnist'):
-#     cx_test.append(colored_mnist(x_test[i], PARAMS))
-# cx_test = np.array(cx_test)
-
 tf.random.set_seed(1)
+cx_train = []
 for i in tqdm(range(len(x_train)), desc='generating train colored mnist'):
-    x_train[i] = colored_mnist(x_train[i], PARAMS)
+    cx_train.append(colored_mnist(x_train[i], PARAMS))
+cx_train = np.array(cx_train)
 
 # plt.imshow(cx_train[10])
 # plt.show()
 
+cx_test = []
 for i in tqdm(range(len(x_test)), desc='generating test colored mnist'):
-    x_test[i] = colored_mnist(x_test[i], PARAMS)
+    cx_test.append(colored_mnist(x_test[i], PARAMS))
+cx_test = np.array(cx_test)
 #%%
-x_train = x_train.astype('float32')
-x_test = x_test.astype('float32') 
+x_train = cx_train.astype('float32')
+x_test = cx_test.astype('float32') 
 y_train_onehot = to_categorical(y_train, num_classes=PARAMS['class_num'])
 y_test_onehot = to_categorical(y_test, num_classes=PARAMS['class_num'])
 
@@ -172,6 +162,9 @@ train_dataset = tf.data.Dataset.from_tensor_slices((x_train)).shuffle(len(x_trai
 test_dataset = tf.data.Dataset.from_tensor_slices((x_test, y_test)).batch(PARAMS['batch_size'])
 
 PARAMS['iterations'] = len(train_dataset)
+
+del cx_train
+del cx_test
 #%%
 # def weight_schedule(epoch, epochs, weight_max):
 #     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
