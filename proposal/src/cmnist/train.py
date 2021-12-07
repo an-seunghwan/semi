@@ -364,7 +364,7 @@ for epoch in range(PARAMS['epochs']):
     # # optimal transport weight
     # ucw = weight_schedule(epoch, round(PARAMS['wmf'] * PARAMS['epochs']), PARAMS['wrd'])
     
-    for (x_batch_L, y_batch_L), x_batch in tqdm(zip(cycle(train_L_dataset), train_dataset), total=len(train_dataset)):
+    for step, ((x_batch_L, y_batch_L), x_batch) in enumerate(zip(cycle(train_L_dataset), train_dataset)):
     
         '''mix-up weight'''
         mix_weight = [tf.constant(np.random.beta(PARAMS['epsilon'], PARAMS['epsilon'])), # labeled
@@ -387,6 +387,18 @@ for epoch in range(PARAMS['epochs']):
         unsupervised_losses, unsupervised_outputs = unsupervised_train_step(x_batch, PARAMS,
                                                                             unsupervised_mix_up_index, mix_weight[1], 
                                                                             optimizer, optimizer_NF)
+        
+        template = '\nEpoch {}: step {}, loss {:.3f}, recon {:.3f}, z_prior {:.3f}, c_prior {:.3f}'
+        print(template.format(epoch+1,
+                            step+1,
+                            unsupervised_losses[0].numpy() + unsupervised_losses[-1].numpy(), 
+                            unsupervised_losses[1].numpy(),
+                            unsupervised_losses[2].numpy(),
+                            unsupervised_losses[3].numpy()))
+        
+    for (x_test_batch, y_test_batch) in test_dataset:
+        test_step(model, x_test_batch, y_test_batch)
+        
     with summary_writer.as_default():
         tf.summary.scalar('loss', train_loss.result(), step=epoch)
         tf.summary.scalar('train_accuracy', train_accuracy.result(), step=epoch)
@@ -394,15 +406,11 @@ for epoch in range(PARAMS['epochs']):
         tf.summary.scalar('z_prior', train_z_prior.result(), step=epoch)
         tf.summary.scalar('c_prior', train_c_prior.result(), step=epoch)
         tf.summary.scalar('prior', train_prior.result(), step=epoch)
-        if (epoch + 1) % 50 == 0:
-            tf.summary.image("train recon image", generate_and_save_images(x_batch), step=epoch)   
-        
-    for (x_test_batch, y_test_batch) in test_dataset:
-        test_step(model, x_test_batch, y_test_batch)
-    with summary_writer.as_default():
         tf.summary.scalar('test_accuracy', test_accuracy.result(), step=epoch)
-        
-    template = 'Epoch {}, loss {:.3f}, recon {:.3f}, z_prior {:.3f}, c_prior {:.3f}, train accuracy {:.3f}%. test accuracy {:.3f}%'
+        if (epoch + 1) % 50 == 0:
+            tf.summary.image("train recon image", generate_and_save_images(x_batch), step=epoch)
+    
+    template = '\nEpoch {}: loss {:.3f}, recon {:.3f}, z_prior {:.3f}, c_prior {:.3f}, train accuracy {:.3f}%. test accuracy {:.3f}%'
     print(template.format(epoch+1,
                         train_loss.result(), 
                         train_recon.result(),
