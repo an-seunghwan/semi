@@ -14,6 +14,7 @@ from tqdm import tqdm
 import numpy as np
 import matplotlib.pyplot as plt
 import datetime
+import time
 from pprint import pprint
 from itertools import cycle
 import json
@@ -364,6 +365,8 @@ for epoch in range(PARAMS['epochs']):
     # # optimal transport weight
     # ucw = weight_schedule(epoch, round(PARAMS['wmf'] * PARAMS['epochs']), PARAMS['wrd'])
     
+    start = time.time()
+    
     for step, ((x_batch_L, y_batch_L), x_batch) in enumerate(zip(cycle(train_L_dataset), train_dataset)):
     
         '''mix-up weight'''
@@ -410,8 +413,10 @@ for epoch in range(PARAMS['epochs']):
         if (epoch + 1) % 50 == 0:
             tf.summary.image("train recon image", generate_and_save_images(x_batch), step=epoch)
     
-    template = '\nEpoch {}: loss {:.3f}, recon {:.3f}, z_prior {:.3f}, c_prior {:.3f}, train accuracy {:.3f}%. test accuracy {:.3f}%\n'
+    end = str(datetime.timedelta(seconds=time.time() - start)).split(".")[0]
+    template = '\nEpoch {} time {}: loss {:.3f}, recon {:.3f}, z_prior {:.3f}, c_prior {:.3f}, train accuracy {:.3f}%. test accuracy {:.3f}%\n'
     print(template.format(epoch+1,
+                        end,            
                         train_loss.result(), 
                         train_recon.result(),
                         train_z_prior.result(),
