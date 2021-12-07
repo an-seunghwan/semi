@@ -1,0 +1,39 @@
+base_path : D:\AAAI2021-260-master\AAAI2021-260-master
+dataset : Cifar10
+image_size : [32, 32]
+workers : 4
+batch_size : 128
+train_time : 2
+epochs : 600
+start_epoch : 0
+dp : True
+print_freq : 3
+reconstruct_freq : 20
+resume : 
+resume_arg : True
+annotated_ratio : 0.1
+net_name : wideresnet-28-2
+temperature : 0.67
+drop_rate : 0
+br : True
+x_sigma : 1
+ldc : 128
+cmi : 0
+dmi : 2.3
+evaluate_inference : False
+kbmc : 0.001
+kbmd : 0.001
+akb : 200
+ewm : 0.001
+aew : 400
+wrd : 1
+wmf : 0.4
+pwm : 1
+apw : 200
+lr : 0.1
+beta1 : 0.9
+adjust_lr : [400, 500, 550]
+wd : 0.0005
+epsilon : 0.1
+om : False
+gpu : gpuid
