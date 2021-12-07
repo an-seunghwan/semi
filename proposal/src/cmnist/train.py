@@ -388,7 +388,7 @@ for epoch in range(PARAMS['epochs']):
                                                                             unsupervised_mix_up_index, mix_weight[1], 
                                                                             optimizer, optimizer_NF)
         
-        template = '\nEpoch {}: step {}, loss {:.3f}, recon {:.3f}, z_prior {:.3f}, c_prior {:.3f}'
+        template = 'Epoch {}: step {}, loss {:.3f}, recon {:.3f}, z_prior {:.3f}, c_prior {:.3f}'
         print(template.format(epoch+1,
                             step+1,
                             unsupervised_losses[0].numpy() + unsupervised_losses[-1].numpy(), 
@@ -410,7 +410,7 @@ for epoch in range(PARAMS['epochs']):
         if (epoch + 1) % 50 == 0:
             tf.summary.image("train recon image", generate_and_save_images(x_batch), step=epoch)
     
-    template = '\nEpoch {}: loss {:.3f}, recon {:.3f}, z_prior {:.3f}, c_prior {:.3f}, train accuracy {:.3f}%. test accuracy {:.3f}%'
+    template = '\nEpoch {}: loss {:.3f}, recon {:.3f}, z_prior {:.3f}, c_prior {:.3f}, train accuracy {:.3f}%. test accuracy {:.3f}%\n'
     print(template.format(epoch+1,
                         train_loss.result(), 
                         train_recon.result(),
