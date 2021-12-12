@@ -21,8 +21,8 @@ import json
 import io
 import cv2
 import os
-os.chdir(r'D:\semi\proposal')
-# os.chdir('/home1/prof/jeon/an/semi/proposal')
+# os.chdir(r'D:\semi\proposal')
+os.chdir('/home1/prof/jeon/an/semi/proposal')
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from modules import CMNIST
@@ -30,7 +30,7 @@ from modules import CMNIST
 PARAMS = {
     "data": 'cmnist',
     "batch_size": 128,
-    "epochs": 600,
+    "epochs": 200,
     "data_dim": 32,
     "channel": 3, 
     "class_num": 10,
@@ -38,10 +38,10 @@ PARAMS = {
     
     # "ewm": 1e-3, # elbo weight max
     # "aew": 400, # the epoch to adjust elbo weight to max
-    # "pwm": 1, # posterior weight max
-    # "apw": 200, # adjust posterior weight
-    # "wrd": 1., # the max weight for the optimal transport estimation of discrete variable 
-    # "wmf": 0.4, # the weight factor: epoch to adjust the weight for the optimal transport estimation of discrete variable to max
+    "pwm": 100., # posterior weight max
+    "apw": 200, # adjust posterior weight
+    "wrd": 100., # the max weight for the optimal transport estimation of discrete variable 
+    "wmf": 0.4, # the weight factor: epoch to adjust the weight for the optimal transport estimation of discrete variable to max
     
     "z_mask": 'checkerboard',
     "c_mask": 'half',
@@ -53,14 +53,14 @@ PARAMS = {
     "K2": 8,
     "coupling_MLP_num": 4,
     "reg": 0.01,
-    "decay_steps": 20,
+    "decay_steps": 1,
     "decay_rate": 0.95,
     "gradclip": 1.,
     "BN_in_NF": False,
     
     "beta": 1.,
-    "lambda1": 10., 
-    "lambda2": 10., 
+    "lambda1": 5., 
+    "lambda2": 5., 
     "learning_rate1": 0.001, 
     "learning_rate2": 0.0001,
     "beta_1": 0.9, # beta_1 in SGD or Adam
@@ -167,8 +167,8 @@ PARAMS['iterations'] = len(train_dataset)
 del cx_train
 del cx_test
 #%%
-# def weight_schedule(epoch, epochs, weight_max):
-#     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
+def weight_schedule(epoch, epochs, weight_max):
+    return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
 #%%
 '''Define our metrics'''
 train_loss = K.metrics.Mean('train_loss', dtype=tf.float32)
@@ -186,7 +186,7 @@ pprint(PARAMS)
 #%%
 # @tf.function
 def supervised_loss(outputs, x_batch_L, y_batch_L, 
-                    mix_weight,
+                    mix_weight, pwm,
                     PARAMS):
     eps = 1e-8
     
@@ -225,18 +225,18 @@ def supervised_loss(outputs, x_batch_L, y_batch_L,
     posterior_loss_y = - tf.reduce_mean(mix_weight * tf.reduce_sum(y_batch_L_shuffle * tf.math.log(smoothed_prob_mix + eps), axis=-1))
     posterior_loss_y += - tf.reduce_mean((1. - mix_weight) * tf.reduce_sum(y_batch_L * tf.math.log(smoothed_prob_mix + eps), axis=-1))
     
-    loss_supervised = recon_loss / PARAMS['beta'] + PARAMS['lambda1'] * classification_loss + posterior_loss_y
+    loss_supervised = recon_loss / PARAMS['beta'] + PARAMS['lambda1'] * classification_loss + pwm * posterior_loss_y
     
     return [loss_supervised, recon_loss, z_prior_loss, c_prior_loss, classification_loss, prior_loss]
 #%%
 # @tf.function
 def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
-                          mix_weight,
+                          mix_weight, pwm,
                           optimizer, optimizer_NF):
     
     with tf.GradientTape(persistent=True) as tape:
         supervised_outputs = model(x_batch_L)
-        supervised_losses = supervised_loss(supervised_outputs, x_batch_L, y_batch_L, mix_weight, PARAMS)
+        supervised_losses = supervised_loss(supervised_outputs, x_batch_L, y_batch_L, mix_weight, pwm, PARAMS)
         
     grad = tape.gradient(supervised_losses[0], model.AE.trainable_weights)
     optimizer.apply_gradients(zip(grad, model.AE.trainable_weights))
@@ -249,7 +249,7 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
 #%%
 # @tf.function
 def unsupervised_loss(outputs, x_batch, 
-                      unsupervised_mix_up_index, mix_weight,
+                      unsupervised_mix_up_index, mix_weight, ucw,
                       PARAMS):
     eps = 1e-8
     
@@ -281,18 +281,18 @@ def unsupervised_loss(outputs, x_batch,
     smoothed_prob_mix = model.AE.get_prob(x_batch_mix)
     posterior_loss_y = - tf.reduce_mean(tf.reduce_sum(pseudo_label * tf.math.log(smoothed_prob_mix + eps), axis=-1))
     
-    loss_unsupervised = recon_loss / PARAMS['beta'] + posterior_loss_y
+    loss_unsupervised = recon_loss / PARAMS['beta'] + ucw * posterior_loss_y
     
     return [loss_unsupervised, recon_loss, z_prior_loss, c_prior_loss, prior_loss]
 #%%
 # @tf.function
 def unsupervised_train_step(x_batch, PARAMS,
-                            unsupervised_mix_up_index, mix_weight, 
+                            unsupervised_mix_up_index, mix_weight, ucw,
                             optimizer, optimizer_NF):
     
     with tf.GradientTape(persistent=True) as tape:
         unsupervised_outputs = model(x_batch)
-        unsupervised_losses = unsupervised_loss(unsupervised_outputs, x_batch, unsupervised_mix_up_index, mix_weight, PARAMS)
+        unsupervised_losses = unsupervised_loss(unsupervised_outputs, x_batch, unsupervised_mix_up_index, mix_weight, ucw, PARAMS)
         
     grad = tape.gradient(unsupervised_losses[0], model.AE.trainable_weights)
     optimizer.apply_gradients(zip(grad, model.AE.trainable_weights))
@@ -325,7 +325,7 @@ def generate_and_save_images(x_batch):
     for i in range(PARAMS['class_num']):
         label = np.zeros((z.shape[0], PARAMS['class_num']))
         label[:, i] = 1
-        xhat = model.AE.Decoder(z, label, training=False)
+        xhat = model.AE.Decoder([z, label], training=False)
         plt.subplot(1, PARAMS['class_num']+1, i+2)
         plt.imshow((xhat[0] + 1) / 2)
         plt.title('{}'.format(i))
@@ -359,11 +359,11 @@ for epoch in range(PARAMS['epochs']):
         optimizer.lr = PARAMS['learning_rate1']
         optimizer_NF.lr = learning_rate_fn(epoch)
 
-    # '''weights of loss terms'''
-    # # elbo part weight
-    # ew = weight_schedule(epoch, PARAMS['aew'], PARAMS['ewm'])
-    # # optimal transport weight
-    # ucw = weight_schedule(epoch, round(PARAMS['wmf'] * PARAMS['epochs']), PARAMS['wrd'])
+    '''weights of loss terms'''
+    # unsupervised classification weight
+    pwm = weight_schedule(epoch, PARAMS['epochs'], PARAMS['pwm'])
+    # optimal transport weight
+    ucw = weight_schedule(epoch, round(PARAMS['wmf'] * PARAMS['epochs']), PARAMS['wrd'])
     
     start = time.time()
     
@@ -375,7 +375,7 @@ for epoch in range(PARAMS['epochs']):
         
         '''labeled dataset training'''
         supervised_losses, supervised_outputs = supervised_train_step(x_batch_L, y_batch_L, PARAMS,
-                                                mix_weight[0], 
+                                                mix_weight[0], pwm,
                                                 optimizer, optimizer_NF) 
         
         '''mix-up: optimal match'''
@@ -388,7 +388,7 @@ for epoch in range(PARAMS['epochs']):
         
         '''unlabeled dataset training'''
         unsupervised_losses, unsupervised_outputs = unsupervised_train_step(x_batch, PARAMS,
-                                                                            unsupervised_mix_up_index, mix_weight[1], 
+                                                                            unsupervised_mix_up_index, mix_weight[1], ucw,
                                                                             optimizer, optimizer_NF)
         
         template = 'Epoch {}: step {}, loss {:.3f}, recon {:.3f}, z_prior {:.3f}, c_prior {:.3f}'
