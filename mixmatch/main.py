@@ -4,10 +4,12 @@ import os
 
 import numpy as np
 import tensorflow as tf
+import tensorflow.keras as K
 import tqdm
 import yaml
 
 from preprocess import fetch_dataset
+from model import WideResNet
 #%%
 config = tf.compat.v1.ConfigProto()
 '''
@@ -60,12 +62,19 @@ parser.add_argument('--weight_decay', type=float, default=0.02,
 parser.add_argument('--ema_decay', type=float, default=0.999, 
                     help='ema decay for ema model vars (default: 0.999)')
 
+parser.add_argument('--depth', type=int, default=28, 
+                    help='depth for WideResnet (default: 28)')
+parser.add_argument('--width', type=int, default=2, 
+                    help='widen factor for WideResnet (default: 2)')
+parser.add_argument('--slope', type=float, default=0.1, 
+                    help='slope parameter for LeakyReLU (default: 0.1)')
+
 parser.add_argument('--config_path', type=str, default=None, 
                     help='path to yaml config file, overwrites args')
-parser.add_argument('--tensorboard', action='store_true', 
+parser.add_argument('--tensorboard', action='store_false', 
                     help='enable tensorboard visualization')
-parser.add_argument('--resume', action='store_true', 
-                    help='whether to restore from previous training runs')
+# parser.add_argument('--resume', action='store_true', 
+#                     help='whether to restore from previous training runs')
 
     # return parser.parse_args()
 #%%
@@ -97,6 +106,20 @@ ckpt_dir = f'{log_path}/checkpoints'
 #%%
 datasetL, datasetU, val_dataset, test_dataset, num_classses = fetch_dataset(args, log_path)
 #%%
+model = WideResNet(num_classses, depth=args['depth'], width=args['width'], slope=args['slope'])
+model.build(input_shape=(None, 32, 32, 3))
+optimizer = K.optimizers.Adam(lr=args['learning_rate'])
 
-
+ema_model = WideResNet(num_classses, depth=args['depth'], width=args['width'], slope=args['slope'])
+ema_model.build(input_shape=(None, 32, 32, 3))
+ema_model.set_weights(model.get_weights())
+#%%
+train_writer = None
+if args['tensorboard']:
+    train_writer = tf.summary.create_file_writer(f'{log_path}/train')
+    val_writer = tf.summary.create_file_writer(f'{log_path}/val')
+    test_writer = tf.summary.create_file_writer(f'{log_path}/test')
+#%%
+args['T'] = tf.constant(args['T'])
+args['beta'] = tf.Variable(args['beta'])
 #%%
