@@ -11,7 +11,7 @@ def augment(x):
                             (4, 4),
                             (4, 4), 
                             (0, 0)], mode='REFLECT')
-    x = tf.map_fn(lambda batch: tf.image.random.crop(batch, size=(32, 32, 3)), x, parallel_iterations=cpu_count())
+    x = tf.map_fn(lambda batch: tf.image.random_crop(batch, size=(32, 32, 3)), x, parallel_iterations=cpu_count())
     return x
 #%%
 def guess_labels(u_aug, model, K):

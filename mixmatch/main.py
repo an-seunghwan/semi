@@ -8,6 +8,9 @@ import tensorflow.keras as K
 import tqdm
 import yaml
 
+# import datetime
+# current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
 from preprocess import fetch_dataset
 from model import WideResNet
 from mixmatch import mixmatch, semi_loss, linear_rampup, interleave, weight_decay, ema
@@ -72,8 +75,8 @@ def get_args():
 
     parser.add_argument('--config_path', type=str, default=None, 
                         help='path to yaml config file, overwrites args')
-    parser.add_argument('--tensorboard', action='store_false', 
-                        help='enable tensorboard visualization')
+    # parser.add_argument('--tensorboard', action='store_false', 
+    #                     help='enable tensorboard visualization')
     # parser.add_argument('--resume', action='store_true', 
     #                     help='whether to restore from previous training runs')
 
@@ -96,7 +99,6 @@ def main():
     # args = vars(parser.parse_args(args=['--epochs', '150', '--T', '0.1']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    args['config_path'] = 'configs/cifar10_4000.yaml'
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
         args = load_config(args)
 
@@ -113,36 +115,45 @@ def main():
     ema_model.build(input_shape=(None, 32, 32, 3))
     ema_model.set_weights(model.get_weights())
     
-    train_writer = None
-    if args['tensorboard']:
-        train_writer = tf.summary.create_file_writer(f'{log_path}/train')
-        val_writer = tf.summary.create_file_writer(f'{log_path}/val')
-        test_writer = tf.summary.create_file_writer(f'{log_path}/test')
+    train_writer = tf.summary.create_file_writer(f'{log_path}/train')
+    val_writer = tf.summary.create_file_writer(f'{log_path}/val')
+    test_writer = tf.summary.create_file_writer(f'{log_path}/test')
     
     args['T'] = tf.constant(args['T'])
-    args['beta'] = tf.Variable(0, shape=())
+    args['beta'] = tf.Variable(0., shape=())
     for epoch in range(start_epoch, args['epochs']):
         xe_loss, l2u_loss, total_loss, accuracy = train(datasetL, datasetU, model, ema_model, optimizer, epoch, args)
         val_xe_loss, val_accuracy = validate(val_dataset, ema_model, epoch, args, split='Validation')
         test_xe_loss, test_accuracy = validate(test_dataset, ema_model, epoch, args, split='Test')
         
         step = args['val_iteration'] * (epoch + 1)
-        if args['tensorboard']:
-            with train_writer.as_default():
-                tf.summary.scalar('xe_loss', xe_loss.result(), step=step)
-                tf.summary.scalar('l2u_loss', l2u_loss.result(), step=step)
-                tf.summary.scalar('total_loss', total_loss.result(), step=step)
-                tf.summary.scalar('accuracy', accuracy.result(), step=step)
-            with val_writer.as_default():
-                tf.summary.scalar('xe_loss', val_xe_loss.result(), step=step)
-                tf.summary.scalar('accuracy', val_accuracy.result(), step=step)
-            with test_writer.as_default():
-                tf.summary.scalar('xe_loss', test_xe_loss.result(), step=step)
-                tf.summary.scalar('accuracy', test_accuracy.result(), step=step)
+        with train_writer.as_default():
+            tf.summary.scalar('xe_loss', xe_loss.result(), step=step)
+            tf.summary.scalar('l2u_loss', l2u_loss.result(), step=step)
+            tf.summary.scalar('total_loss', total_loss.result(), step=step)
+            tf.summary.scalar('accuracy', accuracy.result(), step=step)
+        with val_writer.as_default():
+            tf.summary.scalar('xe_loss', val_xe_loss.result(), step=step)
+            tf.summary.scalar('accuracy', val_accuracy.result(), step=step)
+        with test_writer.as_default():
+            tf.summary.scalar('xe_loss', test_xe_loss.result(), step=step)
+            tf.summary.scalar('accuracy', test_accuracy.result(), step=step)
 
-    if args['tensorboard']:
-        for writer in [train_writer, val_writer, test_writer]:
-            writer.flush()
+        # Reset metrics every epoch
+        xe_loss.reset_states()
+        l2u_loss.reset_states()
+        total_loss.reset_states()
+        accuracy.reset_states()
+        val_xe_loss.reset_states()
+        val_accuracy.reset_states()
+        test_xe_loss.reset_states()
+        test_accuracy.reset_states()
+    
+    '''model save'''        
+    model_path = f'{log_path}/model'
+    if not os.path.exists(model_path):
+        os.makedirs(model_path)
+    ema_model.save_weights(model_path + '/model.h5', save_format="h5")
 #%%
 def train(datasetL, datasetU, model, ema_model, optimizer, epoch, args):
     xe_loss_avg = tf.keras.metrics.Mean()
@@ -159,20 +170,20 @@ def train(datasetL, datasetU, model, ema_model, optimizer, epoch, args):
     for batch_num in progress_bar:
         lambda_u = args['lambda_u'] * linear_rampup(epoch + batch_num/args['val_iteration'], args['rampup_length'])
         try:
-            batchL = next(iteratorL)
+            imageL, labelL = next(iteratorL)
         except:
             iteratorL = iter(shuffle_and_batch(datasetL))
-            batchL = next(iteratorL)
+            imageL, labelL = next(iteratorL)
         try:
-            batchU = next(iteratorU)
+            imageU, _ = next(iteratorU)
         except:
             iteratorU = iter(shuffle_and_batch(datasetU))
-            batchU = next(iteratorU)
+            imageU = next(iteratorU)
 
         args['beta'].assign(np.random.beta(args['alpha'], args['alpha']))
         with tf.GradientTape() as tape:
             # run mixmatch
-            XU, XUy = mixmatch(model, batchL['image'], batchL['label'], batchU['image'], args['T'], args['K'], args['beta'])
+            XU, XUy = mixmatch(model, imageL, labelL, imageU, args['T'], args['K'], args['beta'])
             logits = [model(XU[0])]
             for batch in XU[1:]:
                 logits.append(model(batch))
@@ -193,7 +204,7 @@ def train(datasetL, datasetU, model, ema_model, optimizer, epoch, args):
         xe_loss_avg(xe_loss)
         l2u_loss_avg(l2u_loss)
         total_loss_avg(total_loss)
-        accuracy(tf.argmax(batchL['label'], axis=1, output_type=tf.int32), model(tf.cast(batchL['image'], dtype=tf.float32), training=False))
+        accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), model(tf.cast(imageL, dtype=tf.float32), training=False))
 
         progress_bar.set_postfix({
             'XE Loss': f'{xe_loss_avg.result():.4f}',
@@ -209,12 +220,12 @@ def validate(dataset, model, epoch, args, split):
     xe_avg = tf.keras.metrics.Mean()
 
     dataset = dataset.batch(args['batch_size'])
-    for batch in dataset:
-        logits = model(batch['image'], training=False)
-        xe_loss = tf.nn.softmax_cross_entropy_with_logits(labels=batch['label'], logits=logits)
+    for image, label in dataset:
+        logits = model(image, training=False)
+        xe_loss = tf.nn.softmax_cross_entropy_with_logits(labels=label, logits=logits)
         xe_avg(xe_loss)
         prediction = tf.argmax(logits, axis=1, output_type=tf.int32)
-        accuracy(prediction, tf.argmax(batch['label'], axis=1, output_type=tf.int32))
+        accuracy(prediction, tf.argmax(label, axis=1, output_type=tf.int32))
     print(f'Epoch {epoch:04d}: {split} XE Loss: {xe_avg.result():.4f}, {split} Accuracy: {accuracy.result():.3%}')
 
     return xe_avg, accuracy
