@@ -29,7 +29,7 @@ from modules import CIFAR10
 #%%
 PARAMS = {
     "data": 'cifar10',
-    "batch_size": 128, # default: 768
+    "batch_size": 128, # default: 128
     "epochs": 600,
     "data_dim": 32,
     "channel": 3, 
@@ -39,16 +39,16 @@ PARAMS = {
     "sigma": 1.,
     "annotated_ratio": 0.1,
     
+    "dmi": 2.3, # threshold of discrete kl-divergence
     "kbmc": 1e-3, # kl beta max continuous
     "kbmd": 1e-3, # kl beta max discrete
     "akb": 200., # the max epoch to adjust kl beta
     "ewm": 1e-3, # elbo weight max
     "aew": 400., # the epoch to adjust elbo weight to max
-    "pwm": 1., # posterior weight max
-    "apw": 200., # adjust posterior weight
     "wrd": 1., # the max weight for the optimal transport estimation of discrete variable 
     "wmf": 0.4, # the weight factor: epoch to adjust the weight for the optimal transport estimation of discrete variable to max
-    "dmi": 2.3, # threshold of discrete kl-divergence
+    "pwm": 1., # posterior weight max
+    "apw": 200., # adjust posterior weight
     
     "learning_rate": 0.1, 
     "beta_1": 0.9, # beta_1 in SGD or Adam
@@ -57,6 +57,7 @@ PARAMS = {
     "epsilon": 0.1, # the label smoothing epsilon for labeled dataset
     "activation": 'sigmoid',
     "observation": 'bce',
+    "gradclip": 1.,
     
     "hard": False,
     "slope": 0.01, # pytorch default
@@ -140,7 +141,7 @@ def test_cls_error(model, test_dataset):
 #%%
 @tf.function
 def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
-                            ew, kl_beta_z, kl_beta_y, pwm, mix_weight,
+                            dmi, ew, kl_beta_z, kl_beta_y, pwm, mix_weight,
                             optimizer):
     eps = 1e-8
     
@@ -161,12 +162,12 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
             
         '''prior: KL-divergence'''
         kl_z = tf.reduce_mean(tf.reduce_sum(0.5 * (tf.math.square(mean) / PARAMS['sigma'] 
-                                                    + tf.math.exp(2 * log_sigma) / PARAMS['sigma'] 
+                                                    + tf.math.exp(2. * log_sigma) / PARAMS['sigma'] 
                                                     + tf.math.log(PARAMS['sigma'])
                                                     - 2. * log_sigma
                                                     - 1.), axis=-1))
         kl_y = tf.reduce_mean(tf.reduce_sum(tf.math.exp(log_prob) * (log_prob - tf.math.log(1. / PARAMS['class_num'])), axis=1))
-        elbo_loss_L = recon_loss + kl_beta_z * kl_z + kl_beta_y * tf.math.abs(kl_y - PARAMS['dmi'])
+        elbo_loss_L = recon_loss + (kl_beta_z * kl_z) + (kl_beta_y * tf.math.abs(kl_y - dmi))
         
         '''mix-up'''
         # no-gradient error!!!
@@ -190,7 +191,7 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
         posterior_loss_y += - tf.reduce_mean((1. - mix_weight) * tf.reduce_sum(y_batch_L * smoothed_log_prob_mix, axis=-1))
         
         elbo_loss_L += kl_beta_z * pwm * posterior_loss_z
-        loss_supervised = ew * elbo_loss_L + posterior_loss_y
+        loss_supervised = (ew * elbo_loss_L) + posterior_loss_y
             
     grad = tape.gradient(loss_supervised, model.trainable_weights)
     optimizer.apply_gradients(zip(grad, model.trainable_weights))
@@ -200,7 +201,7 @@ def supervised_train_step(x_batch_L, y_batch_L, PARAMS,
 #%%
 @tf.function
 def unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
-                            ew, kl_beta_z, kl_beta_y, pwm, ucw, mix_weight,
+                            dmi, ew, kl_beta_z, kl_beta_y, pwm, ucw, mix_weight,
                             optimizer):
     eps = 1e-8
     
@@ -221,12 +222,12 @@ def unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
             
         '''prior: KL-divergence'''
         kl_z = tf.reduce_mean(tf.reduce_sum(0.5 * (tf.math.square(mean) / PARAMS['sigma'] 
-                                                    + tf.math.exp(2 * log_sigma) / PARAMS['sigma'] 
+                                                    + tf.math.exp(2. * log_sigma) / PARAMS['sigma'] 
                                                     + tf.math.log(PARAMS['sigma'])
                                                     - 2. * log_sigma
                                                     - 1.), axis=-1))
         kl_y = tf.reduce_mean(tf.reduce_sum(tf.math.exp(log_prob) * (log_prob - tf.math.log(1. / PARAMS['class_num'])), axis=1))
-        elbo_loss_U = recon_loss + kl_beta_z * kl_z + kl_beta_y * tf.math.abs(kl_y - PARAMS['dmi'])
+        elbo_loss_U = recon_loss + (kl_beta_z * kl_z) + (kl_beta_y * tf.math.abs(kl_y - dmi))
         
         '''mix-up'''
         x_batch_shuffle = tf.gather(x_batch, unsupervised_mix_up_index)
@@ -236,7 +237,7 @@ def unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
         
         x_batch_mix = mix_weight * x_batch_shuffle + (1. - mix_weight) * x_batch
         mean_mix = mix_weight * mean_shuffle + (1. - mix_weight) * mean
-        sigma_mix = mix_weight * tf.math.exp(log_sigma_shuffle) + (1 - mix_weight) * tf.math.exp(log_sigma)
+        sigma_mix = mix_weight * tf.math.exp(log_sigma_shuffle) + (1. - mix_weight) * tf.math.exp(log_sigma)
         pseudo_label = mix_weight * tf.math.exp(log_prob_shuffle) + (1. - mix_weight) * tf.math.exp(log_prob)
         smoothed_mean_mix, smoothed_log_sigma_mix, smoothed_log_prob_mix, _, _, _ = model(x_batch_mix)
         
@@ -245,7 +246,7 @@ def unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
         posterior_loss_y = - tf.reduce_mean(tf.reduce_sum(pseudo_label * smoothed_log_prob_mix, axis=-1))
         
         elbo_loss_U += kl_beta_z * pwm * posterior_loss_z
-        loss_unsupervised = ew * elbo_loss_U + ucw * posterior_loss_y
+        loss_unsupervised = (ew * elbo_loss_U) + (ucw * posterior_loss_y)
             
     grad = tape.gradient(loss_unsupervised, model.trainable_weights)
     optimizer.apply_gradients(zip(grad, model.trainable_weights))
@@ -297,22 +298,30 @@ for epoch in range(PARAMS['epochs']):
     '''warm-up'''
     if epoch == 0:
         optimizer = K.optimizers.SGD(learning_rate=PARAMS['learning_rate'] * 0.2,
-                                    momentum=PARAMS['beta_1'])
+                                    momentum=PARAMS['beta_1'],
+                                    clipvalue=PARAMS['gradclip'])
         # optimizer = K.optimizers.Adam(learning_rate=PARAMS['learning_rate'] * 0.2,
-        #                             beta_1=PARAMS['beta_1'])
+        #                             beta_1=PARAMS['beta_1'],
+        #                             clipvalue=PARAMS['gradclip'])
     else:
         optimizer.lr = learning_rate_fn(epoch)
 
     '''weights of loss terms'''
+    # threshold of discrete kl-divergence
+    dmi = weight_schedule(epoch, PARAMS['akb'], PARAMS['dmi'])
     # elbo part weight
     ew = weight_schedule(epoch, PARAMS['aew'], PARAMS['ewm'])
     # kl-divergence weight
-    kl_beta_z = weight_schedule(epoch, PARAMS['epochs'], PARAMS['kbmc'])
-    kl_beta_y = weight_schedule(epoch, PARAMS['epochs'], PARAMS['kbmd'])
+    kl_beta_z = weight_schedule(epoch, PARAMS['akb'], PARAMS['kbmc'])
+    kl_beta_y = weight_schedule(epoch, PARAMS['akb'], PARAMS['kbmd'])
     # unsupervised classification weight
-    pwm = weight_schedule(epoch, PARAMS['epochs'], PARAMS['pwm'])
+    pwm = weight_schedule(epoch, PARAMS['apw'], PARAMS['pwm'])
     # optimal transport weight
     ucw = weight_schedule(epoch, round(PARAMS['wmf'] * PARAMS['epochs']), PARAMS['wrd'])
+    
+    if PARAMS['annotated_ratio'] >= 0.05:
+        if epoch == PARAMS['adjust_lr'][0]:
+            PARAMS['ewm'] = PARAMS['ewm'] * 5.
         
     step = 0
     progress_bar = tqdm(range(PARAMS['iterations']))
@@ -334,7 +343,7 @@ for epoch in range(PARAMS['epochs']):
         
         '''labeled dataset training'''
         supervised_losses, supervised_outputs = supervised_train_step(x_batch_L, y_batch_L, PARAMS,
-                                                ew, kl_beta_z, kl_beta_y, pwm, mix_weight[0], optimizer) 
+                                                dmi, ew, kl_beta_z, kl_beta_y, pwm, mix_weight[0], optimizer) 
         
         '''mix-up: optimal match'''
         mean, log_sigma, log_prob, _, _, _ = model(x_batch)
@@ -348,7 +357,7 @@ for epoch in range(PARAMS['epochs']):
         
         '''unlabeled dataset training'''
         unsupervised_losses, unsupervised_outputs = unsupervised_train_step(x_batch, unsupervised_mix_up_index, PARAMS,
-                                                                            ew, kl_beta_z, kl_beta_y, pwm, ucw, mix_weight[1], optimizer)
+                                                                            dmi, ew, kl_beta_z, kl_beta_y, pwm, ucw, mix_weight[1], optimizer)
         
         step += 1
         
