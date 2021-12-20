@@ -1,6 +1,7 @@
 #%%
 import argparse
 import os
+os.chdir(r'D:\semi\mixmatch') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -8,8 +9,8 @@ import tensorflow.keras as K
 import tqdm
 import yaml
 
-# import datetime
-# current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+import datetime
+current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
 from model import WideResNet
@@ -115,9 +116,9 @@ def main():
     ema_model.build(input_shape=(None, 32, 32, 3))
     ema_model.set_weights(model.get_weights())
     
-    train_writer = tf.summary.create_file_writer(f'{log_path}/train')
-    val_writer = tf.summary.create_file_writer(f'{log_path}/val')
-    test_writer = tf.summary.create_file_writer(f'{log_path}/test')
+    train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
+    val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
+    test_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/test')
     
     args['T'] = tf.constant(args['T'])
     args['beta'] = tf.Variable(0., shape=())
@@ -149,11 +150,15 @@ def main():
         test_xe_loss.reset_states()
         test_accuracy.reset_states()
     
-    '''model save'''        
-    model_path = f'{log_path}/model'
+    '''model & configurations save'''        
+    model_path = f'{log_path}/{current_time}'
     if not os.path.exists(model_path):
         os.makedirs(model_path)
-    ema_model.save_weights(model_path + '/model.h5', save_format="h5")
+    ema_model.save_weights(model_path + '/model_{}.h5'.format(current_time), save_format="h5")
+    
+    with open(model_path + '/args_{}.txt'.format(current_time), "w") as f:
+        for key, value, in args.items():
+            f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
 def train(datasetL, datasetU, model, ema_model, optimizer, epoch, args):
     xe_loss_avg = tf.keras.metrics.Mean()

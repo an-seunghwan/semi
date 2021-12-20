@@ -19,24 +19,24 @@ class ResidualUnit(K.layers.Layer):
                                     padding='same', use_bias=False)
         self.norm2 = layers.BatchNormalization()
         self.relu2 = layers.LeakyReLU(alpha=slope)
-        self.conv2 = layers.Conv2D(filters=filter_in, kernel_size=3, strides=1, 
+        self.conv2 = layers.Conv2D(filters=filter_out, kernel_size=3, strides=1, 
                                     padding='same', use_bias=False)
         
-        self.equalInOut = (filter_in == filter_out)
-        if not self.equalInOut:
+        self.downsample = (filter_in != filter_out)
+        if self.downsample:
             self.shortcut = layers.Conv2D(filters=filter_out, kernel_size=1, strides=strides, 
                                         padding='same', use_bias=False)
 
     @tf.function
     def call(self, x, training=True):
-        if not self.equalInOut:
+        if self.downsample:
             x = self.relu1(self.norm1(x, training=training))
             h = self.relu2(self.norm2(self.conv1(x), training=training))
         else:
             h = self.relu1(self.norm1(x, training=training))
             h = self.relu2(self.norm2(self.conv1(h), training=training))
         h = self.conv2(h)
-        if not self.equalInOut:
+        if self.downsample:
             h = h + self.shortcut(x)
         else:
             h = h + x
@@ -57,12 +57,14 @@ class ResidualBlock(K.layers.Layer):
         units = []
         for i in range(n_units):
             units.append(unit(filter_in if i == 0 else filter_out, filter_out, strides if i == 0 else 1))
-        return units
+        # return units
+        return K.models.Sequential(units)
     
     @tf.function
     def call(self, x, training=True):
-        for unit in self.units:
-            x = unit(x, training=training)
+        # for unit in self.units:
+        #     x = unit(x, training=training)
+        x = self.units(x, training=training)
         return x
 #%%
 class WideResNet(K.models.Model):
@@ -93,7 +95,8 @@ class WideResNet(K.models.Model):
         self.relu = layers.LeakyReLU(alpha=slope)
         self.pooling = layers.GlobalAveragePooling2D()
         self.dense = layers.Dense(num_classes)
-        
+    
+    @tf.function
     def call(self, x, training=True):
         h = self.conv(x)
         h = self.block1(h, training=training)
