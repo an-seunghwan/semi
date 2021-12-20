@@ -1,4 +1,3 @@
-seed: 1
 dataset: 'cifar10'
 epochs: 2048
 val_iteration: 1024
