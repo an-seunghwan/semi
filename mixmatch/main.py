@@ -178,7 +178,7 @@ def train(datasetL, datasetU, model, ema_model, optimizer, epoch, args):
             imageU, _ = next(iteratorU)
         except:
             iteratorU = iter(shuffle_and_batch(datasetU))
-            imageU = next(iteratorU)
+            imageU, _ = next(iteratorU)
 
         args['beta'].assign(np.random.beta(args['alpha'], args['alpha']))
         with tf.GradientTape() as tape:
