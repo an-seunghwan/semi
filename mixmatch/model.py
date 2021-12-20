@@ -4,42 +4,66 @@ import tensorflow.keras as K
 from tensorflow.keras import layers
 import numpy as np
 #%%
-class BasicBlock(K.layers.Layer):
+class ResidualUnit(K.layers.Layer):
     def __init__(self, 
-                 in_filter_size, 
-                 out_filter_size,
+                 filter_in, 
+                 filter_out,
                  strides, 
-                 slope=0.0,
+                 slope=0.1,
                  **kwargs):
-        super(BasicBlock, self).__init__(**kwargs)
+        super(ResidualUnit, self).__init__(**kwargs)
         
-        self.slope = slope
         self.norm1 = layers.BatchNormalization()
-        self.conv1 = layers.Conv2D(filters=out_filter_size, kernel_size=3, strides=strides, 
+        self.relu1 = layers.LeakyReLU(alpha=slope)
+        self.conv1 = layers.Conv2D(filters=filter_out, kernel_size=3, strides=strides, 
                                     padding='same', use_bias=False)
         self.norm2 = layers.BatchNormalization()
-        self.conv2 = layers.Conv2D(filters=out_filter_size, kernel_size=3, strides=1, 
+        self.relu2 = layers.LeakyReLU(alpha=slope)
+        self.conv2 = layers.Conv2D(filters=filter_in, kernel_size=3, strides=1, 
                                     padding='same', use_bias=False)
         
-        self.equalInOut = (in_filter_size == out_filter_size)
+        self.equalInOut = (filter_in == filter_out)
         if not self.equalInOut:
-            self.conv3 = layers.Conv2D(filters=out_filter_size, kernel_size=1, strides=strides, 
+            self.shortcut = layers.Conv2D(filters=filter_out, kernel_size=1, strides=strides, 
                                         padding='same', use_bias=False)
 
     @tf.function
     def call(self, x, training=True):
         if not self.equalInOut:
-            x = tf.nn.leaky_relu(self.norm1(x, training=training), alpha=self.slope)
-            h = tf.nn.leaky_relu(self.norm2(self.conv1(x), training=training), alpha=self.slope)
+            x = self.relu1(self.norm1(x, training=training))
+            h = self.relu2(self.norm2(self.conv1(x), training=training))
         else:
-            h = tf.nn.leaky_relu(self.norm1(x, training=training), alpha=self.slope)
-            h = tf.nn.leaky_relu(self.norm2(self.conv1(h), training=training), alpha=self.slope)
+            h = self.relu1(self.norm1(x, training=training))
+            h = self.relu2(self.norm2(self.conv1(h), training=training))
         h = self.conv2(h)
         if not self.equalInOut:
-            h = h + self.conv3(x)
+            h = h + self.shortcut(x)
         else:
             h = h + x
         return h
+#%%
+class ResidualBlock(K.layers.Layer):
+    def __init__(self,
+                 n_units,
+                 filter_in,
+                 filter_out,
+                 unit,
+                 strides, 
+                 **kwargs):
+        super(ResidualBlock, self).__init__(**kwargs)
+        self.units = self._build_unit(n_units, unit, filter_in, filter_out, strides)
+    
+    def _build_unit(self, n_units, unit, filter_in, filter_out, strides):
+        units = []
+        for i in range(n_units):
+            units.append(unit(filter_in if i == 0 else filter_out, filter_out, strides if i == 0 else 1))
+        return units
+    
+    @tf.function
+    def call(self, x, training=True):
+        for unit in self.units:
+            x = unit(x, training=training)
+        return x
 #%%
 class WideResNet(K.models.Model):
     def __init__(self, 
@@ -53,7 +77,7 @@ class WideResNet(K.models.Model):
         super(WideResNet, self).__init__(input_shape, name=name, **kwargs)
         
         assert (depth - 4) % 6 == 0
-        self.block_depth = (depth - 4) // 6
+        self.n_units = (depth - 4) // 6
         self.nChannels = [16, 16*width, 32*width, 64*width]
         self.slope = slope
         
@@ -61,19 +85,12 @@ class WideResNet(K.models.Model):
         self.conv = layers.Conv2D(filters=self.nChannels[0], kernel_size=3, strides=1, 
                                     padding='same', use_bias=False)
         
-        # output: 32x32x32
-        self.block1 = K.models.Sequential([BasicBlock(self.nChannels[0], self.nChannels[1], strides=1, slope=slope)] + \
-                                            [BasicBlock(self.nChannels[1], self.nChannels[1], strides=1, slope=slope)])
-        
-        # output: 16x16x64
-        self.block2 = K.models.Sequential([BasicBlock(self.nChannels[1], self.nChannels[2], strides=2, slope=slope)] + \
-                                            [BasicBlock(self.nChannels[2], self.nChannels[2], strides=1, slope=slope)])
-        
-        # output: 8x8x128
-        self.block3 = K.models.Sequential([BasicBlock(self.nChannels[2], self.nChannels[3], strides=2, slope=slope)] + \
-                                            [BasicBlock(self.nChannels[3], self.nChannels[3], strides=1, slope=slope)])
+        self.block1 = ResidualBlock(self.u_units, self.nChannels[0], self.nChannels[1], ResidualUnit, 1)
+        self.block2 = ResidualBlock(self.u_units, self.nChannels[1], self.nChannels[2], ResidualUnit, 2)
+        self.block3 = ResidualBlock(self.u_units, self.nChannels[2], self.nChannels[3], ResidualUnit, 2)
         
         self.norm = layers.BatchNormalization()
+        self.relu = layers.LeakyReLU(alpha=slope)
         self.pooling = layers.GlobalAveragePooling2D()
         self.dense = layers.Dense(num_classes)
         
@@ -82,7 +99,7 @@ class WideResNet(K.models.Model):
         h = self.block1(h, training=training)
         h = self.block2(h, training=training)
         h = self.block3(h, training=training)
-        h = tf.nn.leaky_relu(self.norm(h, training=training), alpha=self.slope)
+        h = self.relu(self.norm(h, training=training))
         h = self.pooling(h)
         h = self.dense(h)
         return h
