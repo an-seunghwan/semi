@@ -85,9 +85,9 @@ class WideResNet(K.models.Model):
         self.conv = layers.Conv2D(filters=self.nChannels[0], kernel_size=3, strides=1, 
                                     padding='same', use_bias=False)
         
-        self.block1 = ResidualBlock(self.u_units, self.nChannels[0], self.nChannels[1], ResidualUnit, 1)
-        self.block2 = ResidualBlock(self.u_units, self.nChannels[1], self.nChannels[2], ResidualUnit, 2)
-        self.block3 = ResidualBlock(self.u_units, self.nChannels[2], self.nChannels[3], ResidualUnit, 2)
+        self.block1 = ResidualBlock(self.n_units, self.nChannels[0], self.nChannels[1], ResidualUnit, 1)
+        self.block2 = ResidualBlock(self.n_units, self.nChannels[1], self.nChannels[2], ResidualUnit, 2)
+        self.block3 = ResidualBlock(self.n_units, self.nChannels[2], self.nChannels[3], ResidualUnit, 2)
         
         self.norm = layers.BatchNormalization()
         self.relu = layers.LeakyReLU(alpha=slope)
