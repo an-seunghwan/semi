@@ -1,7 +1,8 @@
 #%%
 import argparse
 import os
-os.chdir(r'D:\semi\mixmatch') # main directory (repository)
+# os.chdir(r'D:\semi\mixmatch') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/mixmatch') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -212,6 +213,7 @@ def train(datasetL, datasetU, model, ema_model, optimizer, epoch, args):
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), model(tf.cast(imageL, dtype=tf.float32), training=False))
 
         progress_bar.set_postfix({
+            'EPOCH': f'{epoch:04d}',
             'XE Loss': f'{xe_loss_avg.result():.4f}',
             'L2U Loss': f'{l2u_loss_avg.result():.4f}',
             'WeightU': f'{lambda_u:.3f}',
