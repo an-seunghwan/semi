@@ -63,7 +63,7 @@ def get_args():
                         metavar='N', help='manual epoch number (useful on restarts)')
     # parser.add_argument('--print-freq', '-p', default=3, type=int,
     #                     metavar='N', help='print frequency (default: 10)')
-    parser.add_argument('--reconstruct-freq', '-rf', default=2, type=int,
+    parser.add_argument('--reconstruct-freq', '-rf', default=50, type=int,
                         metavar='N', help='reconstruct frequency (default: 50)')
     # parser.add_argument('--annotated-ratio', default=0.1, type=float, help='The ratio for semi-supervised annotation')
     parser.add_argument('--labeled_examples', type=int, default=4000, 
