@@ -297,8 +297,6 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes):
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
-        if batch_num > 2: break
-        
         '''augmentation'''
         try:
             imageL, labelL = next(iteratorL)
