@@ -49,16 +49,16 @@ def split_dataset(dataset, num_labeled, num_validations, num_classes):
     for example in iter(dataset):
         label = int(example['label'])
         counter[label] += 1
-        if counter[label] <= (num_labeled / num_classes):
+        if counter[label] <= (num_validations / num_classes):
             # labeled.append(example) 
-            labeled.append({
+            validation.append({
                 'image': example['image'],
                 'label': example['label']
             })
             continue
         elif counter[label] <= (num_validations / num_classes + num_labeled / num_classes):
             # validation.append(example)
-            validation.append({
+            labeled.append({
                 'image': example['image'],
                 'label': example['label']
             })

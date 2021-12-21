@@ -19,8 +19,8 @@ from datetime import datetime
 import sys
 import json
 import os
-# os.chdir(r'D:\semi\shotvae')
-os.chdir('/home1/prof/jeon/an/semi/shotvae')
+os.chdir(r'D:\semi\shotvae\etc')
+# os.chdir('/home1/prof/jeon/an/semi/shotvae')
 
 now = datetime.now() 
 date_time = now.strftime("%y%m%d_%H%M%S")
