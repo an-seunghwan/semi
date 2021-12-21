@@ -2,7 +2,6 @@
 import tensorflow as tf
 import tensorflow.keras as K
 from tensorflow.keras import layers
-import numpy as np
 #%%
 class ResidualUnit(K.layers.Layer):
     def __init__(self, 
@@ -83,7 +82,7 @@ class WideResNet(K.models.Model):
         self.nChannels = [16, 16*width, 32*width, 64*width]
         self.slope = slope
         
-        # preprocess (small_input = True)
+        '''small_input = True'''
         self.conv = layers.Conv2D(filters=self.nChannels[0], kernel_size=3, strides=1, 
                                     padding='same', use_bias=False)
         
@@ -160,16 +159,16 @@ class VAE(K.models.Model):
         self.temperature = temperature
         self.latent_dim = latent_dim
         
-    # def get_latent(self, x, training=False):
-    #     h = self.FeatureExtractor(x, training=training)
-    #     mean = self.mean_layer(h)
-    #     log_sigma = self.logsigma_layer(h)
-    #     noise = tf.random.normal((tf.shape(x)[0], self.latent_dim))
-    #     z = mean + tf.math.exp(log_sigma) * noise 
-    #     return z
+    def get_latent(self, x, training=False):
+        h = self.FeatureExtractor(x, training=training)
+        mean = self.mean_layer(h)
+        log_sigma = self.logsigma_layer(h)
+        noise = tf.random.normal((tf.shape(x)[0], self.latent_dim))
+        z = mean + tf.math.exp(log_sigma) * noise 
+        return z
     
-    # def decode_sample(self, z, y, training=False):
-    #     return self.Decoder(tf.concat([z, y], axis=-1), training=training) 
+    def decode_sample(self, z, y, training=False):
+        return self.Decoder(tf.concat([z, y], axis=-1), training=training) 
         
     def sample_gumbel(self, shape): 
         U = tf.random.uniform(shape, minval=0, maxval=1)

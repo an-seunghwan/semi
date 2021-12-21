@@ -2,17 +2,16 @@
 import argparse
 import os
 
-from tensorflow.python.keras.engine import training
-
 os.chdir(r'D:\semi\shotvae') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/shotvae') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras as K
 import tqdm
 import yaml
-# import io
-# import matplotlib.pyplot as plt
+import io
+import matplotlib.pyplot as plt
 
 import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -62,9 +61,9 @@ def get_args():
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start-epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    parser.add_argument('--print-freq', '-p', default=3, type=int,
-                        metavar='N', help='print frequency (default: 10)')
-    parser.add_argument('--reconstruct-freq', '-rf', default=50, type=int,
+    # parser.add_argument('--print-freq', '-p', default=3, type=int,
+    #                     metavar='N', help='print frequency (default: 10)')
+    parser.add_argument('--reconstruct-freq', '-rf', default=2, type=int,
                         metavar='N', help='reconstruct frequency (default: 50)')
     # parser.add_argument('--annotated-ratio', default=0.1, type=float, help='The ratio for semi-supervised annotation')
     parser.add_argument('--labeled_examples', type=int, default=4000, 
@@ -150,40 +149,39 @@ def load_config(args):
             args[key] = config[key]
     return args
 #%%
-# def generate_and_save_images(model, image, args, num_classes):
-#     x = image.numpy()[[0]]
-#     _, _, _, _, _, xhat = model([x, None], training=False)
+def generate_and_save_images(model, image, num_classes):
+    z = model.get_latent(image, training=False)
     
-#     buf = io.BytesIO()
-#     figure = plt.figure(figsize=(10, 2))
-#     plt.subplot(1, num_classes+1, 1)
-#     plt.imshow((x[0] + 1) / 2)
-#     plt.title('original')
-#     plt.axis('off')
-#     for i in range(num_classes):
-#         label = np.zeros((z.shape[0], num_classes))
-#         label[:, i] = 1
-#         xhat = model.AE.Decoder([z, label], training=False)
-#         plt.subplot(1, PARAMS['class_num']+1, i+2)
-#         plt.imshow((xhat[0] + 1) / 2)
-#         plt.title('{}'.format(i))
-#         plt.axis('off')
-#     plt.savefig(buf, format='png')
-#     # Closing the figure prevents it from being displayed directly inside the notebook.
-#     plt.close(figure)
-#     buf.seek(0)
-#     # Convert PNG buffer to TF image
-#     # Convert PNG buffer to TF image
-#     image = tf.image.decode_png(buf.getvalue(), channels=4)
-#     # Add the batch dimension
-#     image = tf.expand_dims(image, 0)
-#     return image
+    buf = io.BytesIO()
+    figure = plt.figure(figsize=(10, 2))
+    plt.subplot(1, num_classes+1, 1)
+    plt.imshow((image[0] + 1) / 2)
+    plt.title('original')
+    plt.axis('off')
+    for i in range(num_classes):
+        label = np.zeros((z.shape[0], num_classes))
+        label[:, i] = 1
+        xhat = model.decode_sample(z, label, training=False)
+        plt.subplot(1, num_classes+1, i+2)
+        plt.imshow((xhat[0] + 1) / 2)
+        plt.title('{}'.format(i))
+        plt.axis('off')
+    plt.savefig(buf, format='png')
+    # Closing the figure prevents it from being displayed directly inside the notebook.
+    plt.close(figure)
+    buf.seek(0)
+    # Convert PNG buffer to TF image
+    # Convert PNG buffer to TF image
+    image = tf.image.decode_png(buf.getvalue(), channels=4)
+    # Add the batch dimension
+    image = tf.expand_dims(image, 0)
+    return image
 #%%
 def main():
     '''argparse to dictionary'''
     args = vars(get_args())
     # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=[]))
+    # args = vars(parser.parse_args(args=['--config_path', 'configs/cifar10_4000.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -197,7 +195,31 @@ def main():
                 latent_dim=args['ldc'], temperature=args['temperature'])
     model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
     # model.summary()
+    
+    decay_model = VAE(num_classes=num_classes, depth=args['depth'], width=args['width'], slope=args['slope'],
+                latent_dim=args['ldc'], temperature=args['temperature'])
+    decay_model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
+    decay_model.set_weights(model.get_weights())
 
+    '''
+    <SGD + momentum + weight_decay>
+    \lambda: weight_decay parameter
+    \beta_1: momemtum
+    
+    v(0) = 0
+    for i in range(epochs):
+        grad(i+1) = grad(i) + \lambda * weight
+        v(i+1) = \beta_1 * v(i) + grad(i+1)
+        weight(i+1) = weight(i) - lr * v(i+1)
+    
+    weight(i+1) 
+    = weight(i) - lr * (\beta_1 * v(i) + grad(i+1))
+    = weight(i) - lr * (\beta_1 * v(i) + grad(i) + \lambda * weight)
+    = weight(i) - lr * (\beta_1 * v(i) + grad(i)) - lr * \lambda * weight
+    
+    SGD + momentum : weight(i) - lr * (\beta_1 * v(i) + grad(i))
+    weight_decay : - lr * \lambda * weight
+    '''
     optimizer = K.optimizers.SGD(learning_rate=args['lr'],
                                 momentum=args['beta1'])
 
@@ -217,15 +239,20 @@ def main():
             optimizer.lr = args['lr'] * 0.2
         else:
             optimizer.lr = learning_rate_fn(epoch)
-            
-        labeled_loss, unlabeled_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes)
-        val_z_kl_loss, val_y_kl_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, num_classes, split='Validation')
-        test_z_kl_loss, test_y_kl_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, num_classes, split='Test')
+        
+        if epoch % args['reconstruct_freq'] == 0:
+            labeled_loss, unlabeled_loss, accuracy, sample_recon = train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes)
+        else:
+            labeled_loss, unlabeled_loss, accuracy = train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes)
+        val_z_kl_loss, val_y_kl_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, decay_model, epoch, args, num_classes, split='Validation')
+        test_z_kl_loss, test_y_kl_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, decay_model, epoch, args, num_classes, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('labeled_loss', labeled_loss.result(), step=epoch)
             tf.summary.scalar('unlabeled_loss', unlabeled_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
+            if epoch % args['reconstruct_freq'] == 0:
+                tf.summary.image("train recon image", sample_recon, step=epoch)
         with val_writer.as_default():
             tf.summary.scalar('kl_z_loss', val_z_kl_loss.result(), step=epoch)
             tf.summary.scalar('kl_y_loss', val_y_kl_loss.result(), step=epoch)
@@ -258,7 +285,7 @@ def main():
     model_path = f'{log_path}/{current_time}'
     if not os.path.exists(model_path):
         os.makedirs(model_path)
-    model.save_weights(model_path + '/model_{}.h5'.format(current_time), save_format="h5")
+    decay_model.save_weights(model_path + '/model_{}.h5'.format(current_time), save_format="h5")
 
     with open(model_path + '/args_{}.txt'.format(current_time), "w") as f:
         for key, value, in args.items():
@@ -272,7 +299,7 @@ def main():
             if epoch == args['adjust_lr'][0]:
                 args['ewm'] = args['ewm'] * 5
 #%%
-def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes):
+def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes):
     labeled_loss_avg = tf.keras.metrics.Mean()
     unlabeled_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
@@ -332,9 +359,9 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes):
             elbo_lossL += kl_beta_z * pwm * posterior_loss_zL
             loss_supervised = (ew * elbo_lossL) + posterior_loss_yL
 
-        grads = tape.gradient(loss_supervised, model.trainable_variables)
-        optimizer.apply_gradients(zip(grads, model.trainable_variables))
-        weight_decay(model=model, decay_rate=args['wd'] * args['lr'])
+        grads = tape.gradient(loss_supervised, model.trainable_variables) 
+        optimizer.apply_gradients(zip(grads, model.trainable_variables)) # SGD + momentum
+        weight_decay(model, decay_model, decay_rate=args['wd'] * args['lr']) # weight decay
         
         '''unlabeled'''
         with tf.GradientTape() as tape:
@@ -344,7 +371,6 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes):
             elbo_lossU = recon_lossU + prior_klU
             
             '''mix-up'''
-            # Stop recording
             with tape.stop_recording():
                 image_mixU, mean_mixU, sigma_mixU, pseudo_labelU = optimal_match_mix(imageU, meanU, log_sigmaU, log_probU, mix_weight[1])
             smoothed_meanU, smoothed_log_sigmaU, smoothed_log_probU, _, _, _ = model([image_mixU, _])
@@ -357,21 +383,26 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes):
             loss_unsupervised = (ew * elbo_lossU) + (ucw * posterior_loss_yU)
 
         grads = tape.gradient(loss_unsupervised, model.trainable_variables)
-        optimizer.apply_gradients(zip(grads, model.trainable_variables))
-        weight_decay(model=model, decay_rate=args['wd'] * args['lr'])
+        optimizer.apply_gradients(zip(grads, model.trainable_variables)) # SGD + momentum
+        weight_decay(model, decay_model, decay_rate=args['wd'] * args['lr'])
         
         labeled_loss_avg(loss_supervised)
         unlabeled_loss_avg(loss_unsupervised)
-        _, _, log_probL, _, _, _ = model([imageL, labelL], training=False)
+        _, _, log_probL, _, _, _ = decay_model([imageL, labelL], training=False)
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), log_probL)
 
         progress_bar.set_postfix({
+            'EPOCH': f'{epoch:04d}',
             'labeled Loss': f'{labeled_loss_avg.result():.4f}',
             'unlabeled Loss': f'{unlabeled_loss_avg.result():.4f}',
             'Accuracy': f'{accuracy.result():.3%}'
         })
-
-    return labeled_loss_avg, unlabeled_loss_avg, accuracy
+    
+    if epoch % args['reconstruct_freq'] == 0:
+        sample_recon = generate_and_save_images(decay_model, imageU[0][tf.newaxis, ...], num_classes)
+        return labeled_loss_avg, unlabeled_loss_avg, accuracy, sample_recon
+    else:
+        return labeled_loss_avg, unlabeled_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, args, num_classes, split):
     z_kl_loss_avg = tf.keras.metrics.Mean()
@@ -382,7 +413,7 @@ def validate(dataset, model, epoch, args, num_classes, split):
 
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
-        mean, log_sigma, log_prob, z, y, xhat = model([image, None], training=False)
+        mean, log_sigma, log_prob, _, _, xhat = model([image, None], training=False)
         recon_loss, kl_z, kl_y = ELBO_criterion(args, num_classes, image, xhat, mean, log_sigma, log_prob)
         z_kl_loss_avg(kl_z)
         y_kl_loss_avg(kl_y)

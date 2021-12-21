@@ -1,1 +1,2 @@
 dmi: 2.3
+config_path: "configs/cifar10_4000.yaml"
