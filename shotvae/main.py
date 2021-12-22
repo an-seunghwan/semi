@@ -2,8 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\shotvae') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/shotvae') # main directory (repository)
+# os.chdir(r'D:\semi\shotvae') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/shotvae') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -320,7 +320,7 @@ def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_cl
     iteratorL = iter(shuffle_and_batch(datasetL))
     iteratorU = iter(shuffle_and_batch(datasetU))
     
-    iteration = (50000 - args['labeled_examples']) // args['batch_size'] 
+    iteration = (50000 - args['validation_examples']) // args['batch_size'] 
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
