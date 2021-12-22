@@ -1,4 +1,8 @@
 #%%
+'''
+211222: lr schedule -> modify lr manually, instead of tensorflow function
+'''
+#%%
 import argparse
 import os
 
@@ -223,10 +227,10 @@ def main():
     optimizer = K.optimizers.SGD(learning_rate=args['lr'],
                                 momentum=args['beta1'])
 
-    learning_rate_fn = K.optimizers.schedules.PiecewiseConstantDecay(
-        args['adjust_lr'], 
-        [args['lr'] * t for t in [1., 0.1, 0.01, 0.001]]
-    )
+    # learning_rate_fn = K.optimizers.schedules.PiecewiseConstantDecay(
+    #     args['adjust_lr'], 
+    #     [args['lr'] * t for t in [1., 0.1, 0.01, 0.001]]
+    # )
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -234,11 +238,19 @@ def main():
 
     for epoch in range(args['start_epoch'], args['epochs']):
         
+        '''learning rate schedule'''
         if epoch == 0:
             '''warm-up'''
             optimizer.lr = args['lr'] * 0.2
+        elif epoch < args['adjust_lr'][0]:
+            optimizer.lr = args['lr']
+        elif epoch < args['adjust_lr'][1]:
+            optimizer.lr = args['lr'] * 0.1
+        elif epoch < args['adjust_lr'][2]:
+            optimizer.lr = args['lr'] * 0.01
         else:
-            optimizer.lr = learning_rate_fn(epoch)
+            optimizer.lr = args['lr'] * 0.001
+            # optimizer.lr = learning_rate_fn(epoch)
         
         if epoch % args['reconstruct_freq'] == 0:
             labeled_loss, unlabeled_loss, accuracy, sample_recon = train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes)
