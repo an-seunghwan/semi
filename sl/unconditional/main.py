@@ -428,7 +428,7 @@ def validate(dataset, model, epoch, args, split):
         elbo_loss_avg(recon_loss + nf_loss + cls_loss)
         accuracy(tf.argmax(prob, axis=1, output_type=tf.int32), 
                  tf.argmax(label, axis=1, output_type=tf.int32))
-    print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, Prior: {nf_loss.result():.4f} {split} Accuracy: {accuracy.result():.3%}')
+    print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, {split} Recon: {recon_loss_avg.result():.4f}, {split} Prior: {nf_loss_avg.result():.4f}, {split} Accuracy: {accuracy.result():.3%}')
     
     return nf_loss_avg, recon_loss_avg, elbo_loss_avg, accuracy
 #%%
