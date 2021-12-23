@@ -129,20 +129,32 @@ class Decoder(K.models.Model):
         dims = [self.num_feature * d for d in [4, 2, 1]]
         units_skip = []
         for i in range(len(dims)):
-            units_skip.append(layers.Conv2DTranspose(filters = dims[i], kernel_size = 5, strides = 2, 
-                                                padding = 'same', use_bias=False))
-            units_skip.append(layers.BatchNormalization())
-            units_skip.append(layers.ReLU())
+            units_skip.append(
+                tf.keras.Sequential(
+                    [
+                        layers.Conv2DTranspose(filters = dims[i], kernel_size = 5, strides = 2, 
+                                                        padding = 'same', use_bias=False),
+                        layers.BatchNormalization(),
+                        layers.ReLU()
+                    ]
+                )
+            )
         units = []
         for i in range(len(dims)):
-            units.append(layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
-                                                padding = 'same', use_bias=False))
-            units.append(layers.BatchNormalization())
-            units.append(layers.ReLU())
-            units.append(layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
-                                                padding = 'same', use_bias=False))
-            units.append(layers.BatchNormalization())
-            units.append(layers.ReLU())
+            units.append(
+                tf.keras.Sequential(
+                    [
+                        layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
+                                                    padding = 'same', use_bias=False),
+                        layers.BatchNormalization(),
+                        layers.ReLU(),
+                        layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
+                                                            padding = 'same', use_bias=False),
+                        layers.BatchNormalization(),
+                        layers.ReLU(),
+                    ]
+                )
+            )
         return units_skip, units
     
     @tf.function
@@ -180,10 +192,15 @@ class AutoEncoder(K.models.Model):
         
         self.latent_dim = latent_dim
         
-    def encode(self, x, training=False):
+    def z_encode(self, x, training=False):
         h = self.FeatureExtractor(x, training=training)
-        z = self.mean_layer(h)
+        z = self.z_layer(h)
         return z
+    
+    def c_encode(self, x, training=False):
+        h = self.FeatureExtractor(x, training=training)
+        c = self.c_layer(h)
+        return c
     
     def decode(self, z, y, training=False):
         return self.Decoder(z, y, training=training) 
@@ -230,6 +247,7 @@ class NormalizingFlow(K.models.Model):
                  latent_dim,
                  embedding_dim,
                  mask,
+                 coupling_MLP_num,
                  K,
                  name='NormalizingFlow', **kwargs):
         super(NormalizingFlow, self).__init__(name=name, **kwargs)
@@ -243,8 +261,8 @@ class NormalizingFlow(K.models.Model):
                         np.array([0] * (latent_dim // 2) + [1] * (latent_dim // 2))] * (K // 2)
         
         output_dim = latent_dim // 2
-        self.s = [CouplingLayer('tanh', embedding_dim, output_dim) for _ in range(K)]
-        self.t = [CouplingLayer('linear', embedding_dim, output_dim) for _ in range(K)]
+        self.s = [CouplingLayer('tanh', embedding_dim, output_dim, coupling_MLP_num) for _ in range(K)]
+        self.t = [CouplingLayer('linear', embedding_dim, output_dim, coupling_MLP_num) for _ in range(K)]
         
     def inverse(self, x):
         for i in reversed(range(self.K)):
@@ -286,8 +304,8 @@ class Prior(K.models.Model):
         self.args = args
         self.num_classes = num_classes
         
-        self.zNF = NormalizingFlow(args['latent_dim'], args['z_emb'], args['z_mask'], args['K1'])
-        self.cNF = NormalizingFlow(num_classes, args['c_emb'], args['c_mask'], args['K2'])
+        self.zNF = NormalizingFlow(args['latent_dim'], args['z_emb'], args['z_mask'], args['coupling_MLP_num'], args['K1'])
+        self.cNF = NormalizingFlow(num_classes, args['c_emb'], args['c_mask'], args['coupling_MLP_num'], args['K2'])
     
     def build_graph(self):
         '''
@@ -317,11 +335,12 @@ class VAE(K.models.Model):
     def __init__(self, args, num_classes, name="VAE", **kwargs):
         super(VAE, self).__init__(name=name, **kwargs)
         self.args = args
-        self.AE = AutoEncoder(num_classes, args['depth'], args['width'], args['slope'], args['latent_dim'])
-        self.Prior = Prior(args, num_classes)
+        self.ae = AutoEncoder(num_classes, args['depth'], args['width'], args['slope'], args['latent_dim'])
+        self.prior = Prior(args, num_classes)
+        self.prior.build_graph()
         
     def call(self, x, training=True):
-        z, c, prob, xhat = self.AE(x, training=training)
-        prior_args = self.Prior(z, c)
-        return [[z, c, prob, xhat], prior_args]
+        z, c, prob, xhat = self.ae(x, training=training)
+        nf_args = self.prior(z, c)
+        return [[z, c, prob, xhat], nf_args]
 #%%

@@ -22,8 +22,8 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
 from model import VAE
-from criterion import ELBO_criterion
-from mixup import augment, optimal_match_mix, weight_decay, label_smoothing 
+# from criterion import ELBO_criterion
+from mixup import augment, weight_decay
 #%%
 config = tf.compat.v1.ConfigProto()
 '''
@@ -92,30 +92,28 @@ def get_args():
     parser.add_argument('--latent_dim', "--latent_dim_continuous", default=128, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
-    parser.add_argument('--cmi', "--continuous_mutual_info", default=0, type=float,
-                        help='The mutual information bounding between x and the continuous variable z')
-    parser.add_argument('--dmi', "--discrete_mutual_info", default=0, type=float,
-                        help='The mutual information bounding between x and the discrete variable z')
+    # parser.add_argument('--cmi', "--continuous_mutual_info", default=0, type=float,
+    #                     help='The mutual information bounding between x and the continuous variable z')
+    # parser.add_argument('--dmi', "--discrete_mutual_info", default=0, type=float,
+    #                     help='The mutual information bounding between x and the discrete variable z')
 
     '''VAE Loss Function Parameters'''
-    parser.add_argument('--kbmc', '--kl-beta-max-continuous', default=1e-3, type=float, 
-                        metavar='KL Beta', help='the epoch to linear adjust kl beta')
-    parser.add_argument('--kbmd', '--kl-beta-max-discrete', default=1e-3, type=float, 
-                        metavar='KL Beta', help='the epoch to linear adjust kl beta')
-    parser.add_argument('--akb', '--adjust-kl-beta-epoch', default=200, type=int, 
-                        metavar='KL Beta', help='the max epoch to adjust kl beta')
-    parser.add_argument('--ewm', '--elbo-weight-max', default=1e-3, type=float, 
-                        metavar='weight for elbo loss part')
-    parser.add_argument('--aew', '--adjust-elbo-weight', default=400, type=int,
-                        metavar="the epoch to adjust elbo weight to max")
-    parser.add_argument('--wrd', default=1, type=float,
-                        help="the max weight for the optimal transport estimation of discrete variable c")
-    parser.add_argument('--wmf', '--weight-modify-factor', default=0.4, type=float,
-                        help="weight  will get wrz at amf * epochs")
-    parser.add_argument('--pwm', '--posterior-weight-max', default=1, type=float,
-                        help="the max value for posterior weight")
-    parser.add_argument('--apw', '--adjust-posterior-weight', default=200, type=float,
-                        help="adjust posterior weight")
+    parser.add_argument('--lambda1', default=5., type=float,
+                        help="adjust classification loss weight")
+    parser.add_argument('--lambda2', default=10., type=float,
+                        help="adjust mutual information loss weight")
+    # parser.add_argument('--ewm', '--elbo-weight-max', default=1e-3, type=float, 
+    #                     metavar='weight for elbo loss part')
+    # parser.add_argument('--aew', '--adjust-elbo-weight', default=400, type=int,
+    #                     metavar="the epoch to adjust elbo weight to max")
+    # parser.add_argument('--wrd', default=1, type=float,
+    #                     help="the max weight for the optimal transport estimation of discrete variable c")
+    # parser.add_argument('--wmf', '--weight-modify-factor', default=0.4, type=float,
+    #                     help="weight  will get wrz at amf * epochs")
+    # parser.add_argument('--pwm', '--posterior-weight-max', default=1, type=float,
+    #                     help="the max value for posterior weight")
+    # parser.add_argument('--apw', '--adjust-posterior-weight', default=200, type=float,
+    #                     help="adjust posterior weight")
 
     '''Optimizer Parameters (Encoder and Decoder)'''
     parser.add_argument('--lr', '--learning-rate', default=1e-1, type=float,
@@ -148,6 +146,8 @@ def get_args():
                         help='number of dense layers in single coupling layer')
     
     '''Normalizing Flow Optimizer Parameters'''
+    parser.add_argument('--lr_nf', '--learning-rate-nf', default=1e-1, type=float,
+                        metavar='LR', help='initial learning rate for normalizing flow')
     parser.add_argument('--reg', default=0.01, type=float,
                         help='L2 regularization parameter for dense layers in Real NVP')
     parser.add_argument('--decay_steps', default=1, type=int,
@@ -174,7 +174,7 @@ def load_config(args):
     return args
 #%%
 def generate_and_save_images(model, image, num_classes):
-    z = model.get_latent(image, training=False)
+    z = model.ae.z_encode(image, training=False)
     
     buf = io.BytesIO()
     figure = plt.figure(figsize=(10, 2))
@@ -185,7 +185,7 @@ def generate_and_save_images(model, image, num_classes):
     for i in range(num_classes):
         label = np.zeros((z.shape[0], num_classes))
         label[:, i] = 1
-        xhat = model.decode_sample(z, label, training=False)
+        xhat = model.ae.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
         plt.imshow((xhat[0] + 1) / 2)
         plt.title('{}'.format(i))
@@ -202,10 +202,10 @@ def generate_and_save_images(model, image, num_classes):
     return image
 #%%
 def main():
-    # '''argparse to dictionary'''
-    # args = vars(get_args())
-    '''argparse debugging'''
-    args = vars(parser.parse_args(args=['--config_path', 'configs/cmnist.yaml']))
+    '''argparse to dictionary'''
+    args = vars(get_args())
+    # '''argparse debugging'''
+    # args = vars(parser.parse_args(args=['--config_path', 'configs/cmnist.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -215,14 +215,12 @@ def main():
 
     dataset, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     
-    model = VAE(num_classes=num_classes, depth=args['depth'], width=args['width'], slope=args['slope'],
-                latent_dim=args['ldc'], temperature=args['temperature'])
-    model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
+    model = VAE(args, num_classes)
+    model.build(input_shape=(None, 32, 32, 3))
     # model.summary()
     
-    decay_model = VAE(num_classes=num_classes, depth=args['depth'], width=args['width'], slope=args['slope'],
-                latent_dim=args['ldc'], temperature=args['temperature'])
-    decay_model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
+    decay_model = VAE(args, num_classes)
+    decay_model.build(input_shape=(None, 32, 32, 3))
     decay_model.set_weights(model.get_weights())
 
     '''
@@ -246,12 +244,12 @@ def main():
     '''
     optimizer = K.optimizers.SGD(learning_rate=args['lr'],
                                 momentum=args['beta1'])
-
-    # learning_rate_fn = K.optimizers.schedules.PiecewiseConstantDecay(
-    #     args['adjust_lr'], 
-    #     [args['lr'] * t for t in [1., 0.1, 0.01, 0.001]]
-    # )
     
+    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
+                                                                decay_steps=args['decay_steps'], 
+                                                                decay_rate=args['decay_rate'])
+    optimizer_nf = K.optimizers.Adam(args['lr_nf'], clipvalue=args['gradclip']) 
+
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
     test_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/test')
@@ -270,45 +268,42 @@ def main():
             optimizer.lr = args['lr'] * 0.01
         else:
             optimizer.lr = args['lr'] * 0.001
-            # optimizer.lr = learning_rate_fn(epoch)
+        
+        optimizer_nf.lr = lr_schedule(epoch)
         
         if epoch % args['reconstruct_freq'] == 0:
-            labeled_loss, unlabeled_loss, accuracy, sample_recon = train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes)
+            loss, nf_loss, accuracy, sample_recon = train(dataset, model, decay_model, optimizer, epoch, args, num_classes)
         else:
-            labeled_loss, unlabeled_loss, accuracy = train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes)
-        val_z_kl_loss, val_y_kl_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, decay_model, epoch, args, num_classes, split='Validation')
-        test_z_kl_loss, test_y_kl_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, decay_model, epoch, args, num_classes, split='Test')
+            loss, nf_loss, accuracy = train(dataset, model, decay_model, optimizer, epoch, args, num_classes)
+        val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, decay_model, epoch, args, num_classes, split='Validation')
+        test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, decay_model, epoch, args, num_classes, split='Test')
         
         with train_writer.as_default():
-            tf.summary.scalar('labeled_loss', labeled_loss.result(), step=epoch)
-            tf.summary.scalar('unlabeled_loss', unlabeled_loss.result(), step=epoch)
+            tf.summary.scalar('loss', loss.result(), step=epoch)
+            tf.summary.scalar('nf_loss', nf_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
             if epoch % args['reconstruct_freq'] == 0:
                 tf.summary.image("train recon image", sample_recon, step=epoch)
         with val_writer.as_default():
-            tf.summary.scalar('kl_z_loss', val_z_kl_loss.result(), step=epoch)
-            tf.summary.scalar('kl_y_loss', val_y_kl_loss.result(), step=epoch)
+            tf.summary.scalar('nf_loss', val_nf_loss.result(), step=epoch)
             tf.summary.scalar('recon_loss', val_recon_loss.result(), step=epoch)
             tf.summary.scalar('elbo_loss', val_elbo_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', val_accuracy.result(), step=epoch)
         with test_writer.as_default():
-            tf.summary.scalar('kl_z_loss', test_z_kl_loss.result(), step=epoch)
-            tf.summary.scalar('kl_y_loss', test_y_kl_loss.result(), step=epoch)
+            tf.summary.scalar('nf_loss', test_nf_loss.result(), step=epoch)
             tf.summary.scalar('recon_loss', test_recon_loss.result(), step=epoch)
             tf.summary.scalar('elbo_loss', test_elbo_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', test_accuracy.result(), step=epoch)
 
         # Reset metrics every epoch
-        labeled_loss.reset_states()
-        unlabeled_loss.reset_states()
+        loss.reset_states()
+        nf_loss.reset_states()
         accuracy.reset_states()
-        val_z_kl_loss.reset_states()
-        val_y_kl_loss.reset_states()
+        val_nf_loss.reset_states()
         val_recon_loss.reset_states()
         val_elbo_loss.reset_states()
         val_accuracy.reset_states()
-        test_z_kl_loss.reset_states()
-        test_y_kl_loss.reset_states()
+        test_nf_loss.reset_states()
         test_recon_loss.reset_states()
         test_elbo_loss.reset_states()
         test_accuracy.reset_states()
@@ -326,139 +321,123 @@ def main():
     if epoch == 0:
         optimizer.lr = args['lr']
         
-    if args['dataset'] == 'cifar10':
-        if args['labeled_examples'] >= 2500:
-            if epoch == args['adjust_lr'][0]:
-                args['ewm'] = args['ewm'] * 5
+    # if args['dataset'] == 'cifar10':
+    #     if args['labeled_examples'] >= 2500:
+    #         if epoch == args['adjust_lr'][0]:
+    #             args['ewm'] = args['ewm'] * 5
 #%%
-def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes):
-    labeled_loss_avg = tf.keras.metrics.Mean()
-    unlabeled_loss_avg = tf.keras.metrics.Mean()
+def train(dataset, model, decay_model, optimizer, optimizer_nf, epoch, args, num_classes):
+    loss_avg = tf.keras.metrics.Mean()
+    nf_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
-    '''mutual information'''
-    dmi = weight_schedule(epoch, args['akb'], args['dmi'])
-    '''elbo part weight'''
-    ew = weight_schedule(epoch, args['aew'], args['ewm'])
-    '''mix-up parameters'''
-    kl_beta_z = weight_schedule(epoch, args['akb'], args['kbmc'])
-    kl_beta_y = weight_schedule(epoch, args['akb'], args['kbmd'])
-    pwm = weight_schedule(epoch, args['apw'], args['pwm'])
-    '''un-supervised classification weight'''
-    ucw = weight_schedule(epoch, round(args['wmf'] * args['epochs']), args['wrd'])
+    # '''elbo part weight'''
+    # ew = weight_schedule(epoch, args['aew'], args['ewm'])
+    # '''mix-up parameters'''
+    # pwm = weight_schedule(epoch, args['apw'], args['pwm'])
+    # '''un-supervised classification weight'''
+    # ucw = weight_schedule(epoch, round(args['wmf'] * args['epochs']), args['wrd'])
 
     shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
 
-    iteratorL = iter(shuffle_and_batch(datasetL))
-    iteratorU = iter(shuffle_and_batch(datasetU))
+    iterator = iter(shuffle_and_batch(dataset))
     
-    iteration = (50000 - args['validation_examples']) // args['batch_size'] 
+    iteration = 50000 // args['batch_size'] 
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
         '''augmentation'''
-        try:
-            imageL, labelL = next(iteratorL)
-            imageL = augment(imageL)
-        except:
-            iteratorL = iter(shuffle_and_batch(datasetL))
-            imageL, labelL = next(iteratorL)
-            imageL = augment(imageL)
-        imageU, _ = next(iteratorU)
-        imageU = augment(imageU)
+        image, label = next(iterator)
+        image = augment(image)
         
-        '''mix-up weight'''
-        mix_weight = [tf.constant(np.random.beta(args['epsilon'], args['epsilon'])), # labeled
-                      tf.constant(np.random.beta(2.0, 2.0))] # unlabeled
-        
-        '''labeled'''
         with tf.GradientTape() as tape:
-            meanL, log_sigmaL, log_probL, _, _, xhatL = model([imageL, labelL])
-            recon_lossL, kl_zL, kl_yL = ELBO_criterion(args, num_classes, imageL, xhatL, meanL, log_sigmaL, log_probL)
-            prior_klL = (kl_beta_z * kl_zL) + (kl_beta_y * tf.abs(kl_yL - dmi))
-            elbo_lossL = recon_lossL + prior_klL
+            [[_, _, prob, xhat], nf_args] = model(image)
+            '''reconstruction'''
+            if args['br']:
+                recon_loss = tf.reduce_mean(- tf.reduce_sum(image * tf.math.log(xhat) + 
+                                                            (1. - image) * tf.math.log(1. - xhat), axis=[1, 2, 3]))
+            else:
+                recon_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(xhat - image) / (2. * (args['x_sigma'] ** 2)), axis=[1, 2, 3]))
+                
+            '''classification'''
+            cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(prob), axis=-1))
             
-            '''mix-up''' # instead of KL-divergence?
-            with tape.stop_recording():
-                image_mixL, label_shuffleL, mean_mixL, sigma_mixL = label_smoothing(imageL, labelL, meanL, log_sigmaL, mix_weight[0])
-            smoothed_meanL, smoothed_log_sigmaL, smoothed_log_probL, _, _, _ = model([image_mixL, label_shuffleL])
+            '''mutual information'''
+            c_recon = model.ae.c_encode(xhat, training=True)
+            prob_recon = tf.nn.softmax(c_recon, axis=-1)
+            info = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(prob_recon), axis=-1))
             
-            posterior_loss_zL = tf.reduce_mean(tf.math.square(smoothed_meanL - mean_mixL))
-            posterior_loss_zL += tf.reduce_mean(tf.math.square(tf.math.exp(smoothed_log_sigmaL) - sigma_mixL))
-            posterior_loss_yL = - tf.reduce_mean(mix_weight[0] * tf.reduce_sum(label_shuffleL * smoothed_log_probL, axis=-1))
-            posterior_loss_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * smoothed_log_probL, axis=-1))
+            loss = recon_loss + args['lambda1'] * cls_loss + args['lambda2'] * info
             
-            elbo_lossL += kl_beta_z * pwm * posterior_loss_zL
-            loss_supervised = (ew * elbo_lossL) + posterior_loss_yL
+            '''prior'''
+            z_nf_loss = tf.reduce_mean(tf.reduce_sum(tf.square(nf_args[0] - 0) / 2., axis=1))
+            z_nf_loss -= tf.reduce_mean(nf_args[1], axis=-1)
+            c_nf_loss = tf.reduce_mean(tf.reduce_sum(tf.square(nf_args[2] - 0) / 2., axis=1))
+            c_nf_loss -= tf.reduce_mean(nf_args[3], axis=-1)
+            nf_loss = z_nf_loss + c_nf_loss
 
-        grads = tape.gradient(loss_supervised, model.trainable_variables) 
-        optimizer.apply_gradients(zip(grads, model.trainable_variables)) # SGD + momentum
+        grads = tape.gradient(loss, model.ae.trainable_variables) 
+        optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) # SGD + momentum
         weight_decay(model, decay_model, decay_rate=args['wd'] * args['lr']) # weight decay
         
-        '''unlabeled'''
-        with tf.GradientTape() as tape:
-            meanU, log_sigmaU, log_probU, _, _, xhatU = model([imageU, None])
-            recon_lossU, kl_zU, kl_yU = ELBO_criterion(args, num_classes, imageU, xhatU, meanU, log_sigmaU, log_probU)
-            prior_klU = (kl_beta_z * kl_zU) + (kl_beta_y * tf.abs(kl_yU - dmi))
-            elbo_lossU = recon_lossU + prior_klU
-            
-            '''mix-up'''
-            with tape.stop_recording():
-                image_mixU, mean_mixU, sigma_mixU, pseudo_labelU = optimal_match_mix(imageU, meanU, log_sigmaU, log_probU, mix_weight[1])
-            smoothed_meanU, smoothed_log_sigmaU, smoothed_log_probU, _, _, _ = model([image_mixU, _])
-            
-            posterior_loss_zU = tf.reduce_mean(tf.math.square(smoothed_meanU - mean_mixU))
-            posterior_loss_zU += tf.reduce_mean(tf.math.square(tf.math.exp(smoothed_log_sigmaU) - sigma_mixU))
-            posterior_loss_yU = - tf.reduce_mean(tf.reduce_sum(pseudo_labelU * smoothed_log_probU, axis=-1))
-            
-            elbo_lossU += kl_beta_z * pwm * posterior_loss_zU
-            loss_unsupervised = (ew * elbo_lossU) + (ucw * posterior_loss_yU)
-
-        grads = tape.gradient(loss_unsupervised, model.trainable_variables)
-        optimizer.apply_gradients(zip(grads, model.trainable_variables)) # SGD + momentum
-        weight_decay(model, decay_model, decay_rate=args['wd'] * args['lr'])
+        grad = tape.gradient(nf_loss, model.prior.trainable_weights)
+        optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
         
-        labeled_loss_avg(loss_supervised)
-        unlabeled_loss_avg(loss_unsupervised)
-        _, _, log_probL, _, _, _ = decay_model([imageL, labelL], training=False)
-        accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), log_probL)
+        loss_avg(loss)
+        nf_loss_avg(nf_loss)
+        _, _, prob, _ = model.ae(image, training=False)
+        accuracy(tf.argmax(label, axis=1, output_type=tf.int32), prob)
 
         progress_bar.set_postfix({
             'EPOCH': f'{epoch:04d}',
-            'labeled Loss': f'{labeled_loss_avg.result():.4f}',
-            'unlabeled Loss': f'{unlabeled_loss_avg.result():.4f}',
+            'Loss': f'{loss_avg.result():.4f}',
+            'NF Loss': f'{nf_loss_avg.result():.4f}',
             'Accuracy': f'{accuracy.result():.3%}'
         })
     
     if epoch % args['reconstruct_freq'] == 0:
-        sample_recon = generate_and_save_images(decay_model, imageU[0][tf.newaxis, ...], num_classes)
-        return labeled_loss_avg, unlabeled_loss_avg, accuracy, sample_recon
+        sample_recon = generate_and_save_images(decay_model, image[0][tf.newaxis, ...], num_classes)
+        return loss_avg, nf_loss_avg, accuracy, sample_recon
     else:
-        return labeled_loss_avg, unlabeled_loss_avg, accuracy
+        return loss_avg, nf_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, args, num_classes, split):
-    z_kl_loss_avg = tf.keras.metrics.Mean()
-    y_kl_loss_avg = tf.keras.metrics.Mean()
+    nf_loss_avg = tf.keras.metrics.Mean()
     recon_loss_avg = tf.keras.metrics.Mean()   
     elbo_loss_avg = tf.keras.metrics.Mean()   
     accuracy = tf.keras.metrics.Accuracy()
 
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
-        mean, log_sigma, log_prob, _, _, xhat = model([image, None], training=False)
-        recon_loss, kl_z, kl_y = ELBO_criterion(args, num_classes, image, xhat, mean, log_sigma, log_prob)
-        z_kl_loss_avg(kl_z)
-        y_kl_loss_avg(kl_y)
+        [[_, _, prob, xhat], nf_args] = model(image, training=False)
+        '''reconstruction'''
+        if args['br']:
+            recon_loss = tf.reduce_mean(- tf.reduce_sum(image * tf.math.log(xhat) + 
+                                                        (1. - image) * tf.math.log(1. - xhat), axis=[1, 2, 3]))
+        else:
+            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(xhat - image) / (2. * (args['x_sigma'] ** 2)), axis=[1, 2, 3]))
+            
+        '''classification'''
+        cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(prob), axis=-1))
+        
+        '''prior'''
+        z_nf_loss = tf.reduce_mean(tf.reduce_sum(tf.square(nf_args[0] - 0) / 2., axis=1))
+        z_nf_loss -= tf.reduce_mean(nf_args[1], axis=-1)
+        c_nf_loss = tf.reduce_mean(tf.reduce_sum(tf.square(nf_args[2] - 0) / 2., axis=1))
+        c_nf_loss -= tf.reduce_mean(nf_args[3], axis=-1)
+        nf_loss = z_nf_loss + c_nf_loss
+        
+        nf_loss_avg(nf_loss)
         recon_loss_avg(recon_loss)
-        elbo_loss_avg(recon_loss + 0.01 * (kl_z + kl_y))
-        accuracy(tf.argmax(log_prob, axis=1, output_type=tf.int32), 
+        elbo_loss_avg(recon_loss + nf_loss + cls_loss)
+        accuracy(tf.argmax(prob, axis=1, output_type=tf.int32), 
                  tf.argmax(label, axis=1, output_type=tf.int32))
-    print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, KL(z): {z_kl_loss_avg.result():.4f}, KL(y): {y_kl_loss_avg.result():.4f} {split} Accuracy: {accuracy.result():.3%}')
+    print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, Prior: {nf_loss.result():.4f} {split} Accuracy: {accuracy.result():.3%}')
     
-    return z_kl_loss_avg, y_kl_loss_avg, recon_loss_avg, elbo_loss_avg, accuracy
+    return nf_loss_avg, recon_loss_avg, elbo_loss_avg, accuracy
 #%%
-def weight_schedule(epoch, epochs, weight_max):
-    return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
+# def weight_schedule(epoch, epochs, weight_max):
+#     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
 #%%
 if __name__ == '__main__':
     main()
