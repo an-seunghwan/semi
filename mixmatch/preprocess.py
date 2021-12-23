@@ -96,8 +96,8 @@ def deserialize_example(serialized_string):
     label = tf.io.decode_raw(example["label"], tf.float32) 
     return image, label
 #%%
-def fetch_dataset(args, log_dir):
-    dataset_path = f'{log_dir}/datasets'
+def fetch_dataset(args, log_path):
+    dataset_path = f'{log_path}/datasets'
     if not os.path.exists(dataset_path):
         os.makedirs(dataset_path)
     num_classes = 100 if args['dataset'] == 'cifar100' else 10
