@@ -23,7 +23,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 from preprocess import fetch_dataset
 from model import VAE
 # from criterion import ELBO_criterion
-from mixup import augment, weight_decay
+from mixup import augment
 #%%
 config = tf.compat.v1.ConfigProto()
 '''
@@ -120,7 +120,7 @@ def get_args():
     #                     help='beta1 for adam as well as momentum for SGD')
     # parser.add_argument('--adjust_lr', default=[400, 500, 550], type=arg_as_list,
     #                     help="The milestone list for adjust learning rate")
-    parser.add_argument('--weight_decay', default=5e-4, type=float)
+    # parser.add_argument('--weight_decay', default=5e-4, type=float)
 
     # '''Optimizer Transport Estimation Parameters'''
     # parser.add_argument('--epsilon', default=0.1, type=float,
@@ -373,8 +373,8 @@ def train(dataset, model, decay_model, optimizer, optimizer_nf, epoch, args, num
             nf_loss = z_nf_loss + c_nf_loss
 
         grads = tape.gradient(loss, model.ae.trainable_variables) 
-        optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) # SGD + momentum
-        weight_decay(model.ae, decay_model.ae, decay_rate=args['weight_decay'] * args['lr']) # weight decay
+        optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) 
+        # weight_decay(model.ae, decay_model.ae, decay_rate=args['weight_decay'] * args['lr']) # weight decay
         
         grad = tape.gradient(nf_loss, model.prior.trainable_weights)
         optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
