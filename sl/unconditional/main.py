@@ -79,8 +79,6 @@ def get_args():
                         help='widen factor for WideResnet (default: 2)')
     parser.add_argument('--slope', type=float, default=0.1, 
                         help='slope parameter for LeakyReLU (default: 0.1)')
-    parser.add_argument('--temperature', default=0.67, type=float,
-                        help='centeralization parameter')
     parser.add_argument('-dr', '--drop_rate', default=0, type=float, 
                         help='drop rate for the network')
     parser.add_argument("--br", "--bce_reconstruction", action='store_true', 
