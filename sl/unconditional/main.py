@@ -270,11 +270,11 @@ def main():
         optimizer_nf.lr = lr_schedule(epoch)
         
         if epoch % args['reconstruct_freq'] == 0:
-            loss, nf_loss, accuracy, sample_recon = train(dataset, model, decay_model, optimizer, epoch, args, num_classes)
+            loss, nf_loss, accuracy, sample_recon = train(dataset, model, decay_model, optimizer, optimizer_nf, epoch, args, num_classes)
         else:
-            loss, nf_loss, accuracy = train(dataset, model, decay_model, optimizer, epoch, args, num_classes)
-        val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, decay_model, epoch, args, num_classes, split='Validation')
-        test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, decay_model, epoch, args, num_classes, split='Test')
+            loss, nf_loss, accuracy = train(dataset, model, decay_model, optimizer, optimizer_nf, epoch, args, num_classes)
+        val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, decay_model, epoch, args, split='Validation')
+        test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, decay_model, epoch, args, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
@@ -399,7 +399,7 @@ def train(dataset, model, decay_model, optimizer, optimizer_nf, epoch, args, num
     else:
         return loss_avg, nf_loss_avg, accuracy
 #%%
-def validate(dataset, model, epoch, args, num_classes, split):
+def validate(dataset, model, epoch, args, split):
     nf_loss_avg = tf.keras.metrics.Mean()
     recon_loss_avg = tf.keras.metrics.Mean()   
     elbo_loss_avg = tf.keras.metrics.Mean()   

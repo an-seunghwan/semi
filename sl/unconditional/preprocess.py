@@ -77,7 +77,7 @@ def _list_to_tf_dataset(dataset, args):
     )
 #%%
 def split_dataset(dataset, num_validations, num_classes, args):
-    dataset = dataset.shuffle(buffer_size=10000)
+    dataset = dataset.shuffle(buffer_size=10000, seed=args['seed'])
     counter = [0 for _ in range(num_classes)]
     labeled = []
     validation = []
