@@ -40,12 +40,12 @@ config.gpu_options.allow_growth = True
 # strategy = tf.distribute.MirroredStrategy()
 # session = tf.compat.v1.InteractiveSession(config=config)
 #%%
-import ast
-def arg_as_list(s):
-    v = ast.literal_eval(s)
-    if type(v) is not list:
-        raise argparse.ArgumentTypeError("Argument \"%s\" is not a list" % (s))
-    return v
+# import ast
+# def arg_as_list(s):
+#     v = ast.literal_eval(s)
+#     if type(v) is not list:
+#         raise argparse.ArgumentTypeError("Argument \"%s\" is not a list" % (s))
+#     return v
 #%%
 def get_args():
     parser = argparse.ArgumentParser('parameters')
@@ -114,12 +114,12 @@ def get_args():
     #                     help="adjust posterior weight")
 
     '''Optimizer Parameters (Encoder and Decoder)'''
-    parser.add_argument('--lr', '--learning-rate', default=1e-1, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                         metavar='LR', help='initial learning rate')
-    parser.add_argument('--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
-                        help='beta1 for adam as well as momentum for SGD')
-    parser.add_argument('--adjust_lr', default=[400, 500, 550], type=arg_as_list,
-                        help="The milestone list for adjust learning rate")
+    # parser.add_argument('--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
+    #                     help='beta1 for adam as well as momentum for SGD')
+    # parser.add_argument('--adjust_lr', default=[400, 500, 550], type=arg_as_list,
+    #                     help="The milestone list for adjust learning rate")
     parser.add_argument('--weight_decay', default=5e-4, type=float)
 
     # '''Optimizer Transport Estimation Parameters'''
@@ -144,7 +144,7 @@ def get_args():
                         help='number of dense layers in single coupling layer')
     
     '''Normalizing Flow Optimizer Parameters'''
-    parser.add_argument('--lr_nf', '--learning-rate-nf', default=1e-1, type=float,
+    parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.0001, type=float,
                         metavar='LR', help='initial learning rate for normalizing flow')
     parser.add_argument('--reg', default=0.01, type=float,
                         help='L2 regularization parameter for dense layers in Real NVP')
@@ -240,8 +240,7 @@ def main():
     SGD + momentum : weight(i) - lr * (\beta_1 * v(i) + grad(i))
     weight_decay : - lr * \lambda * weight
     '''
-    optimizer = K.optimizers.SGD(learning_rate=args['lr'],
-                                momentum=args['beta1'])
+    optimizer = K.optimizers.Adam(learning_rate=args['lr'])
     
     lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
                                                                 decay_steps=args['decay_steps'], 
@@ -255,19 +254,18 @@ def main():
     for epoch in range(args['start_epoch'], args['epochs']):
         
         '''learning rate schedule'''
-        if epoch == 0:
-            '''warm-up'''
-            optimizer.lr = args['lr'] * 0.2
-        elif epoch < args['adjust_lr'][0]:
-            optimizer.lr = args['lr']
-        elif epoch < args['adjust_lr'][1]:
-            optimizer.lr = args['lr'] * 0.1
-        elif epoch < args['adjust_lr'][2]:
-            optimizer.lr = args['lr'] * 0.01
-        else:
-            optimizer.lr = args['lr'] * 0.001
-        
         optimizer_nf.lr = lr_schedule(epoch)
+        # if epoch == 0:
+        #     '''warm-up'''
+        #     optimizer.lr = args['lr'] * 0.2
+        # elif epoch < args['adjust_lr'][0]:
+        #     optimizer.lr = args['lr']
+        # elif epoch < args['adjust_lr'][1]:
+        #     optimizer.lr = args['lr'] * 0.1
+        # elif epoch < args['adjust_lr'][2]:
+        #     optimizer.lr = args['lr'] * 0.01
+        # else:
+        #     optimizer.lr = args['lr'] * 0.001
         
         if epoch % args['reconstruct_freq'] == 0:
             loss, nf_loss, accuracy, sample_recon = train(dataset, model, decay_model, optimizer, optimizer_nf, epoch, args, num_classes)
@@ -316,8 +314,8 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
             
-    if epoch == 0:
-        optimizer.lr = args['lr']
+    # if epoch == 0:
+    #     optimizer.lr = args['lr']
         
     # if args['dataset'] == 'cifar10':
     #     if args['labeled_examples'] >= 2500:
