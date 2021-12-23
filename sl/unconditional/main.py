@@ -217,9 +217,9 @@ def main():
     model.build(input_shape=(None, 32, 32, 3))
     # model.summary()
     
-    decay_model = VAE(args, num_classes)
-    decay_model.build(input_shape=(None, 32, 32, 3))
-    decay_model.set_weights(model.get_weights())
+    # decay_model = VAE(args, num_classes)
+    # decay_model.build(input_shape=(None, 32, 32, 3))
+    # decay_model.set_weights(model.get_weights())
 
     '''
     <SGD + momentum + weight_decay>
@@ -268,11 +268,11 @@ def main():
         #     optimizer.lr = args['lr'] * 0.001
         
         if epoch % args['reconstruct_freq'] == 0:
-            loss, nf_loss, accuracy, sample_recon = train(dataset, model, decay_model, optimizer, optimizer_nf, epoch, args, num_classes)
+            loss, nf_loss, accuracy, sample_recon = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
         else:
-            loss, nf_loss, accuracy = train(dataset, model, decay_model, optimizer, optimizer_nf, epoch, args, num_classes)
-        val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, decay_model, epoch, args, split='Validation')
-        test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, decay_model, epoch, args, split='Test')
+            loss, nf_loss, accuracy = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
+        val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
+        test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
@@ -308,7 +308,7 @@ def main():
     model_path = f'{log_path}/{current_time}'
     if not os.path.exists(model_path):
         os.makedirs(model_path)
-    decay_model.save_weights(model_path + '/model_{}.h5'.format(current_time), save_format="h5")
+    model.save_weights(model_path + '/model_{}.h5'.format(current_time), save_format="h5")
 
     with open(model_path + '/args_{}.txt'.format(current_time), "w") as f:
         for key, value, in args.items():
@@ -322,7 +322,7 @@ def main():
     #         if epoch == args['adjust_lr'][0]:
     #             args['ewm'] = args['ewm'] * 5
 #%%
-def train(dataset, model, decay_model, optimizer, optimizer_nf, epoch, args, num_classes):
+def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
     loss_avg = tf.keras.metrics.Mean()
     nf_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
@@ -392,7 +392,7 @@ def train(dataset, model, decay_model, optimizer, optimizer_nf, epoch, args, num
         })
     
     if epoch % args['reconstruct_freq'] == 0:
-        sample_recon = generate_and_save_images(decay_model, image[0][tf.newaxis, ...], num_classes)
+        sample_recon = generate_and_save_images(model, image[0][tf.newaxis, ...], num_classes)
         return loss_avg, nf_loss_avg, accuracy, sample_recon
     else:
         return loss_avg, nf_loss_avg, accuracy
