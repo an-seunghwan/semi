@@ -338,7 +338,7 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
 
     iterator = iter(shuffle_and_batch(dataset))
     
-    iteration = 50000 // args['batch_size'] 
+    iteration = 60000 // args['batch_size'] 
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
