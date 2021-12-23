@@ -41,7 +41,6 @@ def colored_mnist(image, args):
     '''
     FIXME
     '''
-    tf.random.set_seed(args['seed'])
     image = tf.image.resize(image, [32, 32], method='nearest')
     
     if tf.random.uniform((1, 1)) > 0.5:
