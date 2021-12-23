@@ -174,7 +174,7 @@ def fetch_dataset(args, log_path):
                 if name == 'test':
                     writer = tf.io.TFRecordWriter(f'{dataset_path}/{name}.tfrecord'.encode('utf-8'))
                     for x in tfds.as_numpy(dataset):
-                        example = cmnist_test_serialize_example(x, num_classes, args)
+                        example = cmnist_test_serialize_example(x, args)
                         writer.write(example)
                 else:
                     writer = tf.io.TFRecordWriter(f'{dataset_path}/{name}.tfrecord'.encode('utf-8'))
