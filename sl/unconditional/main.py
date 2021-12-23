@@ -348,7 +348,7 @@ def train(dataset, model, decay_model, optimizer, optimizer_nf, epoch, args, num
         image, label = next(iterator)
         image = augment(image)
         
-        with tf.GradientTape() as tape:
+        with tf.GradientTape(persistent=True) as tape:
             [[_, _, prob, xhat], nf_args] = model(image)
             '''reconstruction'''
             if args['br']:
