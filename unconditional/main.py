@@ -1,13 +1,13 @@
 #%%
 '''
-211222: lr schedule -> modify lr manually, instead of tensorflow function
+
 '''
 #%%
 import argparse
 import os
 
-# os.chdir(r'D:\semi\shotvae') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/shotvae') # main directory (repository)
+os.chdir(r'D:\semi\unconditional') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/unconditional') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -34,10 +34,10 @@ GPU 메모리를 처음부터 전체 비율을 사용하지 않음
 '''
 config.gpu_options.allow_growth = True
 
-'''
-분산 학습 설정
-'''
-strategy = tf.distribute.MirroredStrategy()
+# '''
+# 분산 학습 설정
+# '''
+# strategy = tf.distribute.MirroredStrategy()
 # session = tf.compat.v1.InteractiveSession(config=config)
 #%%
 import ast
@@ -50,12 +50,15 @@ def arg_as_list(s):
 def get_args():
     parser = argparse.ArgumentParser('parameters')
 
-    # parser.add_argument('-bp', '--base_path', default=".")
+    parser.add_argument('--seed', type=int, default=1, 
+                        help='seed for repeatable results')
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
-    # parser.add_argument('-is', "--image-size", default=[32, 32], type=arg_as_list,
-    #                     metavar='Image Size List', help='the size of h * w for image')
-    parser.add_argument('-b', '--batch-size', default=128, type=int,
+                        help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra, cmnist)')
+    # parser.add_argument("--image_size", default=32, type=int,
+    #                     metavar='Image Size', help='the size of height or width for image')
+    # parser.add_argument("--channel", default=3, type=int,
+    #                     metavar='Channel size', help='the size of image channel')
+    parser.add_argument('--batch_size', default=128, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
 
     '''SSL VAE Train PreProcess Parameter'''
@@ -63,11 +66,11 @@ def get_args():
     #                     metavar='N', help='the x-th time of training')
     parser.add_argument('--epochs', default=600, type=int, 
                         metavar='N', help='number of total epochs to run')
-    parser.add_argument('--start-epoch', default=0, type=int, 
+    parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
     # parser.add_argument('--print-freq', '-p', default=3, type=int,
     #                     metavar='N', help='print frequency (default: 10)')
-    parser.add_argument('--reconstruct-freq', '-rf', default=50, type=int,
+    parser.add_argument('--reconstruct_freq', '-rf', default=50, type=int,
                         metavar='N', help='reconstruct frequency (default: 50)')
     # parser.add_argument('--annotated-ratio', default=0.1, type=float, help='The ratio for semi-supervised annotation')
     parser.add_argument('--labeled_examples', type=int, default=4000, 
@@ -85,25 +88,23 @@ def get_args():
                         help='slope parameter for LeakyReLU (default: 0.1)')
     parser.add_argument('--temperature', default=0.67, type=float,
                         help='centeralization parameter')
-    parser.add_argument('-dr', '--drop-rate', default=0, type=float, 
+    parser.add_argument('-dr', '--drop_rate', default=0, type=float, 
                         help='drop rate for the network')
-    parser.add_argument("--br", "--bce-reconstruction", action='store_true', 
+    parser.add_argument("--br", "--bce_reconstruction", action='store_true', 
                         help='Do BCE Reconstruction')
-    parser.add_argument("-s", "--x-sigma", default=1, type=float,
+    parser.add_argument('--x_sigma', default=1, type=float,
                         help="The standard variance for reconstructed images, work as regularization")
 
     '''VAE parameters, notice we do not manually set the mutual information'''
-    parser.add_argument('--ldc', "--latent-dim-continuous", default=128, type=int,
+    parser.add_argument('--ldc', "--latent_dim_continuous", default=128, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
-    parser.add_argument('--cmi', "--continuous-mutual-info", default=0, type=float,
+    parser.add_argument('--cmi', "--continuous_mutual_info", default=0, type=float,
                         help='The mutual information bounding between x and the continuous variable z')
-    parser.add_argument('--dmi', "--discrete-mutual-info", default=0, type=float,
+    parser.add_argument('--dmi', "--discrete_mutual_info", default=0, type=float,
                         help='The mutual information bounding between x and the discrete variable z')
 
     '''VAE Loss Function Parameters'''
-    # parser.add_argument("-ei", "--evaluate-inference", action='store_true',
-    #                     help='Calculate the inference accuracy for unlabeled dataset')
     parser.add_argument('--kbmc', '--kl-beta-max-continuous', default=1e-3, type=float, 
                         metavar='KL Beta', help='the epoch to linear adjust kl beta')
     parser.add_argument('--kbmd', '--kl-beta-max-discrete', default=1e-3, type=float, 
@@ -126,11 +127,11 @@ def get_args():
     '''Optimizer Parameters'''
     parser.add_argument('--lr', '--learning-rate', default=1e-1, type=float,
                         metavar='LR', help='initial learning rate')
-    parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
+    parser.add_argument('--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
                         help='beta1 for adam as well as momentum for SGD')
-    parser.add_argument('-ad', "--adjust-lr", default=[400, 500, 550], type=arg_as_list,
+    parser.add_argument('--adjust_lr', default=[400, 500, 550], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
-    parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
+    parser.add_argument('--weight_decay', default=5e-4, type=float)
 
     '''Optimizer Transport Estimation Parameters'''
     parser.add_argument('--epsilon', default=0.1, type=float,
@@ -182,10 +183,10 @@ def generate_and_save_images(model, image, num_classes):
     return image
 #%%
 def main():
-    '''argparse to dictionary'''
-    args = vars(get_args())
-    # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/cifar10_4000.yaml']))
+    # '''argparse to dictionary'''
+    # args = vars(get_args())
+    '''argparse debugging'''
+    args = vars(parser.parse_args(args=['--config_path', 'configs/cmnist_10000.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):

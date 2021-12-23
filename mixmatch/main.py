@@ -26,10 +26,10 @@ GPU 메모리를 처음부터 전체 비율을 사용하지 않음
 '''
 config.gpu_options.allow_growth = True
 
-'''
-분산 학습 설정
-'''
-strategy = tf.distribute.MirroredStrategy()
+# '''
+# 분산 학습 설정
+# '''
+# strategy = tf.distribute.MirroredStrategy()
 # session = tf.compat.v1.InteractiveSession(config=config)
 #%%
 def get_args():
