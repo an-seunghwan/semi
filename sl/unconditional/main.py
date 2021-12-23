@@ -374,7 +374,7 @@ def train(dataset, model, decay_model, optimizer, optimizer_nf, epoch, args, num
 
         grads = tape.gradient(loss, model.ae.trainable_variables) 
         optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) # SGD + momentum
-        weight_decay(model, decay_model, decay_rate=args['weight_decay'] * args['lr']) # weight decay
+        weight_decay(model.ae, decay_model.ae, decay_rate=args['weight_decay'] * args['lr']) # weight decay
         
         grad = tape.gradient(nf_loss, model.prior.trainable_weights)
         optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
