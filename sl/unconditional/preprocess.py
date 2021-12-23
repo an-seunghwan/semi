@@ -92,7 +92,7 @@ def split_dataset(dataset, num_validations, num_classes, args):
         labeled.append({
             # 'image': example['image'],
             'image': colored_mnist(example['image'], args),
-            'label': tf.convert_to_tensor(-1, dtype=tf.int64)
+            'label': example['label']
         })
     labeled = _list_to_tf_dataset(labeled, args)
     validation = _list_to_tf_dataset(validation, args)
@@ -127,20 +127,6 @@ def serialize_example(example, num_classes, args):
     })) 
     return example.SerializeToString()
 #%%
-def cmnist_test_serialize_example(example, args):
-    image = example['image']
-    label = example['label']
-    if args['dataset'] == 'cmnist':
-        image = image.astype(np.float32).tobytes()
-    else:
-        image = normalize_image(image.astype(np.float32)).tobytes()
-    label = label.astype(np.float32).tobytes()
-    example = tf.train.Example(features=tf.train.Features(feature={
-        'image': tf.train.Feature(bytes_list=tf.train.BytesList(value=[image])),
-        'label': tf.train.Feature(bytes_list=tf.train.BytesList(value=[label])),
-    })) 
-    return example.SerializeToString()
-#%%
 def deserialize_example(serialized_string):
     image_feature_description = { 
         'image': tf.io.FixedLenFeature([], tf.string), 
@@ -169,23 +155,11 @@ def fetch_dataset(args, log_path):
             test = cmnist_test_dataset(dataset=test,
                                        args=args)
             
-            for name, dataset in [('train', train), ('validation', validation), ('test', test)]:
-                if name == 'test':
-                    writer = tf.io.TFRecordWriter(f'{dataset_path}/{name}.tfrecord'.encode('utf-8'))
-                    for x in tfds.as_numpy(dataset):
-                        example = cmnist_test_serialize_example(x, args)
-                        writer.write(example)
-                else:
-                    writer = tf.io.TFRecordWriter(f'{dataset_path}/{name}.tfrecord'.encode('utf-8'))
-                    for x in tfds.as_numpy(dataset):
-                        example = serialize_example(x, num_classes, args)
-                        writer.write(example)
-        else:
-            for name, dataset in [('train', train), ('validation', validation), ('test', test)]:
-                writer = tf.io.TFRecordWriter(f'{dataset_path}/{name}.tfrecord'.encode('utf-8'))
-                for x in tfds.as_numpy(dataset):
-                    example = serialize_example(x, num_classes, args)
-                    writer.write(example)
+        for name, dataset in [('train', train), ('validation', validation), ('test', test)]:
+            writer = tf.io.TFRecordWriter(f'{dataset_path}/{name}.tfrecord'.encode('utf-8'))
+            for x in tfds.as_numpy(dataset):
+                example = serialize_example(x, num_classes, args)
+                writer.write(example)
     
     train = tf.data.TFRecordDataset(f'{dataset_path}/train.tfrecord'.encode('utf-8')).map(deserialize_example)
     validation = tf.data.TFRecordDataset(f'{dataset_path}/validation.tfrecord'.encode('utf-8')).map(deserialize_example)
