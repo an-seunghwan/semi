@@ -2,6 +2,7 @@
 import tensorflow as tf
 import tensorflow.keras as K
 from tensorflow.keras import layers
+import numpy as np
 #%%
 class ResidualUnit(K.layers.Layer):
     def __init__(self, 
@@ -82,7 +83,6 @@ class WideResNet(K.models.Model):
         self.nChannels = [16, 16*width, 32*width, 64*width]
         self.slope = slope
         
-        '''small_input = True'''
         self.conv = layers.Conv2D(filters=self.nChannels[0], kernel_size=3, strides=1, 
                                     padding='same', use_bias=False)
         
@@ -108,35 +108,59 @@ class WideResNet(K.models.Model):
 #%%
 class Decoder(K.models.Model):
     def __init__(self, 
+                 latent_dim,
                  output_channel, 
                  activation, 
                  name="Decoder", **kwargs):
         super(Decoder, self).__init__(name=name, **kwargs)
-        self.num_feature = 64
-        self.units = self._build_unit(output_channel, activation)
+        self.num_feature = 32
+        self.dense = layers.Dense(16, use_bias=False)
+        self.reshape1 = layers.Reshape((4, 4, 1))
+        
+        self.reshape2 = layers.Reshape((4, 4, latent_dim // 16))
+        self.norm = layers.BatchNormalization()
+        self.relu = layers.ReLU()
+        self.units_skip, self.units = self._build_unit()
+        self.conv = layers.Conv2DTranspose(filters = output_channel, kernel_size = 1, strides = 1, 
+                                        activation=activation,
+                                        padding = 'same', use_bias=False)
     
-    def _build_unit(self, output_channel, activation):
-        dims = [self.num_feature * d for d in [16, 8, 4, 2]]
+    def _build_unit(self):
+        dims = [self.num_feature * d for d in [4, 2, 1]]
+        units_skip = []
+        for i in range(len(dims)):
+            units_skip.append(layers.Conv2DTranspose(filters = dims[i], kernel_size = 5, strides = 2, 
+                                                padding = 'same', use_bias=False))
+            units_skip.append(layers.BatchNormalization())
+            units_skip.append(layers.ReLU())
         units = []
         for i in range(len(dims)):
-            units.append(layers.Conv2DTranspose(filters = dims[i], kernel_size = 5, strides = 2, 
+            units.append(layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
                                                 padding = 'same', use_bias=False))
             units.append(layers.BatchNormalization())
             units.append(layers.ReLU())
-        units.append(layers.Conv2DTranspose(filters = output_channel, kernel_size = 4, strides = 2, 
-                                            activation=activation,
-                                            padding = 'same', use_bias=False))
-        return K.models.Sequential(units)
+            units.append(layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
+                                                padding = 'same', use_bias=False))
+            units.append(layers.BatchNormalization())
+            units.append(layers.ReLU())
+        return units_skip, units
     
     @tf.function
-    def call(self, x, training=True):
-        h = x[:, tf.newaxis, tf.newaxis, :]
-        # for i in range(len(self.model)):
-        #     h = self.model[i](h, training=training)    
-        h = self.units(h, training=training)
+    def call(self, z, prob, training=True):
+        h1 = self.reshape1(self.dense(prob))
+        h2 = self.reshape2(z)
+        h = tf.concat([h2, h1], axis=-1)
+        h = self.relu(self.norm(h))
+        
+        skip = h
+        for i in range(len(self.units_skip)):
+            skip = self.units_skip[i](skip, training=training)    
+            h = self.units[i](skip, training=training)
+            skip += h
+        h = self.conv(skip)
         return h
 #%%
-class VAE(K.models.Model):
+class AutoEncoder(K.models.Model):
     def __init__(self, 
                  num_classes=10,
                  depth=28,
@@ -145,56 +169,159 @@ class VAE(K.models.Model):
                  latent_dim=128, 
                  output_channel=3, 
                  activation='sigmoid',
-                 temperature=1.,
                  input_shape=(None, 32, 32, 3), 
-                 name='VAE', **kwargs):
-        super(VAE, self).__init__(name=name, **kwargs)
+                 name='AutoEncoder', **kwargs):
+        super(AutoEncoder, self).__init__(name=name, **kwargs)
         
         self.FeatureExtractor = WideResNet(num_classes, depth, width, slope, input_shape)
-        self.mean_layer = layers.Dense(latent_dim) 
-        self.logsigma_layer = layers.Dense(latent_dim) 
-        self.prob_layer = layers.Dense(num_classes) 
-        self.Decoder = Decoder(output_channel, activation)
+        self.z_layer = layers.Dense(latent_dim) 
+        self.c_layer = layers.Dense(num_classes) 
+        self.Decoder = Decoder(latent_dim, output_channel, activation)
         
-        self.temperature = temperature
         self.latent_dim = latent_dim
         
-    def get_latent(self, x, training=False):
+    def encode(self, x, training=False):
         h = self.FeatureExtractor(x, training=training)
-        mean = self.mean_layer(h)
-        log_sigma = self.logsigma_layer(h)
-        noise = tf.random.normal((tf.shape(x)[0], self.latent_dim))
-        z = mean + tf.math.exp(log_sigma) * noise 
+        z = self.mean_layer(h)
         return z
     
-    def decode_sample(self, z, y, training=False):
-        return self.Decoder(tf.concat([z, y], axis=-1), training=training) 
+    def decode(self, z, y, training=False):
+        return self.Decoder(z, y, training=training) 
         
-    def sample_gumbel(self, shape): 
-        U = tf.random.uniform(shape, minval=0, maxval=1)
-        return -tf.math.log(-tf.math.log(U + 1e-8) + 1e-8)
-
-    def gumbel_max_sample(self, log_prob): 
-        y = log_prob + self.sample_gumbel(tf.shape(log_prob))
-        y = tf.nn.softmax(y / self.temperature)
-        return y
-    
     @tf.function
-    def call(self, inputs, training=True):
-        x, label = inputs
+    def call(self, x, training=True):
         h = self.FeatureExtractor(x, training=training)
-        mean = self.mean_layer(h)
-        log_sigma = self.logsigma_layer(h)
-        log_prob = tf.nn.log_softmax(self.prob_layer(h))
-        y = self.gumbel_max_sample(log_prob)
+        z = self.z_layer(h)
+        c = self.c_layer(h)
+        prob = tf.nn.softmax(c)
+        xhat = self.Decoder(z, prob, training=training) 
+        return z, c, prob, xhat
+#%%
+class CouplingLayer(K.models.Model):
+    def __init__(self, 
+                 activation, 
+                 embedding_dim, 
+                 output_dim, 
+                 coupling_MLP_num,
+                 reg=0.01,
+                 name='CouplingLayer', **kwargs):
+        super(CouplingLayer, self).__init__(name=name, **kwargs)
         
-        noise = tf.random.normal((tf.shape(x)[0], self.latent_dim))
-        z = mean + tf.math.exp(log_sigma) * noise 
+        self.embedding_dim = embedding_dim
+        self.output_dim = output_dim
+        self.activation = activation
+        self.dense = [
+            layers.Dense(self.embedding_dim, activation='relu', kernel_regularizer=K.regularizers.l2(reg)) 
+            for _ in range(coupling_MLP_num)
+            ] + [
+            layers.Dense(self.output_dim, activation=self.activation, kernel_regularizer=K.regularizers.l2(reg))
+            ]
         
-        '''for labeled'''
-        if tf.is_tensor(label):
-            y = label
+    def call(self, x):
+        for d in self.dense:
+            x = d(x)
+        return x
+#%%
+def checkerboard(shape):
+    return np.indices(shape).sum(axis=0) % 2
+#%%
+class NormalizingFlow(K.models.Model):
+    def __init__(self, 
+                 latent_dim,
+                 embedding_dim,
+                 mask,
+                 K,
+                 name='NormalizingFlow', **kwargs):
+        super(NormalizingFlow, self).__init__(name=name, **kwargs)
         
-        xhat = self.Decoder(tf.concat([z, y], axis=-1), training=training) 
-        return mean, log_sigma, log_prob, z, y, xhat
+        self.K = K
+        if mask == 'checkerboard':
+            self.mask = [checkerboard((latent_dim, )), 
+                        1 - checkerboard((latent_dim, ))] * (K // 2)
+        elif mask == 'half':
+            self.mask = [np.array([1] * (latent_dim // 2) + [0] * (latent_dim // 2)),
+                        np.array([0] * (latent_dim // 2) + [1] * (latent_dim // 2))] * (K // 2)
+        
+        output_dim = latent_dim // 2
+        self.s = [CouplingLayer('tanh', embedding_dim, output_dim) for _ in range(K)]
+        self.t = [CouplingLayer('linear', embedding_dim, output_dim) for _ in range(K)]
+        
+    def inverse(self, x):
+        for i in reversed(range(self.K)):
+            x_masked = tf.boolean_mask(x, self.mask[i], axis=1)
+            x = (
+                x * self.mask[i]
+                + (1 - self.mask[i])
+                * ((x - tf.repeat(self.t[i](x_masked), 2, axis=1))
+                   *
+                   tf.repeat(tf.math.exp(- self.s[i](x_masked)), 2, axis=1))
+            )
+        return x
+        
+    def call(self, x, sum_log_abs_det_jacobians=None):
+        if sum_log_abs_det_jacobians is None:
+            sum_log_abs_det_jacobians = 0
+        log_abs_det_jacobian = 0
+        
+        for i in range(self.K):
+            x_masked = tf.boolean_mask(x, self.mask[i], axis=1)
+            x = (
+                x * self.mask[i]
+                + (1 - self.mask[i])
+                * (x * tf.repeat(tf.math.exp(self.s[i](x_masked)), 2, axis=1) 
+                   + 
+                   tf.repeat(self.t[i](x_masked), 2, axis=1))
+            )
+            
+            log_abs_det_jacobian += tf.reduce_sum(self.s[i](x_masked), axis=-1)
+        sum_log_abs_det_jacobians += log_abs_det_jacobian
+        return x, sum_log_abs_det_jacobians
+#%%
+class Prior(K.models.Model):
+    def __init__(self, 
+                 args,
+                 num_classes,
+                 name="Prior", **kwargs):
+        super(Prior, self).__init__(name=name, **kwargs)
+        self.args = args
+        self.num_classes = num_classes
+        
+        self.zNF = NormalizingFlow(args['latent_dim'], args['z_emb'], args['z_mask'], args['K1'])
+        self.cNF = NormalizingFlow(num_classes, args['c_emb'], args['c_mask'], args['K2'])
+    
+    def build_graph(self):
+        '''
+        build model manually due to masked coupling layer
+        '''
+        dummy_z = tf.random.normal((1, self.args['latent_dim']))
+        dummy_c = tf.random.normal((1, self.num_classes))
+        _ = self(dummy_z, dummy_c)
+        return print('Graph is built!')
+    
+    def zflow(self, x):
+        return self.zNF.inverse(x)
+    
+    def cflow(self, x):
+        return self.cNF.inverse(x)
+    
+    def call(self, z, c):
+        z_ = tf.stop_gradient(z)
+        z_sg, sum_log_abs_det_jacobians1 = self.zNF(z_)
+        
+        c_ = tf.stop_gradient(c)
+        c_sg, sum_log_abs_det_jacobians2 = self.cNF(c_)
+    
+        return [z_sg, sum_log_abs_det_jacobians1, c_sg, sum_log_abs_det_jacobians2]
+#%%
+class VAE(K.models.Model):
+    def __init__(self, args, num_classes, name="VAE", **kwargs):
+        super(VAE, self).__init__(name=name, **kwargs)
+        self.args = args
+        self.AE = AutoEncoder(num_classes, args['depth'], args['width'], args['slope'], args['latent_dim'])
+        self.Prior = Prior(args, num_classes)
+        
+    def call(self, x, training=True):
+        z, c, prob, xhat = self.AE(x, training=training)
+        prior_args = self.Prior(z, c)
+        return [[z, c, prob, xhat], prior_args]
 #%%

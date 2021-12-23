@@ -1,0 +1,3 @@
+dataset: "cmnist"
+ldc: 16
+dmi: 2.3s

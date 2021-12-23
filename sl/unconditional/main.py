@@ -51,7 +51,7 @@ def get_args():
     parser = argparse.ArgumentParser('parameters')
 
     parser.add_argument('--seed', type=int, default=1, 
-                        help='seed for repeatable results')
+                        help='seed for repeatable results (ex. generating color MNIST)')
     parser.add_argument('--dataset', type=str, default='cifar10',
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra, cmnist)')
     # parser.add_argument("--image_size", default=32, type=int,
@@ -61,24 +61,17 @@ def get_args():
     parser.add_argument('--batch_size', default=128, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
 
-    '''SSL VAE Train PreProcess Parameter'''
-    # parser.add_argument('-t', '--train-time', default=1, type=int,
-    #                     metavar='N', help='the x-th time of training')
+    '''SL VAE Train PreProcess Parameter'''
     parser.add_argument('--epochs', default=600, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    # parser.add_argument('--print-freq', '-p', default=3, type=int,
-    #                     metavar='N', help='print frequency (default: 10)')
     parser.add_argument('--reconstruct_freq', '-rf', default=50, type=int,
                         metavar='N', help='reconstruct frequency (default: 50)')
-    # parser.add_argument('--annotated-ratio', default=0.1, type=float, help='The ratio for semi-supervised annotation')
-    parser.add_argument('--labeled_examples', type=int, default=4000, 
-                        help='number labeled examples (default: 4000')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
 
-    '''Deep VAE Model Parameters'''
+    '''Deep VAE Model Parameters (Encoder and Decoder)'''
     # parser.add_argument('--net-name', default="wideresnet-28-2", type=str, help="the name for network to use")
     parser.add_argument('--depth', type=int, default=28, 
                         help='depth for WideResnet (default: 28)')
@@ -95,8 +88,8 @@ def get_args():
     parser.add_argument('--x_sigma', default=1, type=float,
                         help="The standard variance for reconstructed images, work as regularization")
 
-    '''VAE parameters, notice we do not manually set the mutual information'''
-    parser.add_argument('--ldc', "--latent_dim_continuous", default=128, type=int,
+    '''VAE parameters'''
+    parser.add_argument('--latent_dim', "--latent_dim_continuous", default=128, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
     parser.add_argument('--cmi', "--continuous_mutual_info", default=0, type=float,
@@ -124,7 +117,7 @@ def get_args():
     parser.add_argument('--apw', '--adjust-posterior-weight', default=200, type=float,
                         help="adjust posterior weight")
 
-    '''Optimizer Parameters'''
+    '''Optimizer Parameters (Encoder and Decoder)'''
     parser.add_argument('--lr', '--learning-rate', default=1e-1, type=float,
                         metavar='LR', help='initial learning rate')
     parser.add_argument('--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
@@ -133,10 +126,36 @@ def get_args():
                         help="The milestone list for adjust learning rate")
     parser.add_argument('--weight_decay', default=5e-4, type=float)
 
-    '''Optimizer Transport Estimation Parameters'''
-    parser.add_argument('--epsilon', default=0.1, type=float,
-                        help="the label smoothing epsilon for labeled data")
-    # parser.add_argument('--om', action='store_true', help="the optimal match for unlabeled data mixup")
+    # '''Optimizer Transport Estimation Parameters'''
+    # parser.add_argument('--epsilon', default=0.1, type=float,
+    #                     help="the label smoothing epsilon for labeled data")
+    # # parser.add_argument('--om', action='store_true', help="the optimal match for unlabeled data mixup")
+    
+    '''Normalizing Flow Model Parameters'''
+    parser.add_argument('--z_mask', default='checkerboard', type=str,
+                        help='mask type of continuous latent for Real NVP (e.g. checkerboard or half)')
+    parser.add_argument('--c_mask', default='half', type=str,
+                        help='mask type of discrete latent for Real NVP (e.g. checkerboard or half)')
+    parser.add_argument('--z_emb', default=256, type=int,
+                        help='embedding dimension of continuous latent for coupling layer')
+    parser.add_argument('--c_emb', default=256, type=int,
+                        help='embedding dimension of discrete latent for coupling layer')
+    parser.add_argument('--K1', default=8, type=int,
+                        help='number of coupling layers in Real NVP (continous latent)')
+    parser.add_argument('--K2', default=8, type=int,
+                        help='number of coupling layers in Real NVP (discrete latent)')
+    parser.add_argument('--coupling_MLP_num', default=4, type=int,
+                        help='number of dense layers in single coupling layer')
+    
+    '''Normalizing Flow Optimizer Parameters'''
+    parser.add_argument('--reg', default=0.01, type=float,
+                        help='L2 regularization parameter for dense layers in Real NVP')
+    parser.add_argument('--decay_steps', default=1, type=int,
+                        help='decay steps for exponential decay schedule')
+    parser.add_argument('--decay_rate', default=0.95, type=float,
+                        help='decay rate for exponential decay schedule')
+    parser.add_argument('--gradclip', default=1., type=float,
+                        help='gradclip value')
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -186,15 +205,15 @@ def main():
     # '''argparse to dictionary'''
     # args = vars(get_args())
     '''argparse debugging'''
-    args = vars(parser.parse_args(args=['--config_path', 'configs/cmnist_10000.yaml']))
+    args = vars(parser.parse_args(args=['--config_path', 'configs/cmnist.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
         args = load_config(args)
 
-    log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
+    log_path = f'logs/{args["dataset"]}'
 
-    datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
+    dataset, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     
     model = VAE(num_classes=num_classes, depth=args['depth'], width=args['width'], slope=args['slope'],
                 latent_dim=args['ldc'], temperature=args['temperature'])

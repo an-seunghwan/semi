@@ -76,16 +76,10 @@ def _list_to_tf_dataset(dataset, args):
         # output_shapes={'image': (args['image_size'], args['image_size'], args['channel']), 'label': ()}
     )
 #%%
-def split_dataset(dataset, num_labeled, num_validations, num_classes, args):
-    '''
-    - unlabeled includes labeled
-    - unlabeled includes validation
-    - labeled and validation are disjoint sets
-    '''
+def split_dataset(dataset, num_validations, num_classes, args):
     dataset = dataset.shuffle(buffer_size=10000)
     counter = [0 for _ in range(num_classes)]
     labeled = []
-    unlabeled = []
     validation = []
     for example in tqdm(iter(dataset), desc='split_dataset'):
         label = int(example['label'])
@@ -96,22 +90,14 @@ def split_dataset(dataset, num_labeled, num_validations, num_classes, args):
                 'image': colored_mnist(example['image'], args),
                 'label': example['label']
             })
-            # continue
-        elif counter[label] <= (num_validations / num_classes + num_labeled / num_classes):
-            labeled.append({
-                # 'image': example['image'],
-                'image': colored_mnist(example['image'], args),
-                'label': example['label']
-            })
-        unlabeled.append({
+        labeled.append({
             # 'image': example['image'],
             'image': colored_mnist(example['image'], args),
             'label': tf.convert_to_tensor(-1, dtype=tf.int64)
         })
     labeled = _list_to_tf_dataset(labeled, args)
-    unlabeled = _list_to_tf_dataset(unlabeled, args)
     validation = _list_to_tf_dataset(validation, args)
-    return labeled, unlabeled, validation
+    return labeled, validation
 #%%
 def normalize_image(image):
     image = image / 255.
@@ -147,25 +133,23 @@ def fetch_dataset(args, log_path):
         os.makedirs(dataset_path)
     num_classes = 100 if args['dataset'] == 'cifar100' else 10
     
-    if any([not os.path.exists(f'{dataset_path}/{split}.tfrecord') for split in ['trainL', 'trainU', 'validation', 'test']]):
+    if any([not os.path.exists(f'{dataset_path}/{split}.tfrecord') for split in ['train', 'validation', 'test']]):
         train, test = download_dataset(dataset_name=args['dataset'])
         
-        trainL, trainU, validation = split_dataset(dataset=train,
-                                                num_labeled=args['labeled_examples'],
-                                                num_validations=args['validation_examples'],
-                                                num_classes=num_classes,
-                                                args=args)
+        train, validation = split_dataset(dataset=train,
+                                        num_validations=args['validation_examples'],
+                                        num_classes=num_classes,
+                                        args=args)
         
-        for name, dataset in [('trainL', trainL), ('trainU', trainU), ('validation', validation), ('test', test)]:
+        for name, dataset in [('train', train), ('validation', validation), ('test', test)]:
             writer = tf.io.TFRecordWriter(f'{dataset_path}/{name}.tfrecord'.encode('utf-8'))
             for x in tfds.as_numpy(dataset):
                 example = serialize_example(x, num_classes, args)
                 writer.write(example)
     
-    trainL = tf.data.TFRecordDataset(f'{dataset_path}/trainL.tfrecord'.encode('utf-8')).map(deserialize_example)
-    trainU = tf.data.TFRecordDataset(f'{dataset_path}/trainU.tfrecord'.encode('utf-8')).map(deserialize_example)
+    train = tf.data.TFRecordDataset(f'{dataset_path}/train.tfrecord'.encode('utf-8')).map(deserialize_example)
     validation = tf.data.TFRecordDataset(f'{dataset_path}/validation.tfrecord'.encode('utf-8')).map(deserialize_example)
     test = tf.data.TFRecordDataset(f'{dataset_path}/test.tfrecord'.encode('utf-8')).map(deserialize_example)
     
-    return trainL, trainU, validation, test, num_classes
+    return train, validation, test, num_classes
 #%%
