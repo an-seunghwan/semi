@@ -70,6 +70,8 @@ def get_args():
                         metavar='N', help='reconstruct frequency (default: 50)')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
+    parser.add_argument('--augment', action='store_true', 
+                        help="apply augmentation to image")
 
     '''Deep VAE Model Parameters (Encoder and Decoder)'''
     # parser.add_argument('--net-name', default="wideresnet-28-2", type=str, help="the name for network to use")
@@ -342,9 +344,10 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
-        '''augmentation'''
         image, label = next(iterator)
-        image = augment(image)
+        if args['augment']:
+            '''augmentation'''
+            image = augment(image)
         
         with tf.GradientTape(persistent=True) as tape:
             [[_, _, prob, xhat], nf_args] = model(image)
