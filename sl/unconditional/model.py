@@ -216,7 +216,7 @@ class AutoEncoder(K.models.Model):
         self.FeatureExtractor = WideResNet(num_classes, depth, width, slope, input_shape)
         self.z_layer = layers.Dense(latent_dim) 
         self.c_layer = layers.Dense(num_classes) 
-        self.Decoder = Decoder(latent_dim, output_channel, activation)
+        # self.Decoder = Decoder(latent_dim, output_channel, activation)
         self.Decoder = Decoder(output_channel, activation)
         
         self.latent_dim = latent_dim
