@@ -4,6 +4,43 @@ import tensorflow.keras as K
 from tensorflow.keras import layers
 import numpy as np
 #%%
+class ConvLayer(K.layers.Layer):
+    def __init__(self, filter_size, kernel_size, strides, name="ConvLayer", **kwargs):
+        super(ConvLayer, self).__init__(name=name, **kwargs)
+        self.conv2d = layers.Conv2D(filters=filter_size, kernel_size=kernel_size, strides=strides, padding='same')
+        self.norm = layers.BatchNormalization()
+
+    @tf.function
+    def call(self, x, training=True):
+        h = self.conv2d(x)
+        h = self.norm(h, training=training)
+        h = tf.nn.relu(h)
+        return h
+#%%
+class zEncoder(K.models.Model):
+    def __init__(self, latent_dim, name="Encoder", **kwargs):
+        super(zEncoder, self).__init__(name=name, **kwargs)
+        self.conv = [
+            ConvLayer(16, 5, 2), # 16x16
+            ConvLayer(32, 5, 2), # 8x8
+            ConvLayer(64, 3, 2), # 4x4
+            ConvLayer(128, 3, 2) # 2x2
+            ]
+        self.dense = layers.Dense(256)
+        self.norm = layers.BatchNormalization()
+        self.relu = layers.ReLU()
+        self.last = layers.Dense(latent_dim)
+    
+    @tf.function
+    def call(self, x, training=True):
+        h = x
+        for i in range(len(self.conv)):
+            h = self.conv[i](h, training=training)
+        h = layers.Flatten()(h)
+        h = self.relu(self.norm(self.dense(h), training=training))
+        h = self.last(h)
+        return h
+#%%
 class ResidualUnit(K.layers.Layer):
     def __init__(self, 
                  filter_in, 
@@ -182,14 +219,13 @@ class AutoEncoder(K.models.Model):
                  name='AutoEncoder', **kwargs):
         super(AutoEncoder, self).__init__(name=name, **kwargs)
         
+        self.z_encoder = zEncoder(latent_dim)
         self.FeatureExtractor = WideResNet(num_classes, depth, width, slope, input_shape)
-        self.z_layer = layers.Dense(latent_dim) 
         self.c_layer = layers.Dense(num_classes) 
         self.Decoder = Decoder(latent_dim, output_channel, activation)
         
     def z_encode(self, x, training=False):
-        h = self.FeatureExtractor(x, training=training)
-        z = self.z_layer(h)
+        z = self.z_encoder(x, training=training)
         return z
     
     def c_encode(self, x, training=False):
@@ -202,8 +238,8 @@ class AutoEncoder(K.models.Model):
         
     @tf.function
     def call(self, x, training=True):
+        z = self.z_encoder(x)
         h = self.FeatureExtractor(x, training=training)
-        z = self.z_layer(h)
         c = self.c_layer(h)
         prob = tf.nn.softmax(c, axis=-1)
         xhat = self.Decoder(z, prob, training=training) 
