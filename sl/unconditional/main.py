@@ -5,6 +5,7 @@
 211227: image file directly save
 211227: stop gradient is done outside of model
 211227: add dense layer to probabilty
+211227: model_separate.py (decouple z and c encoders)
 '''
 #%%
 import argparse
@@ -102,9 +103,9 @@ def get_args():
     #                     help='The mutual information bounding between x and the discrete variable z')
 
     '''VAE Loss Function Parameters'''
-    parser.add_argument('--lambda1', default=1., type=float,
+    parser.add_argument('--lambda1', default=5., type=float,
                         help="adjust classification loss weight")
-    parser.add_argument('--lambda2', default=2., type=float,
+    parser.add_argument('--lambda2', default=10., type=float,
                         help="adjust mutual information loss weight")
     # parser.add_argument('--ewm', '--elbo-weight-max', default=1e-3, type=float, 
     #                     metavar='weight for elbo loss part')
