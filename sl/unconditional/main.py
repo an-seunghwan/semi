@@ -104,7 +104,7 @@ def get_args():
     '''VAE Loss Function Parameters'''
     parser.add_argument('--lambda1', default=1., type=float,
                         help="adjust classification loss weight")
-    parser.add_argument('--lambda2', default=20., type=float,
+    parser.add_argument('--lambda2', default=2., type=float,
                         help="adjust mutual information loss weight")
     # parser.add_argument('--ewm', '--elbo-weight-max', default=1e-3, type=float, 
     #                     metavar='weight for elbo loss part')
@@ -183,7 +183,7 @@ def load_config(args):
 #     buf = io.BytesIO()
 #     figure = plt.figure(figsize=(10, 2))
 #     plt.subplot(1, num_classes+1, 1)
-#     plt.imshow((image[0] + 1) / 2)
+#     plt.imshow(image[0])
 #     plt.title('original')
 #     plt.axis('off')
 #     for i in range(num_classes):
@@ -210,7 +210,7 @@ def generate_and_save_images(model, image, num_classes, step, save_dir):
     
     plt.figure(figsize=(10, 2))
     plt.subplot(1, num_classes+1, 1)
-    plt.imshow((image[0] + 1) / 2)
+    plt.imshow(image[0])
     plt.title('original')
     plt.axis('off')
     for i in range(num_classes):
@@ -376,10 +376,10 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
         
         with tf.GradientTape(persistent=True) as tape:
             # [[_, _, prob, xhat], nf_args] = model(image)
-            z, c, prob, xhat = model.ae(image)
+            z, c, prob, xhat = model.ae(image, training=True)
             z_ = tf.stop_gradient(z)
             c_ = tf.stop_gradient(c)
-            nf_args = model.prior(z_, c_)
+            nf_args = model.prior(z_, c_, training=True)
 
             '''reconstruction'''
             if args['br']:
@@ -393,8 +393,7 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
             cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(prob, 1e-10, 1.0)), axis=-1))
             
             '''mutual information'''
-            c_recon = model.ae.c_encode(xhat, training=True)
-            prob_recon = tf.nn.softmax(c_recon, axis=-1)
+            prob_recon = tf.nn.softmax(model.ae.c_encode(xhat, training=True), axis=-1)
             # info = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(prob_recon), axis=-1))
             info = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(prob_recon, 1e-10, 1.0)), axis=-1))
             

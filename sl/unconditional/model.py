@@ -114,26 +114,26 @@ class Decoder(K.models.Model):
                  name="Decoder", **kwargs):
         super(Decoder, self).__init__(name=name, **kwargs)
         self.num_feature = 32
-        self.dense = layers.Dense(16, use_bias=False)
-        self.reshape1 = layers.Reshape((4, 4, 1))
         
-        self.reshape2 = layers.Reshape((4, 4, latent_dim // 16))
-        self.norm = layers.BatchNormalization()
-        self.relu = layers.ReLU()
+        self.reshape1 = layers.Reshape((4, 4, latent_dim // 16))
+        self.dense = layers.Dense(16, use_bias=False)
+        self.reshape2 = layers.Reshape((4, 4, 1))
+        # self.norm = layers.BatchNormalization()
+        # self.relu = layers.ReLU()
         self.units_skip, self.units = self._build_unit()
         self.conv = layers.Conv2DTranspose(filters = output_channel, kernel_size = 1, strides = 1, 
-                                        activation=activation,
-                                        padding = 'same', use_bias=False)
+                                            activation=activation,
+                                            padding = 'same', use_bias=False)
     
     def _build_unit(self):
         dims = [self.num_feature * d for d in [4, 2, 1]]
         units_skip = []
         for i in range(len(dims)):
             units_skip.append(
-                tf.keras.Sequential(
+                K.Sequential(
                     [
                         layers.Conv2DTranspose(filters = dims[i], kernel_size = 5, strides = 2, 
-                                                        padding = 'same', use_bias=False),
+                                                padding = 'same', use_bias=False),
                         layers.BatchNormalization(),
                         layers.ReLU()
                     ]
@@ -142,14 +142,14 @@ class Decoder(K.models.Model):
         units = []
         for i in range(len(dims)):
             units.append(
-                tf.keras.Sequential(
+                K.Sequential(
                     [
                         layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
-                                                    padding = 'same', use_bias=False),
+                                                padding = 'same', use_bias=False),
                         layers.BatchNormalization(),
                         layers.ReLU(),
                         layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
-                                                            padding = 'same', use_bias=False),
+                                                padding = 'same', use_bias=False),
                         layers.BatchNormalization(),
                         layers.ReLU(),
                     ]
@@ -159,10 +159,10 @@ class Decoder(K.models.Model):
     
     @tf.function
     def call(self, z, prob, training=True):
-        h1 = self.reshape1(self.dense(prob))
-        h2 = self.reshape2(z)
-        h = tf.concat([h2, h1], axis=-1)
-        h = self.relu(self.norm(h))
+        h1 = self.reshape1(z)
+        h2 = self.reshape2(self.dense(prob))
+        h = tf.concat([h1, h2], axis=-1)
+        # h = self.relu(self.norm(h))
         
         skip = h
         for i in range(len(self.units_skip)):
@@ -186,22 +186,20 @@ class AutoEncoder(K.models.Model):
         super(AutoEncoder, self).__init__(name=name, **kwargs)
         
         self.FeatureExtractor = WideResNet(num_classes, depth, width, slope, input_shape)
-        self.z_layer1 = layers.Dense(latent_dim, activation='relu') 
-        self.z_layer2 = layers.Dense(latent_dim) 
-        self.c_layer1 = layers.Dense(num_classes, activation='relu')
-        self.c_layer2 = layers.Dense(num_classes) 
+        self.z_layer = layers.Dense(latent_dim) 
+        self.c_layer = layers.Dense(num_classes) 
         self.Decoder = Decoder(latent_dim, output_channel, activation)
         
         self.latent_dim = latent_dim
         
     def z_encode(self, x, training=False):
         h = self.FeatureExtractor(x, training=training)
-        z = self.z_layer2(self.z_layer1(h))
+        z = self.z_layer(h)
         return z
     
     def c_encode(self, x, training=False):
         h = self.FeatureExtractor(x, training=training)
-        c = self.c_layer2(self.c_layer1(h))
+        c = self.c_layer(h)
         return c
     
     def decode(self, z, y, training=False):
@@ -210,9 +208,9 @@ class AutoEncoder(K.models.Model):
     @tf.function
     def call(self, x, training=True):
         h = self.FeatureExtractor(x, training=training)
-        z = self.z_layer2(self.z_layer1(h))
-        c = self.c_layer2(self.c_layer1(h))
-        prob = tf.nn.softmax(c)
+        z = self.z_layer(h)
+        c = self.c_layer(h)
+        prob = tf.nn.softmax(c, axis=-1)
         xhat = self.Decoder(z, prob, training=training) 
         return z, c, prob, xhat
 #%%
