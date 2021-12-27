@@ -378,7 +378,7 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
             z, c, prob, xhat = model.ae(image)
             z_ = tf.stop_gradient(z)
             c_ = tf.stop_gradient(c)
-            nf_args = model.prior.prior(z_, c_)
+            nf_args = model.prior(z_, c_)
 
             '''reconstruction'''
             if args['br']:
