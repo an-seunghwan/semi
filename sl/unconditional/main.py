@@ -1,6 +1,7 @@
 #%%
 '''
-
+211224: augment default = False
+211224: classification log(0) nan loss -> tf.math.log(tf.clip_by_value(x, 1e-10, 1.0))
 '''
 #%%
 import argparse
@@ -66,8 +67,8 @@ def get_args():
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    parser.add_argument('--reconstruct_freq', '-rf', default=50, type=int,
-                        metavar='N', help='reconstruct frequency (default: 50)')
+    parser.add_argument('--reconstruct_freq', '-rf', default=5, type=int,
+                        metavar='N', help='reconstruct frequency (default: 5)')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
     parser.add_argument('--augment', action='store_true', 
@@ -359,12 +360,14 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
                 recon_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(xhat - image) / (2. * (args['x_sigma'] ** 2)), axis=[1, 2, 3]))
                 
             '''classification'''
-            cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(prob), axis=-1))
+            # cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(prob), axis=-1))
+            cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(prob, 1e-10, 1.0)), axis=-1))
             
             '''mutual information'''
             c_recon = model.ae.c_encode(xhat, training=True)
             prob_recon = tf.nn.softmax(c_recon, axis=-1)
-            info = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(prob_recon), axis=-1))
+            # info = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(prob_recon), axis=-1))
+            info = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(prob_recon, 1e-10, 1.0)), axis=-1))
             
             loss = recon_loss + args['lambda1'] * cls_loss + args['lambda2'] * info
             
@@ -417,7 +420,8 @@ def validate(dataset, model, epoch, args, split):
             recon_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(xhat - image) / (2. * (args['x_sigma'] ** 2)), axis=[1, 2, 3]))
             
         '''classification'''
-        cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(prob), axis=-1))
+        # cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(prob), axis=-1))
+        cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(prob, 1e-10, 1.0)), axis=-1))
         
         '''prior'''
         z_nf_loss = tf.reduce_mean(tf.reduce_sum(tf.square(nf_args[0] - 0) / 2., axis=1))
