@@ -2,13 +2,14 @@
 '''
 211224: augment default = False
 211224: classification log(0) nan loss -> tf.math.log(tf.clip_by_value(x, 1e-10, 1.0))
+211227: image file directly save
 '''
 #%%
 import argparse
 import os
 
-# os.chdir(r'D:\semi\sl\unconditional') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/sl/unconditional') # main directory (repository)
+os.chdir(r'D:\semi\sl\unconditional') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/sl/unconditional') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -67,7 +68,7 @@ def get_args():
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    parser.add_argument('--reconstruct_freq', '-rf', default=5, type=int,
+    parser.add_argument('--reconstruct_freq', '-rf', default=3, type=int,
                         metavar='N', help='reconstruct frequency (default: 5)')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
@@ -99,9 +100,9 @@ def get_args():
     #                     help='The mutual information bounding between x and the discrete variable z')
 
     '''VAE Loss Function Parameters'''
-    parser.add_argument('--lambda1', default=5., type=float,
+    parser.add_argument('--lambda1', default=1., type=float,
                         help="adjust classification loss weight")
-    parser.add_argument('--lambda2', default=10., type=float,
+    parser.add_argument('--lambda2', default=20., type=float,
                         help="adjust mutual information loss weight")
     # parser.add_argument('--ewm', '--elbo-weight-max', default=1e-3, type=float, 
     #                     metavar='weight for elbo loss part')
@@ -174,11 +175,38 @@ def load_config(args):
             args[key] = config[key]
     return args
 #%%
-def generate_and_save_images(model, image, num_classes):
+# def generate_and_save_images(model, image, num_classes):
+#     z = model.ae.z_encode(image, training=False)
+    
+#     buf = io.BytesIO()
+#     figure = plt.figure(figsize=(10, 2))
+#     plt.subplot(1, num_classes+1, 1)
+#     plt.imshow((image[0] + 1) / 2)
+#     plt.title('original')
+#     plt.axis('off')
+#     for i in range(num_classes):
+#         label = np.zeros((z.shape[0], num_classes))
+#         label[:, i] = 1
+#         xhat = model.ae.decode(z, label, training=False)
+#         plt.subplot(1, num_classes+1, i+2)
+#         plt.imshow((xhat[0] + 1) / 2)
+#         plt.title('{}'.format(i))
+#         plt.axis('off')
+#     plt.savefig(buf, format='png')
+#     # Closing the figure prevents it from being displayed directly inside the notebook.
+#     plt.close(figure)
+#     buf.seek(0)
+#     # Convert PNG buffer to TF image
+#     # Convert PNG buffer to TF image
+#     image = tf.image.decode_png(buf.getvalue(), channels=4)
+#     # Add the batch dimension
+#     image = tf.expand_dims(image, 0)
+#     return image
+
+def generate_and_save_images(model, image, num_classes, step, save_dir):
     z = model.ae.z_encode(image, training=False)
     
-    buf = io.BytesIO()
-    figure = plt.figure(figsize=(10, 2))
+    plt.figure(figsize=(10, 2))
     plt.subplot(1, num_classes+1, 1)
     plt.imshow((image[0] + 1) / 2)
     plt.title('original')
@@ -191,16 +219,9 @@ def generate_and_save_images(model, image, num_classes):
         plt.imshow((xhat[0] + 1) / 2)
         plt.title('{}'.format(i))
         plt.axis('off')
-    plt.savefig(buf, format='png')
-    # Closing the figure prevents it from being displayed directly inside the notebook.
-    plt.close(figure)
-    buf.seek(0)
-    # Convert PNG buffer to TF image
-    # Convert PNG buffer to TF image
-    image = tf.image.decode_png(buf.getvalue(), channels=4)
-    # Add the batch dimension
-    image = tf.expand_dims(image, 0)
-    return image
+    plt.savefig('{}/image_at_epoch_{}.png'.format(save_dir, step))
+    # plt.show()
+    plt.close()
 #%%
 def main():
     '''argparse to dictionary'''
@@ -270,10 +291,11 @@ def main():
         # else:
         #     optimizer.lr = args['lr'] * 0.001
         
-        if epoch % args['reconstruct_freq'] == 0:
-            loss, nf_loss, accuracy, sample_recon = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
-        else:
-            loss, nf_loss, accuracy = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
+        # if epoch % args['reconstruct_freq'] == 0:
+        #     loss, nf_loss, accuracy, sample_recon = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
+        # else:
+        #     loss, nf_loss, accuracy = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
+        loss, nf_loss, accuracy = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
         val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
@@ -281,8 +303,8 @@ def main():
             tf.summary.scalar('loss', loss.result(), step=epoch)
             tf.summary.scalar('nf_loss', nf_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
-            if epoch % args['reconstruct_freq'] == 0:
-                tf.summary.image("train recon image", sample_recon, step=epoch)
+            # if epoch % args['reconstruct_freq'] == 0:
+            #     tf.summary.image("train recon image", sample_recon, step=epoch)
         with val_writer.as_default():
             tf.summary.scalar('nf_loss', val_nf_loss.result(), step=epoch)
             tf.summary.scalar('recon_loss', val_recon_loss.result(), step=epoch)
@@ -398,10 +420,14 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
         })
     
     if epoch % args['reconstruct_freq'] == 0:
-        sample_recon = generate_and_save_images(model, image[0][tf.newaxis, ...], num_classes)
-        return loss_avg, nf_loss_avg, accuracy, sample_recon
-    else:
-        return loss_avg, nf_loss_avg, accuracy
+        generate_and_save_images(model, image[0][tf.newaxis, ...], num_classes, epoch, f'{log_path}/{current_time}')
+    
+    # if epoch % args['reconstruct_freq'] == 0:
+    #     sample_recon = generate_and_save_images(model, image[0][tf.newaxis, ...], num_classes)
+    #     return loss_avg, nf_loss_avg, accuracy, sample_recon
+    # else:
+    #     return loss_avg, nf_loss_avg, accuracy
+    return loss_avg, nf_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, args, split):
     nf_loss_avg = tf.keras.metrics.Mean()
