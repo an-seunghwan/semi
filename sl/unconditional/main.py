@@ -103,7 +103,7 @@ def get_args():
     #                     help='The mutual information bounding between x and the discrete variable z')
 
     '''VAE Loss Function Parameters'''
-    parser.add_argument('--lambda1', default=5., type=float,
+    parser.add_argument('--lambda1', default=10., type=float,
                         help="adjust classification loss weight")
     parser.add_argument('--lambda2', default=10., type=float,
                         help="adjust mutual information loss weight")
