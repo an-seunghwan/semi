@@ -323,12 +323,8 @@ class Prior(K.models.Model):
         return self.cNF.inverse(x)
     
     def call(self, z, c):
-        z_ = tf.stop_gradient(z)
-        z_sg, sum_log_abs_det_jacobians1 = self.zNF(z_)
-        
-        c_ = tf.stop_gradient(c)
-        c_sg, sum_log_abs_det_jacobians2 = self.cNF(c_)
-    
+        z_sg, sum_log_abs_det_jacobians1 = self.zNF(z)
+        c_sg, sum_log_abs_det_jacobians2 = self.cNF(c)
         return [z_sg, sum_log_abs_det_jacobians1, c_sg, sum_log_abs_det_jacobians2]
 #%%
 class VAE(K.models.Model):
@@ -341,6 +337,8 @@ class VAE(K.models.Model):
         
     def call(self, x, training=True):
         z, c, prob, xhat = self.ae(x, training=training)
-        nf_args = self.prior(z, c)
+        z_ = tf.stop_gradient(z)
+        c_ = tf.stop_gradient(c)
+        nf_args = self.prior(z_, c_)
         return [[z, c, prob, xhat], nf_args]
 #%%

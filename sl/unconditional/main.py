@@ -3,6 +3,7 @@
 211224: augment default = False
 211224: classification log(0) nan loss -> tf.math.log(tf.clip_by_value(x, 1e-10, 1.0))
 211227: image file directly save
+211227: stop gradient is done outside of model
 '''
 #%%
 import argparse
@@ -373,7 +374,12 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
             image = augment(image)
         
         with tf.GradientTape(persistent=True) as tape:
-            [[_, _, prob, xhat], nf_args] = model(image)
+            # [[_, _, prob, xhat], nf_args] = model(image)
+            z, c, prob, xhat = model.ae(image)
+            z_ = tf.stop_gradient(z)
+            c_ = tf.stop_gradient(c)
+            nf_args = model.prior.prior(z_, c_)
+
             '''reconstruction'''
             if args['br']:
                 recon_loss = tf.reduce_mean(- tf.reduce_sum(image * tf.math.log(xhat) + 
