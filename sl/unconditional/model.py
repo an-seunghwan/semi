@@ -106,70 +106,98 @@ class WideResNet(K.models.Model):
         h = self.dense(h)
         return h
 #%%
+# class Decoder(K.models.Model):
+#     def __init__(self, 
+#                  latent_dim,
+#                  output_channel, 
+#                  activation, 
+#                  name="Decoder", **kwargs):
+#         super(Decoder, self).__init__(name=name, **kwargs)
+#         self.num_feature = 32
+        
+#         self.reshape1 = layers.Reshape((4, 4, latent_dim // 16))
+#         self.dense = layers.Dense(16, use_bias=False)
+#         self.reshape2 = layers.Reshape((4, 4, 1))
+#         # self.norm = layers.BatchNormalization()
+#         # self.relu = layers.ReLU()
+#         self.units_skip, self.units = self._build_unit()
+#         self.conv = layers.Conv2DTranspose(filters = output_channel, kernel_size = 1, strides = 1, 
+#                                             activation=activation,
+#                                             padding = 'same', use_bias=False)
+    
+#     def _build_unit(self):
+#         dims = [self.num_feature * d for d in [4, 2, 1]]
+#         units_skip = []
+#         for i in range(len(dims)):
+#             units_skip.append(
+#                 K.Sequential(
+#                     [
+#                         layers.Conv2DTranspose(filters = dims[i], kernel_size = 5, strides = 2, 
+#                                                 padding = 'same', use_bias=False),
+#                         layers.BatchNormalization(),
+#                         layers.ReLU()
+#                     ]
+#                 )
+#             )
+#         units = []
+#         for i in range(len(dims)):
+#             units.append(
+#                 K.Sequential(
+#                     [
+#                         layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
+#                                                 padding = 'same', use_bias=False),
+#                         layers.BatchNormalization(),
+#                         layers.ReLU(),
+#                         layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
+#                                                 padding = 'same', use_bias=False),
+#                         layers.BatchNormalization(),
+#                         layers.ReLU(),
+#                     ]
+#                 )
+#             )
+#         return units_skip, units
+    
+#     @tf.function
+#     def call(self, z, prob, training=True):
+#         h1 = self.reshape1(z)
+#         h2 = self.reshape2(self.dense(prob))
+#         h = tf.concat([h1, h2], axis=-1)
+#         # h = self.relu(self.norm(h))
+        
+#         skip = h
+#         for i in range(len(self.units_skip)):
+#             skip = self.units_skip[i](skip, training=training)    
+#             h = self.units[i](skip, training=training)
+#             skip += h
+#         h = self.conv(skip)
+#         return h
+#%%
 class Decoder(K.models.Model):
     def __init__(self, 
-                 latent_dim,
                  output_channel, 
                  activation, 
                  name="Decoder", **kwargs):
         super(Decoder, self).__init__(name=name, **kwargs)
-        self.num_feature = 32
-        
-        self.reshape1 = layers.Reshape((4, 4, latent_dim // 16))
-        self.dense = layers.Dense(16, use_bias=False)
-        self.reshape2 = layers.Reshape((4, 4, 1))
-        # self.norm = layers.BatchNormalization()
-        # self.relu = layers.ReLU()
-        self.units_skip, self.units = self._build_unit()
-        self.conv = layers.Conv2DTranspose(filters = output_channel, kernel_size = 1, strides = 1, 
-                                            activation=activation,
-                                            padding = 'same', use_bias=False)
+        self.num_feature = 64
+        self.units = self._build_unit(output_channel, activation)
     
-    def _build_unit(self):
-        dims = [self.num_feature * d for d in [4, 2, 1]]
-        units_skip = []
-        for i in range(len(dims)):
-            units_skip.append(
-                K.Sequential(
-                    [
-                        layers.Conv2DTranspose(filters = dims[i], kernel_size = 5, strides = 2, 
-                                                padding = 'same', use_bias=False),
-                        layers.BatchNormalization(),
-                        layers.ReLU()
-                    ]
-                )
-            )
+    def _build_unit(self, output_channel, activation):
+        dims = [self.num_feature * d for d in [16, 8, 4, 2]]
         units = []
         for i in range(len(dims)):
-            units.append(
-                K.Sequential(
-                    [
-                        layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
-                                                padding = 'same', use_bias=False),
-                        layers.BatchNormalization(),
-                        layers.ReLU(),
-                        layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
-                                                padding = 'same', use_bias=False),
-                        layers.BatchNormalization(),
-                        layers.ReLU(),
-                    ]
-                )
-            )
-        return units_skip, units
+            units.append(layers.Conv2DTranspose(filters = dims[i], kernel_size = 5, strides = 2, 
+                                                padding = 'same', use_bias=False))
+            units.append(layers.BatchNormalization())
+            units.append(layers.ReLU())
+        units.append(layers.Conv2DTranspose(filters = output_channel, kernel_size = 4, strides = 2, 
+                                            activation=activation,
+                                            padding = 'same', use_bias=False))
+        return K.models.Sequential(units)
     
     @tf.function
-    def call(self, z, prob, training=True):
-        h1 = self.reshape1(z)
-        h2 = self.reshape2(self.dense(prob))
-        h = tf.concat([h1, h2], axis=-1)
-        # h = self.relu(self.norm(h))
-        
-        skip = h
-        for i in range(len(self.units_skip)):
-            skip = self.units_skip[i](skip, training=training)    
-            h = self.units[i](skip, training=training)
-            skip += h
-        h = self.conv(skip)
+    def call(self, x, training=True):
+        h = x[:, tf.newaxis, tf.newaxis, :]
+        h = self.units(h, training=training)
         return h
 #%%
 class AutoEncoder(K.models.Model):
@@ -189,6 +217,7 @@ class AutoEncoder(K.models.Model):
         self.z_layer = layers.Dense(latent_dim) 
         self.c_layer = layers.Dense(num_classes) 
         self.Decoder = Decoder(latent_dim, output_channel, activation)
+        self.Decoder = Decoder(output_channel, activation)
         
         self.latent_dim = latent_dim
         
@@ -203,7 +232,8 @@ class AutoEncoder(K.models.Model):
         return c
     
     def decode(self, z, y, training=False):
-        return self.Decoder(z, y, training=training) 
+        # return self.Decoder(z, y, training=training) 
+        return self.Decoder(tf.concat([z, y], axis=-1), training=training) 
         
     @tf.function
     def call(self, x, training=True):
@@ -211,7 +241,8 @@ class AutoEncoder(K.models.Model):
         z = self.z_layer(h)
         c = self.c_layer(h)
         prob = tf.nn.softmax(c, axis=-1)
-        xhat = self.Decoder(z, prob, training=training) 
+        # xhat = self.Decoder(z, prob, training=training) 
+        xhat = self.Decoder(tf.concat([z, prob], axis=-1), training=training) 
         return z, c, prob, xhat
 #%%
 class CouplingLayer(K.models.Model):

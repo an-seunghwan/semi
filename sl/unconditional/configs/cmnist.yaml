@@ -1,3 +1,3 @@
 dataset: "cmnist"
 epochs: 100
-ldc: 32
+ldc: 16
