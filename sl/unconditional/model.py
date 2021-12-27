@@ -187,7 +187,8 @@ class AutoEncoder(K.models.Model):
         
         self.FeatureExtractor = WideResNet(num_classes, depth, width, slope, input_shape)
         self.z_layer = layers.Dense(latent_dim) 
-        self.c_layer = layers.Dense(num_classes) 
+        self.c_layer1 = layers.Dense(num_classes, activation='relu')
+        self.c_layer2 = layers.Dense(num_classes) 
         self.Decoder = Decoder(latent_dim, output_channel, activation)
         
         self.latent_dim = latent_dim
@@ -199,7 +200,7 @@ class AutoEncoder(K.models.Model):
     
     def c_encode(self, x, training=False):
         h = self.FeatureExtractor(x, training=training)
-        c = self.c_layer(h)
+        c = self.c_layer2(self.c_layer1(h))
         return c
     
     def decode(self, z, y, training=False):
@@ -209,7 +210,7 @@ class AutoEncoder(K.models.Model):
     def call(self, x, training=True):
         h = self.FeatureExtractor(x, training=training)
         z = self.z_layer(h)
-        c = self.c_layer(h)
+        c = self.c_layer2(self.c_layer1(h))
         prob = tf.nn.softmax(c)
         xhat = self.Decoder(z, prob, training=training) 
         return z, c, prob, xhat
