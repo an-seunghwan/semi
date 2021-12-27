@@ -191,7 +191,7 @@ def load_config(args):
 #         label[:, i] = 1
 #         xhat = model.ae.decode(z, label, training=False)
 #         plt.subplot(1, num_classes+1, i+2)
-#         plt.imshow((xhat[0] + 1) / 2)
+#         plt.imshow(xhat[0])
 #         plt.title('{}'.format(i))
 #         plt.axis('off')
 #     plt.savefig(buf, format='png')
@@ -218,7 +218,7 @@ def generate_and_save_images(model, image, num_classes, step, save_dir):
         label[:, i] = 1
         xhat = model.ae.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
-        plt.imshow((xhat[0] + 1) / 2)
+        plt.imshow(xhat[0])
         plt.title('{}'.format(i))
         plt.axis('off')
     plt.savefig('{}/image_at_epoch_{}.png'.format(save_dir, step))
