@@ -420,7 +420,7 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
         })
     
     if epoch % args['reconstruct_freq'] == 0:
-        generate_and_save_images(model, image[0][tf.newaxis, ...], num_classes, epoch, f'{log_path}/{current_time}')
+        generate_and_save_images(model, image[0][tf.newaxis, ...], num_classes, epoch, f'logs/{args["dataset"]}/{current_time}')
     
     # if epoch % args['reconstruct_freq'] == 0:
     #     sample_recon = generate_and_save_images(model, image[0][tf.newaxis, ...], num_classes)
