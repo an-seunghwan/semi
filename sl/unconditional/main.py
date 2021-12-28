@@ -4,7 +4,6 @@
 211224: classification log(0) nan loss -> tf.math.log(tf.clip_by_value(x, 1e-10, 1.0))
 211227: image file directly save
 211227: stop gradient is done outside of model
-211227: add dense layer to probabilty
 211227: model_separate.py (decouple z and c encoders)
 '''
 #%%
