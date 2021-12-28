@@ -3,7 +3,7 @@ dataset : cmnist
 batch_size : 128
 epochs : 100
 start_epoch : 0
-reconstruct_freq : 50
+reconstruct_freq : 3
 validation_examples : 5000
 augment : False
 depth : 28
@@ -13,7 +13,7 @@ drop_rate : 0
 br : False
 x_sigma : 1
 latent_dim : 128
-lambda1 : 5.0
+lambda1 : 10.0
 lambda2 : 10.0
 lr : 0.001
 z_mask : checkerboard
@@ -30,4 +30,5 @@ decay_rate : 0.95
 gradclip : 1.0
 config_path : configs/cmnist.yaml
 
-- shared NN parameter between z and c encoder
+- separate z and c encoder
+- but c encoder is more complex than z encoder
