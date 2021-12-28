@@ -378,9 +378,7 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
         with tf.GradientTape(persistent=True) as tape:
             # [[_, _, prob, xhat], nf_args] = model(image)
             z, c, prob, xhat = model.ae(image, training=True)
-            z_ = tf.stop_gradient(z)
-            c_ = tf.stop_gradient(c)
-            nf_args = model.prior(z_, c_, training=True)
+            nf_args = model.prior(z, c)
 
             '''reconstruction'''
             if args['br']:

@@ -172,7 +172,6 @@ class CouplingLayer(K.models.Model):
             layers.Dense(self.output_dim, activation=self.activation, kernel_regularizer=K.regularizers.l2(reg))
             ]
     
-    @tf.function
     def call(self, x):
         for d in self.dense:
             x = d(x)
@@ -215,7 +214,6 @@ class NormalizingFlow(K.models.Model):
             )
         return x
     
-    @tf.function
     def call(self, x, sum_log_abs_det_jacobians=None):
         if sum_log_abs_det_jacobians is None:
             sum_log_abs_det_jacobians = 0
@@ -262,10 +260,11 @@ class Prior(K.models.Model):
     def cflow(self, x):
         return self.cNF.inverse(x)
     
-    @tf.function
     def call(self, z, c):
-        z_sg, sum_log_abs_det_jacobians1 = self.zNF(z)
-        c_sg, sum_log_abs_det_jacobians2 = self.cNF(c)
+        z_ = tf.stop_gradient(z)
+        z_sg, sum_log_abs_det_jacobians1 = self.zNF(z_)
+        c_ = tf.stop_gradient(c)
+        c_sg, sum_log_abs_det_jacobians2 = self.cNF(c_)
         return [z_sg, sum_log_abs_det_jacobians1, c_sg, sum_log_abs_det_jacobians2]
 #%%
 class VAE(K.models.Model):
@@ -279,8 +278,6 @@ class VAE(K.models.Model):
     @tf.function
     def call(self, x, training=True):
         z, c, prob, xhat = self.ae(x, training=training)
-        z_ = tf.stop_gradient(z)
-        c_ = tf.stop_gradient(c)
-        nf_args = self.prior(z_, c_)
+        nf_args = self.prior(z, c)
         return [[z, c, prob, xhat], nf_args]
 #%%
