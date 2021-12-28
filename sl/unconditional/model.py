@@ -112,8 +112,13 @@ class Decoder(K.models.Model):
         super(Decoder, self).__init__(name=name, **kwargs)
         self.num_feature = 32
         
-        self.reshape1 = layers.Reshape((4, 4, latent_dim // 16))
-        self.dense = layers.Dense(16, use_bias=False)
+        self.latent_dim = latent_dim
+        if self.latent_dim < 16:
+            self.dense1 = layers.Dense(16, use_bias=False)
+            self.reshape1 = layers.Reshape((4, 4, 1))
+        else:
+            self.reshape1 = layers.Reshape((4, 4, latent_dim // 16))
+        self.dense2 = layers.Dense(16, use_bias=False)
         self.reshape2 = layers.Reshape((4, 4, 1))
         self.norm = layers.BatchNormalization()
         self.relu = layers.ReLU()
@@ -156,8 +161,11 @@ class Decoder(K.models.Model):
     
     @tf.function
     def call(self, z, prob, training=True):
-        h1 = self.reshape1(z)
-        h2 = self.reshape2(self.dense(prob))
+        if self.latent_dim < 16:
+            h1 = self.reshape1(self.dense1(z))
+        else:
+            h1 = self.reshape1(z)
+        h2 = self.reshape2(self.dense2(prob))
         h = tf.concat([h1, h2], axis=-1)
         h = self.relu(self.norm(h))
         
