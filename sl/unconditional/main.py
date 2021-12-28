@@ -207,7 +207,7 @@ def load_config(args):
 #     return image
 
 def generate_and_save_images(model, image, num_classes, step, save_dir):
-    z = model.ae.z_encode(image, training=False)
+    z = model.ae.z_encoder(image, training=False)
     
     plt.figure(figsize=(10, 2))
     plt.subplot(1, num_classes+1, 1)
@@ -217,7 +217,7 @@ def generate_and_save_images(model, image, num_classes, step, save_dir):
     for i in range(num_classes):
         label = np.zeros((z.shape[0], num_classes))
         label[:, i] = 1
-        xhat = model.ae.decode(z, label, training=False)
+        xhat = model.ae.decoder(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
         plt.imshow(xhat[0])
         plt.title('{}'.format(i))
@@ -394,7 +394,7 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
             cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(prob, 1e-10, 1.0)), axis=-1))
             
             '''mutual information'''
-            prob_recon = tf.nn.softmax(model.ae.c_encode(xhat, training=True), axis=-1)
+            prob_recon = tf.nn.softmax(model.ae.c_encoder(xhat, training=True), axis=-1)
             # info = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(prob_recon), axis=-1))
             info = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(prob_recon, 1e-10, 1.0)), axis=-1))
             

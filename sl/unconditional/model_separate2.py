@@ -142,25 +142,14 @@ class AutoEncoder(K.models.Model):
         
         self.z_encoder = zEncoder(latent_dim)
         self.c_encoder = cEncoder(num_classes) 
-        self.Decoder = Decoder(latent_dim, output_channel, activation)
-        
-    def z_encode(self, x, training=False):
-        z = self.z_encoder(x, training=training)
-        return z
-    
-    def c_encode(self, x, training=False):
-        c = self.c_encoder(x, training=training)
-        return c
-    
-    def decode(self, z, y, training=False):
-        return self.Decoder(z, y, training=training) 
+        self.decoder = Decoder(latent_dim, output_channel, activation)
         
     @tf.function
     def call(self, x, training=True):
         z = self.z_encoder(x, training=training)
         c = self.c_encoder(x, training=training)
         prob = tf.nn.softmax(c, axis=-1)
-        xhat = self.Decoder(z, prob, training=training) 
+        xhat = self.decoder(z, prob, training=training) 
         return z, c, prob, xhat
 #%%
 class CouplingLayer(K.models.Model):
@@ -182,7 +171,8 @@ class CouplingLayer(K.models.Model):
             ] + [
             layers.Dense(self.output_dim, activation=self.activation, kernel_regularizer=K.regularizers.l2(reg))
             ]
-        
+    
+    @tf.function
     def call(self, x):
         for d in self.dense:
             x = d(x)
@@ -224,7 +214,8 @@ class NormalizingFlow(K.models.Model):
                    tf.repeat(tf.math.exp(- self.s[i](x_masked)), 2, axis=1))
             )
         return x
-        
+    
+    @tf.function
     def call(self, x, sum_log_abs_det_jacobians=None):
         if sum_log_abs_det_jacobians is None:
             sum_log_abs_det_jacobians = 0
@@ -271,6 +262,7 @@ class Prior(K.models.Model):
     def cflow(self, x):
         return self.cNF.inverse(x)
     
+    @tf.function
     def call(self, z, c):
         z_sg, sum_log_abs_det_jacobians1 = self.zNF(z)
         c_sg, sum_log_abs_det_jacobians2 = self.cNF(c)
@@ -283,7 +275,8 @@ class VAE(K.models.Model):
         self.ae = AutoEncoder(num_classes, args['latent_dim'])
         self.prior = Prior(args, num_classes)
         self.prior.build_graph()
-        
+    
+    @tf.function
     def call(self, x, training=True):
         z, c, prob, xhat = self.ae(x, training=training)
         z_ = tf.stop_gradient(z)
