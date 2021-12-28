@@ -26,7 +26,7 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model_separate import VAE
+from model_separate2 import VAE
 # from criterion import ELBO_criterion
 from mixup import augment
 #%%
@@ -103,7 +103,7 @@ def get_args():
     #                     help='The mutual information bounding between x and the discrete variable z')
 
     '''VAE Loss Function Parameters'''
-    parser.add_argument('--lambda1', default=10., type=float,
+    parser.add_argument('--lambda1', default=5., type=float,
                         help="adjust classification loss weight")
     parser.add_argument('--lambda2', default=10., type=float,
                         help="adjust mutual information loss weight")
