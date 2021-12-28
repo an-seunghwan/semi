@@ -45,10 +45,10 @@ class cEncoder(K.models.Model):
     def __init__(self, num_classes, name="Encoder", **kwargs):
         super(cEncoder, self).__init__(name=name, **kwargs)
         self.conv = [
-            ConvLayer(self.params, 16, 5, 2), # 16x16
-            ConvLayer(self.params, 32, 5, 2), # 8x8
-            ConvLayer(self.params, 64, 3, 2), # 4x4
-            ConvLayer(self.params, 128, 3, 2) # 2x2
+            ConvLayer(16, 5, 2), # 16x16
+            ConvLayer(32, 5, 2), # 8x8
+            ConvLayer(64, 3, 2), # 4x4
+            ConvLayer(128, 3, 2) # 2x2
             ] 
         self.dense = layers.Dense(256)
         self.norm = layers.BatchNormalization()
