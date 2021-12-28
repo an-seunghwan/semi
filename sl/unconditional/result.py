@@ -1,19 +1,17 @@
 #%%
-'''
-20211223-210235
-'''
-#%%
 import argparse
 import os
 
-# os.chdir(r'D:\semi\sl\unconditional') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/sl/unconditional') # main directory (repository)
+os.chdir(r'D:\semi\sl\unconditional') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/sl/unconditional') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras as K
+import tensorflow_datasets as tfds
 import tqdm
 import yaml
+from PIL import Image
 import io
 import matplotlib.pyplot as plt
 
@@ -24,28 +22,6 @@ from preprocess import fetch_dataset
 from model import VAE
 # from criterion import ELBO_criterion
 from mixup import augment
-#%%
-config = tf.compat.v1.ConfigProto()
-'''
-GPU 메모리를 전부 할당하지 않고, 아주 적은 비율만 할당되어 시작됨
-프로세스의 메모리 수요에 따라 자동적으로 증가
-but
-GPU 메모리를 처음부터 전체 비율을 사용하지 않음
-'''
-config.gpu_options.allow_growth = True
-
-# '''
-# 분산 학습 설정
-# '''
-# strategy = tf.distribute.MirroredStrategy()
-# session = tf.compat.v1.InteractiveSession(config=config)
-#%%
-# import ast
-# def arg_as_list(s):
-#     v = ast.literal_eval(s)
-#     if type(v) is not list:
-#         raise argparse.ArgumentTypeError("Argument \"%s\" is not a list" % (s))
-#     return v
 #%%
 def get_args():
     parser = argparse.ArgumentParser('parameters')
@@ -159,7 +135,7 @@ def get_args():
     parser.add_argument('--config_path', type=str, default=None, 
                         help='path to yaml config file, overwrites args')
 
-    return parser.parse_args()
+    return parser
 #%%
 def load_config(args):
     dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -171,49 +147,152 @@ def load_config(args):
             args[key] = config[key]
     return args
 #%%
-def generate_and_save_images(model, image, num_classes):
-    z = model.ae.z_encode(image, training=False)
-    
-    buf = io.BytesIO()
-    figure = plt.figure(figsize=(10, 2))
+args = vars(get_args().parse_args(args=['--config_path', 'configs/cmnist.yaml']))
+
+dir_path = os.path.dirname(os.path.realpath(__file__))
+if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
+    args = load_config(args)
+
+log_path = f'logs/{args["dataset"]}'
+
+dataset, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
+
+model_path = log_path + '/20211228-131009'
+model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
+model = VAE(args, num_classes)
+model.build(input_shape=(None, 32, 32, 3))
+model.load_weights(model_path + '/' + model_name)
+model.summary()
+#%%
+'''style transfer'''
+x = []
+y = []
+for example in dataset:
+    x.append(example[0])
+    y.append(example[1])
+    if len(x) == 100: break
+x = tf.cast(np.array(x), tf.float32)
+y = tf.cast(np.array(y), tf.float32)
+latent = model.ae.z_encode(x, training=False)
+#%%
+for idx in tqdm.tqdm(range(100)):
+    plt.figure(figsize=(20, 10))
     plt.subplot(1, num_classes+1, 1)
-    plt.imshow((image[0] + 1) / 2)
+    plt.imshow(x[idx])
     plt.title('original')
     plt.axis('off')
-    for i in range(num_classes):
-        label = np.zeros((z.shape[0], num_classes))
-        label[:, i] = 1
-        xhat = model.ae.decode(z, label, training=False)
-        plt.subplot(1, num_classes+1, i+2)
-        plt.imshow((xhat[0] + 1) / 2)
-        plt.title('{}'.format(i))
-        plt.axis('off')
-    plt.savefig(buf, format='png')
-    # Closing the figure prevents it from being displayed directly inside the notebook.
-    plt.close(figure)
-    buf.seek(0)
-    # Convert PNG buffer to TF image
-    # Convert PNG buffer to TF image
-    image = tf.image.decode_png(buf.getvalue(), channels=4)
-    # Add the batch dimension
-    image = tf.expand_dims(image, 0)
-    return image
-#%%
-def main():
-    '''argparse to dictionary'''
-    args = vars(get_args())
-    # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/cmnist.yaml']))
-
-    dir_path = os.path.dirname(os.path.realpath(__file__))
-    if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
-        args = load_config(args)
-
-    log_path = f'logs/{args["dataset"]}'
-
-    dataset, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     
-    model = VAE(args, num_classes)
-    model.build(input_shape=(None, 32, 32, 3))
-    # model.summary()
+    for i in range(num_classes):
+        label = np.zeros((1, num_classes))
+        label[:, i] = 1
+        xhat = model.ae.decode(latent.numpy()[[idx]], label, training=False)
+
+        plt.subplot(1, num_classes+1, i+2)
+        plt.imshow(xhat[0])
+        plt.title('given label {}'.format(i))
+        plt.axis('off')
+    plt.savefig('{}/img{}.png'.format(model_path, idx),
+                dpi=200, bbox_inches="tight", pad_inches=0.1)
+    # plt.show()
+    plt.close()
+#%%
+style = []
+for idx in [5, 16, 17, 30, 46, 58, 69, 80, 92, 97]:
+    style.append(Image.open('{}/img{}.png'.format(model_path, idx)))
+    
+fig, axes = plt.subplots(10, 1, figsize=(10, 6))
+for i in range(len(style)):
+    axes.flatten()[i].imshow(style[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/style_transfer.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+plt.close()
+#%%
+'''interpolation'''
+z_epsilon1, _ = model.prior.zNF(latent.numpy()[[17], :])
+z_epsilon2, _ = model.prior.zNF(latent.numpy()[[30], :])
+
+interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 20))
+z_interpolation = model.prior.zflow(interpolation)
+
+label = np.zeros((z_interpolation.shape[0], num_classes))
+label[:, 3] = 1
+xhat_ = model.ae.decode(z_interpolation, label, training=False)
+
+fig, axes = plt.subplots(1, 20, figsize=(20, 6))
+for i in range(len(z_interpolation)):
+    axes.flatten()[i].imshow(xhat_[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/style_interpolation.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+plt.close()
+#%%
+'''manipulation'''
+idx = [15, 84, 26, 45, 46, 52, 97, 54, 58, 92]
+plt.figure(figsize=(15, 20))
+for j in range(len(idx)):
+    z = model.ae.z_encode(tf.cast(x.numpy()[[idx[j]]], tf.float32), training=False)
+    p = np.linspace(1, 0, 11)
+    num1 = 4
+    num2 = 9
+
+    for i in range(len(p)):
+        attr = np.zeros((1, num_classes))
+        attr[:, num1] = p[i]
+        attr[:, num2] = 1 - p[i]
+        xhat = model.ae.decode(z, attr, training=False)
+
+        plt.subplot(len(idx), len(p), len(p) * j + i + 1)
+        plt.imshow(xhat[0])
+        plt.title('p of {}: {:.1f}'.format(num1, p[i]))
+        plt.axis('off')
+plt.savefig('{}/manipulation.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+plt.close()
+#%%
+'''style latent random sampling of c'''
+tf.random.set_seed(1)
+z = model.ae.z_encode(tf.cast(x.numpy()[[idx[0]]], tf.float32), training=False)
+c_epsilon = tf.random.normal(shape=(100, num_classes))
+c = model.prior.cflow(c_epsilon)
+pi = tf.nn.softmax(c)
+xhat = model.ae.decode(tf.tile(z, (len(pi), 1)), pi, training=False)
+
+fig, axes = plt.subplots(10, 10, figsize=(15, 15))
+for i in range(100):
+    axes.flatten()[i].imshow(xhat[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/inverse_flow_c.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+plt.close()
+#%%
+'''style latent random sampling of z'''
+tf.random.set_seed(1)
+z_epsilon = tf.random.normal(shape=(100, args['latent_dim']))
+z = model.prior.zflow(z_epsilon)
+pi = np.zeros((len(z), num_classes))
+pi[:, 4] = 1
+xhat = model.ae.decode(z, pi, training=False)
+
+fig, axes = plt.subplots(10, 10, figsize=(15, 15))
+for i in range(100):
+    axes.flatten()[i].imshow(xhat[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/inverse_flow_z.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+plt.close()
+#%%
+# np.mean(latent.numpy(), axis=0) # why sparse?
+# np.mean(style_latent.numpy(), axis=0)
+# np.mean(epsilon.numpy(), axis=0)
+# np.mean(style_epsilon.numpy(), axis=0)
 #%%
