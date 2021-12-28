@@ -229,7 +229,6 @@ class CouplingLayer(K.models.Model):
             layers.Dense(self.output_dim, activation=self.activation, kernel_regularizer=K.regularizers.l2(reg))
             ]
     
-    @tf.function
     def call(self, x):
         for d in self.dense:
             x = d(x)
@@ -272,7 +271,6 @@ class NormalizingFlow(K.models.Model):
             )
         return x
     
-    @tf.function    
     def call(self, x, sum_log_abs_det_jacobians=None):
         if sum_log_abs_det_jacobians is None:
             sum_log_abs_det_jacobians = 0
@@ -319,7 +317,6 @@ class Prior(K.models.Model):
     def cflow(self, x):
         return self.cNF.inverse(x)
     
-    @tf.function
     def call(self, z, c):
         z_sg, sum_log_abs_det_jacobians1 = self.zNF(z)
         c_sg, sum_log_abs_det_jacobians2 = self.cNF(c)

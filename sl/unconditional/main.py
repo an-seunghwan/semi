@@ -26,7 +26,7 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model_separate2 import VAE
+from model_separate import VAE
 # from criterion import ELBO_criterion
 from mixup import augment
 #%%
@@ -207,7 +207,7 @@ def load_config(args):
 #     return image
 
 def generate_and_save_images(model, image, num_classes, step, save_dir):
-    z = model.ae.z_encoder(image, training=False)
+    z = model.ae.z_encode(image, training=False)
     
     plt.figure(figsize=(10, 2))
     plt.subplot(1, num_classes+1, 1)
@@ -217,7 +217,7 @@ def generate_and_save_images(model, image, num_classes, step, save_dir):
     for i in range(num_classes):
         label = np.zeros((z.shape[0], num_classes))
         label[:, i] = 1
-        xhat = model.ae.decoder(z, label, training=False)
+        xhat = model.ae.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
         plt.imshow(xhat[0])
         plt.title('{}'.format(i))
@@ -376,9 +376,11 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
             image = augment(image)
         
         with tf.GradientTape(persistent=True) as tape:
-            # [[_, _, prob, xhat], nf_args] = model(image)
+            # [[_, _, prob, xhat], nf_args] = model(image, training=True)
             z, c, prob, xhat = model.ae(image, training=True)
-            nf_args = model.prior(z, c)
+            z_ = tf.stop_gradient(z)
+            c_ = tf.stop_gradient(c)
+            nf_args = model.prior(z_, c_)
 
             '''reconstruction'''
             if args['br']:
@@ -392,7 +394,7 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes):
             cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(prob, 1e-10, 1.0)), axis=-1))
             
             '''mutual information'''
-            prob_recon = tf.nn.softmax(model.ae.c_encoder(xhat, training=True), axis=-1)
+            prob_recon = tf.nn.softmax(model.ae.c_encode(xhat, training=True), axis=-1)
             # info = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(prob_recon), axis=-1))
             info = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(prob_recon, 1e-10, 1.0)), axis=-1))
             
