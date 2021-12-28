@@ -26,7 +26,7 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model_separate import VAE
+from model import VAE
 # from criterion import ELBO_criterion
 from mixup import augment
 #%%
