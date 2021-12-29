@@ -2,6 +2,7 @@
 '''
 211222: lr schedule -> modify lr manually, instead of tensorflow function
 211227: tf.abs -> tf.math.abs
+211229: convert dmi -> tf.cast(dmi, tf.float32)
 '''
 #%%
 import argparse
@@ -318,7 +319,7 @@ def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_cl
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''mutual information'''
-    dmi = weight_schedule(epoch, args['akb'], args['dmi'])
+    dmi = tf.cast(weight_schedule(epoch, args['akb'], args['dmi']), tf.float32)
     '''elbo part weight'''
     ew = weight_schedule(epoch, args['aew'], args['ewm'])
     '''mix-up parameters'''
