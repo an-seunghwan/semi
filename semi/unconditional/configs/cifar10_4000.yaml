@@ -1,0 +1,4 @@
+dataset: "cifar10"
+epochs: 300
+latent_dim: 128
+labeled_examples: 4000
