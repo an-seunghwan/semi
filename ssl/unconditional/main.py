@@ -364,8 +364,9 @@ def train(datasetL, datasetU, model, optimizer, optimizer_nf, epoch, args, num_c
     # ucw = weight_schedule(epoch, round(args['wmf'] * args['epochs']), args['wrd'])
 
     shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
+    shuffle_and_batch2 = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=16, drop_remainder=False)
 
-    iteratorL = iter(shuffle_and_batch(datasetL))
+    iteratorL = iter(shuffle_and_batch2(datasetL))
     iteratorU = iter(shuffle_and_batch(datasetU))
     
     iteration = 60000 // args['batch_size'] 
@@ -375,7 +376,7 @@ def train(datasetL, datasetU, model, optimizer, optimizer_nf, epoch, args, num_c
         try:
             imageL, labelL = next(iteratorL)
         except:
-            iteratorL = iter(shuffle_and_batch(datasetL))
+            iteratorL = iter(shuffle_and_batch2(datasetL))
             imageL, labelL = next(iteratorL)
         try:
             imageU, _ = next(iteratorU)
