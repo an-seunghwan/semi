@@ -237,7 +237,7 @@ def main():
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
         args = load_config(args)
 
-    log_path = f'logs/{args["dataset"]}'
+    log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
     datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     
