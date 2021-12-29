@@ -157,7 +157,7 @@ log_path = f'logs/{args["dataset"]}'
 
 dataset, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20211228-131009'
+model_path = log_path + '/20211228-203211'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 model.build(input_shape=(None, 32, 32, 3))
@@ -197,7 +197,7 @@ for idx in tqdm.tqdm(range(100)):
     plt.close()
 #%%
 style = []
-for idx in [5, 16, 17, 30, 46, 58, 69, 80, 92, 97]:
+for idx in [1, 17, 21, 31, 32, 48, 58, 68, 81, 84]:
     style.append(Image.open('{}/img{}.png'.format(model_path, idx)))
     
 fig, axes = plt.subplots(10, 1, figsize=(10, 6))
@@ -211,8 +211,8 @@ plt.savefig('{}/style_transfer.png'.format(model_path),
 plt.close()
 #%%
 '''interpolation'''
-z_epsilon1, _ = model.prior.zNF(latent.numpy()[[17], :])
-z_epsilon2, _ = model.prior.zNF(latent.numpy()[[30], :])
+z_epsilon1, _ = model.prior.zNF(latent.numpy()[[1], :])
+z_epsilon2, _ = model.prior.zNF(latent.numpy()[[32], :])
 
 interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 20))
 z_interpolation = model.prior.zflow(interpolation)
@@ -232,7 +232,7 @@ plt.savefig('{}/style_interpolation.png'.format(model_path),
 plt.close()
 #%%
 '''manipulation'''
-idx = [15, 84, 26, 45, 46, 52, 97, 54, 58, 92]
+idx = [1, 6, 8, 17, 31, 48, 56, 65, 80, 84]
 plt.figure(figsize=(15, 20))
 for j in range(len(idx)):
     z = model.ae.z_encode(tf.cast(x.numpy()[[idx[j]]], tf.float32), training=False)
