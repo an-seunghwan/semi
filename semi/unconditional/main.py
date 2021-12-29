@@ -364,7 +364,7 @@ def train(datasetL, datasetU, model, optimizer, optimizer_nf, epoch, args, num_c
     # ucw = weight_schedule(epoch, round(args['wmf'] * args['epochs']), args['wrd'])
 
     shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
-    shuffle_and_batch2 = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=16, drop_remainder=False)
+    shuffle_and_batch2 = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=32, drop_remainder=False)
 
     iteratorL = iter(shuffle_and_batch2(datasetL))
     iteratorU = iter(shuffle_and_batch(datasetU))
