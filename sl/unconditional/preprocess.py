@@ -83,17 +83,28 @@ def split_dataset(dataset, num_validations, num_classes, args):
     for example in tqdm(iter(dataset), desc='split_dataset'):
         label = int(example['label'])
         counter[label] += 1
-        if counter[label] <= (num_validations / num_classes):
-            validation.append({
+        if args['dataset'] == 'cmnist':
+            if counter[label] <= (num_validations / num_classes):
+                validation.append({
+                    # 'image': example['image'],
+                    'image': colored_mnist(example['image'], args),
+                    'label': example['label']
+                })
+            labeled.append({
                 # 'image': example['image'],
                 'image': colored_mnist(example['image'], args),
                 'label': example['label']
             })
-        labeled.append({
-            # 'image': example['image'],
-            'image': colored_mnist(example['image'], args),
-            'label': example['label']
-        })
+        else:
+            if counter[label] <= (num_validations / num_classes):
+                validation.append({
+                    'image': example['image'],
+                    'label': example['label']
+                })
+            labeled.append({
+                'image': example['image'],
+                'label': example['label']
+            })
     labeled = _list_to_tf_dataset(labeled, args)
     validation = _list_to_tf_dataset(validation, args)
     return labeled, validation

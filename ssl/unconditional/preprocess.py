@@ -41,7 +41,6 @@ def colored_mnist(image, args):
     '''
     FIXME
     '''
-    tf.random.set_seed(args['seed'])
     image = tf.image.resize(image, [32, 32], method='nearest')
     
     if tf.random.uniform((1, 1)) > 0.5:
@@ -76,13 +75,13 @@ def _list_to_tf_dataset(dataset, args):
         # output_shapes={'image': (args['image_size'], args['image_size'], args['channel']), 'label': ()}
     )
 #%%
+'''
+- labeled and validation are disjoint
+- unlabeled includes validation
+- unlabeled includes labeled
+'''
 def split_dataset(dataset, num_labeled, num_validations, num_classes, args):
-    '''
-    - unlabeled includes labeled
-    - unlabeled includes validation
-    - labeled and validation are disjoint sets
-    '''
-    dataset = dataset.shuffle(buffer_size=10000)
+    dataset = dataset.shuffle(buffer_size=10000, seed=args['seed'])
     counter = [0 for _ in range(num_classes)]
     labeled = []
     unlabeled = []
@@ -90,28 +89,50 @@ def split_dataset(dataset, num_labeled, num_validations, num_classes, args):
     for example in tqdm(iter(dataset), desc='split_dataset'):
         label = int(example['label'])
         counter[label] += 1
-        if counter[label] <= (num_validations / num_classes):
-            validation.append({
-                # 'image': example['image'],
+        if args['dataset'] == 'cmnist':
+            if counter[label] <= (num_validations / num_classes):
+                validation.append({
+                    'image': colored_mnist(example['image'], args),
+                    'label': example['label']
+                })
+            elif counter[label] <= (num_validations / num_classes + num_labeled / num_classes):
+                labeled.append({
+                    'image': colored_mnist(example['image'], args),
+                    'label': example['label']
+                })
+            unlabeled.append({
                 'image': colored_mnist(example['image'], args),
-                'label': example['label']
+                'label': tf.convert_to_tensor(-1, dtype=tf.int64)
             })
-            # continue
-        elif counter[label] <= (num_validations / num_classes + num_labeled / num_classes):
-            labeled.append({
-                # 'image': example['image'],
-                'image': colored_mnist(example['image'], args),
-                'label': example['label']
+        else:
+            if counter[label] <= (num_validations / num_classes):
+                validation.append({
+                    'image': example['image'],
+                    'label': example['label']
+                })
+            elif counter[label] <= (num_validations / num_classes + num_labeled / num_classes):
+                labeled.append({
+                    'image': example['image'],
+                    'label': example['label']
+                })
+            unlabeled.append({
+                'image': example['image'],
+                'label': tf.convert_to_tensor(-1, dtype=tf.int64)
             })
-        unlabeled.append({
-            # 'image': example['image'],
-            'image': colored_mnist(example['image'], args),
-            'label': tf.convert_to_tensor(-1, dtype=tf.int64)
-        })
     labeled = _list_to_tf_dataset(labeled, args)
     unlabeled = _list_to_tf_dataset(unlabeled, args)
     validation = _list_to_tf_dataset(validation, args)
     return labeled, unlabeled, validation
+#%%
+def cmnist_test_dataset(dataset, args):
+    test = []
+    for example in tqdm(iter(dataset), desc='cmnist_test_dataset'):
+        test.append({
+            'image': colored_mnist(example['image'], args),
+            'label': example['label']
+        })
+    test = _list_to_tf_dataset(test, args)
+    return test
 #%%
 def normalize_image(image):
     image = image / 255.
@@ -156,6 +177,10 @@ def fetch_dataset(args, log_path):
                                                 num_classes=num_classes,
                                                 args=args)
         
+        if args['dataset'] == 'cmnist':
+            test = cmnist_test_dataset(dataset=test,
+                                       args=args)
+            
         for name, dataset in [('trainL', trainL), ('trainU', trainU), ('validation', validation), ('test', test)]:
             writer = tf.io.TFRecordWriter(f'{dataset_path}/{name}.tfrecord'.encode('utf-8'))
             for x in tfds.as_numpy(dataset):

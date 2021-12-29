@@ -164,80 +164,135 @@ model.build(input_shape=(None, 32, 32, 3))
 model.load_weights(model_path + '/' + model_name)
 model.summary()
 #%%
+'''style transfer'''
 x = []
 y = []
 for example in dataset:
     x.append(example[0])
     y.append(example[1])
-    if len(x) == 5000: break
+    if len(x) == 100: break
 x = tf.cast(np.array(x), tf.float32)
 y = tf.cast(np.array(y), tf.float32)
+latent = model.ae.z_encode(x, training=False)
 #%%
-'''interpolation: c'''
-lam = 0.2
+for idx in tqdm.tqdm(range(100)):
+    plt.figure(figsize=(20, 10))
+    plt.subplot(1, num_classes+1, 1)
+    plt.imshow(x[idx])
+    plt.title('original')
+    plt.axis('off')
+    
+    for i in range(num_classes):
+        label = np.zeros((1, num_classes))
+        label[:, i] = 1
+        xhat = model.ae.decode(latent.numpy()[[idx]], label, training=False)
+
+        plt.subplot(1, num_classes+1, i+2)
+        plt.imshow(xhat[0])
+        plt.title('given label {}'.format(i))
+        plt.axis('off')
+    plt.savefig('{}/img{}.png'.format(model_path, idx),
+                dpi=200, bbox_inches="tight", pad_inches=0.1)
+    # plt.show()
+    plt.close()
+#%%
+style = []
+for idx in [1, 17, 21, 31, 32, 48, 58, 68, 81, 84]:
+    style.append(Image.open('{}/img{}.png'.format(model_path, idx)))
+    
+fig, axes = plt.subplots(10, 1, figsize=(10, 6))
+for i in range(len(style)):
+    axes.flatten()[i].imshow(style[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/style_transfer.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+plt.close()
+#%%
+'''interpolation'''
+z_epsilon1, _ = model.prior.zNF(latent.numpy()[[1], :])
+z_epsilon2, _ = model.prior.zNF(latent.numpy()[[32], :])
+
+interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 20))
+z_interpolation = model.prior.zflow(interpolation)
+
+label = np.zeros((z_interpolation.shape[0], num_classes))
+label[:, 3] = 1
+xhat_ = model.ae.decode(z_interpolation, label, training=False)
+
+fig, axes = plt.subplots(1, 20, figsize=(20, 6))
+for i in range(len(z_interpolation)):
+    axes.flatten()[i].imshow(xhat_[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/style_interpolation.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+plt.close()
+#%%
+'''manipulation'''
+idx = [1, 6, 8, 17, 31, 48, 56, 65, 80, 84]
+plt.figure(figsize=(15, 20))
+for j in range(len(idx)):
+    z = model.ae.z_encode(tf.cast(x.numpy()[[idx[j]]], tf.float32), training=False)
+    p = np.linspace(1, 0, 11)
+    num1 = 4
+    num2 = 9
+
+    for i in range(len(p)):
+        attr = np.zeros((1, num_classes))
+        attr[:, num1] = p[i]
+        attr[:, num2] = 1 - p[i]
+        xhat = model.ae.decode(z, attr, training=False)
+
+        plt.subplot(len(idx), len(p), len(p) * j + i + 1)
+        plt.imshow(xhat[0])
+        plt.title('p of {}: {:.1f}'.format(num1, p[i]))
+        plt.axis('off')
+plt.savefig('{}/manipulation.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+plt.close()
+#%%
+'''style latent random sampling of c'''
 tf.random.set_seed(1)
-x_ = tf.gather(x, tf.random.shuffle(tf.range(tf.shape(x)[0])))
-x_inter = lam * x + (1. - lam) * x_
+z = model.ae.z_encode(tf.cast(x.numpy()[[idx[0]]], tf.float32), training=False)
+c_epsilon = tf.random.normal(shape=(100, num_classes))
+c = model.prior.cflow(c_epsilon)
+pi = tf.nn.softmax(c)
+xhat = model.ae.decode(tf.tile(z, (len(pi), 1)), pi, training=False)
 
-# interpolation on x
-prob_x_inter = tf.nn.softmax(model.ae.c_encode(x_inter))
-
-# interpolation on c
-prob_c_inter = tf.nn.softmax(lam * model.ae.c_encode(x) + (1. - lam) * model.ae.c_encode(x_))
-
-# interpolation on softmax
-prob1 = tf.nn.softmax(model.ae.c_encode(x))
-prob2 = tf.nn.softmax(model.ae.c_encode(x_))
-prob_prob_inter = lam * prob1 + (1. - lam) * prob2
-
-# interpolation on Gaussian
-c_epsilon1, _ = model.prior.cNF(model.ae.c_encode(x))
-c_epsilon2, _ = model.prior.cNF(model.ae.c_encode(x_))
-c_interpolation = tf.nn.softmax(model.prior.cflow(lam * c_epsilon1 + (1. - lam) * c_epsilon2))
+fig, axes = plt.subplots(10, 10, figsize=(15, 15))
+for i in range(100):
+    axes.flatten()[i].imshow(xhat[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/inverse_flow_c.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+plt.close()
 #%%
-non_smooth_gap = np.zeros((10, ))
-prob_gap = np.zeros((10, ))
-flow_gap = np.zeros((10, ))
-for idx in range(5000):
-    non_smooth_gap += np.abs((prob_x_inter.numpy()[idx] - prob_c_inter.numpy()[idx])) / 5000
-    prob_gap += np.abs((prob_x_inter.numpy()[idx] - prob_prob_inter.numpy()[idx])) / 5000
-    flow_gap += np.abs((prob_x_inter.numpy()[idx] - c_interpolation.numpy()[idx])) / 5000
-
-plt.figure(figsize=(7, 4))
-plt.plot(np.arange(10), non_smooth_gap, label='non-smooth')
-plt.plot(np.arange(10), prob_gap, label='softmax')
-plt.plot(np.arange(10), flow_gap, label='flow')
-plt.legend()
-plt.show()
-#%%
-'''interpolation: z'''
-lam = 0.2
+'''style latent random sampling of z'''
 tf.random.set_seed(1)
-x_ = tf.gather(x, tf.random.shuffle(tf.range(tf.shape(x)[0])))
-x_inter = lam * x + (1. - lam) * x_
+z_epsilon = tf.random.normal(shape=(100, args['latent_dim']))
+z = model.prior.zflow(z_epsilon)
+pi = np.zeros((len(z), num_classes))
+pi[:, 4] = 1
+xhat = model.ae.decode(z, pi, training=False)
 
-# interpolation on x
-z_x_inter = model.ae.z_encode(x_inter)
-
-# interpolation on z
-z1 = model.ae.z_encode(x)
-z2 = model.ae.z_encode(x_)
-z_z_inter = lam * z1 + (1. - lam) * z2
-
-# interpolation on Gaussian
-z_epsilon1, _ = model.prior.zNF(z1)
-z_epsilon2, _ = model.prior.zNF(z2)
-z_interpolation = model.prior.zflow(lam * z_epsilon1 + (1. - lam) * z_epsilon2)
+fig, axes = plt.subplots(10, 10, figsize=(15, 15))
+for i in range(100):
+    axes.flatten()[i].imshow(xhat[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/inverse_flow_z.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+plt.close()
 #%%
-non_smooth_gap = np.zeros((6, ))
-flow_gap = np.zeros((6, ))
-for idx in range(5000):
-    non_smooth_gap += np.abs((z_x_inter.numpy()[idx] - z_z_inter.numpy()[idx]) / z_x_inter.numpy()[idx]) / 5000
-    flow_gap += np.abs((z_x_inter.numpy()[idx] - z_interpolation.numpy()[idx]) / z_x_inter.numpy()[idx]) / 5000
-
-plt.figure(figsize=(7, 3))
-plt.plot(np.arange(6), non_smooth_gap, label='non-smooth')
-plt.plot(np.arange(6), flow_gap, label='flow')
-plt.legend()
-plt.show()
+# np.mean(latent.numpy(), axis=0) # why sparse?
+# np.mean(style_latent.numpy(), axis=0)
+# np.mean(epsilon.numpy(), axis=0)
+# np.mean(style_epsilon.numpy(), axis=0)
 #%%

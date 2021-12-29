@@ -1,5 +1,0 @@
-dataset: "cmnist"
-labeled_examples: 10000
-ldc: 16
-dmi: 2.3
-config_path: "configs/cmnist_10000.yaml"

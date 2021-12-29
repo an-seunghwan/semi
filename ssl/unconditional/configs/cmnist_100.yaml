@@ -1,0 +1,4 @@
+dataset: "cmnist"
+epochs: 100
+latent_dim: 6
+labeled_examples: 100
