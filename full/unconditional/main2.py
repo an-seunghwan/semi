@@ -384,7 +384,10 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux
 
     iterator = iter(shuffle_and_batch(dataset))
     
-    iteration = 60000 // args['batch_size'] 
+    if args['dataset'] == 'cmnist':
+        iteration = 60000 // args['batch_size'] 
+    else:
+        iteration = 50000 // args['batch_size'] 
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
