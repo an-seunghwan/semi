@@ -3,6 +3,8 @@
 211222: lr schedule -> modify lr manually, instead of tensorflow function
 211227: tf.abs -> tf.math.abs
 211229: convert dmi -> tf.cast(dmi, tf.float32)
+220101: convert dmi -> tf.constant(dmi, dtype=tf.float32)
+220103: dmi calculation is included in ELBO_criterion
 '''
 #%%
 import argparse
@@ -319,7 +321,7 @@ def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_cl
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''mutual information'''
-    dmi = tf.cast(weight_schedule(epoch, args['akb'], args['dmi']), tf.float32)
+    dmi = tf.constant(weight_schedule(epoch, args['akb'], args['dmi']), dtype=tf.float32)
     '''elbo part weight'''
     ew = weight_schedule(epoch, args['aew'], args['ewm'])
     '''mix-up parameters'''
@@ -356,8 +358,8 @@ def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_cl
         '''labeled'''
         with tf.GradientTape() as tape:
             meanL, log_sigmaL, log_probL, _, _, xhatL = model([imageL, labelL])
-            recon_lossL, kl_zL, kl_yL = ELBO_criterion(args, num_classes, imageL, xhatL, meanL, log_sigmaL, log_probL)
-            prior_klL = (kl_beta_z * kl_zL) + (kl_beta_y * tf.math.abs(kl_yL - dmi))
+            recon_lossL, kl_zL, kl_yL = ELBO_criterion(args, num_classes, imageL, xhatL, meanL, log_sigmaL, log_probL, dmi)
+            prior_klL = (kl_beta_z * kl_zL) + (kl_beta_y * kl_yL)
             elbo_lossL = recon_lossL + prior_klL
             
             '''mix-up''' # instead of KL-divergence?
@@ -380,8 +382,8 @@ def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_cl
         '''unlabeled'''
         with tf.GradientTape() as tape:
             meanU, log_sigmaU, log_probU, _, _, xhatU = model([imageU, None])
-            recon_lossU, kl_zU, kl_yU = ELBO_criterion(args, num_classes, imageU, xhatU, meanU, log_sigmaU, log_probU)
-            prior_klU = (kl_beta_z * kl_zU) + (kl_beta_y * tf.math.abs(kl_yU - dmi))
+            recon_lossU, kl_zU, kl_yU = ELBO_criterion(args, num_classes, imageU, xhatU, meanU, log_sigmaU, log_probU, dmi)
+            prior_klU = (kl_beta_z * kl_zU) + (kl_beta_y * kl_yU)
             elbo_lossU = recon_lossU + prior_klU
             
             '''mix-up'''
