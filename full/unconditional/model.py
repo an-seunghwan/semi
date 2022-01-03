@@ -352,11 +352,9 @@ class AuxiliaryClassifier(K.models.Model):
                  name='AuxiliaryClassifier', **kwargs):
         super(AuxiliaryClassifier, self).__init__(name=name, **kwargs)
         
-        self.dense = [layers.Dense(128),
-                      layers.BatchNormalization(),
+        self.dense = [layers.Dense(64),
                       layers.Activation('swish'),
-                      layers.Dense(128),
-                      layers.BatchNormalization(),
+                      layers.Dense(32),
                       layers.Activation('swish'),
                       layers.Dense(num_classes, activation='softmax')]
     
