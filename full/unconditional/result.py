@@ -2,8 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\sl\unconditional') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/sl/unconditional') # main directory (repository)
+os.chdir(r'D:\semi\full\unconditional') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/full/unconditional') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -157,7 +157,7 @@ log_path = f'logs/{args["dataset"]}'
 
 dataset, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20211228-203211'
+model_path = log_path + '/20211229-100322'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 model.build(input_shape=(None, 32, 32, 3))
