@@ -271,7 +271,7 @@ def main():
     weight_decay : - lr * \lambda * weight
     '''
     optimizer = K.optimizers.Adam(learning_rate=args['lr'])
-    aux_optimizer = K.optimizers.Adam(learning_rate=args['lr'] * 5.)
+    aux_optimizer = K.optimizers.Adam(learning_rate=args['lr'])
     
     lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
                                                                 decay_steps=args['decay_steps'], 
