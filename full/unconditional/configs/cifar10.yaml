@@ -1,0 +1,4 @@
+dataset: "cifar10"
+epochs: 100
+latent_dim: 128
+lambda3: 10.

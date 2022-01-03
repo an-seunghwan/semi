@@ -346,3 +346,18 @@ class VAE(K.models.Model):
         nf_args = self.prior(z_, c_)
         return [[z, c, prob, xhat], nf_args]
 #%%
+class AuxiliaryClassifier(K.models.Model):
+    def __init__(self, 
+                 num_classes,
+                 name='AuxiliaryClassifier', **kwargs):
+        super(AuxiliaryClassifier, self).__init__(name=name, **kwargs)
+        
+        self.dense = [layers.Dense(64, activation='relu'),
+                      layers.Dense(32, activation='relu'),
+                      layers.Dense(num_classes, activation='softmax')]
+        
+    def call(self, x):
+        for d in self.dense:
+            x = d(x)
+        return x
+#%%
