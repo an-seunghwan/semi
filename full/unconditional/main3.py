@@ -11,8 +11,8 @@
 import argparse
 import os
 
-# os.chdir(r'D:\semi\full\unconditional') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/full/unconditional') # main directory (repository)
+os.chdir(r'D:\semi\full\unconditional') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/full/unconditional') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
