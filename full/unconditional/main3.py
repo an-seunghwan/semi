@@ -11,8 +11,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\full\unconditional') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/full/unconditional') # main directory (repository)
+# os.chdir(r'D:\semi\full\unconditional') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/full/unconditional') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -241,6 +241,7 @@ def main():
     log_path = f'logs/{args["dataset"]}'
 
     dataset, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
+    total_length = sum(1 for _ in dataset)
     
     model = IndependentVAE(args, num_classes)
     model.build(input_shape=(None, 32, 32, 3))
@@ -301,7 +302,7 @@ def main():
         #     loss, nf_loss, accuracy, sample_recon = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
         # else:
         #     loss, nf_loss, accuracy = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
-        loss, nf_loss, accuracy, yz_entropy, yz_accuracy = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux_optimizer)
+        loss, nf_loss, accuracy, yz_entropy, yz_accuracy = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, total_length, aux_optimizer)
         val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
@@ -357,7 +358,7 @@ def main():
     #         if epoch == args['adjust_lr'][0]:
     #             args['ewm'] = args['ewm'] * 5
 #%%
-def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux_optimizer=None):
+def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, total_length, aux_optimizer=None):
     loss_avg = tf.keras.metrics.Mean()
     nf_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
@@ -375,8 +376,6 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux
 
     iterator = iter(shuffle_and_batch(dataset))
     
-    '''data length must be fixed'''
-    total_length = sum(1 for _ in dataset)
     iteration = total_length // args['batch_size'] 
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
