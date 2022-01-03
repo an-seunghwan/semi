@@ -273,7 +273,7 @@ def main():
     '''
     optimizer = K.optimizers.Adam(learning_rate=args['lr'])
     if args['lambda3'] > 0:
-        aux_optimizer = K.optimizers.Adam(learning_rate=args['lr'])
+        aux_optimizer = K.optimizers.Adam(learning_rate=args['lr'] * 10.)
     
     lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
                                                                 decay_steps=args['decay_steps'], 
@@ -385,10 +385,8 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux
     iterator = iter(shuffle_and_batch(dataset))
     
     '''data length must be fixed'''
-    if args['dataset'] == 'cmnist':
-        iteration = 60000 // args['batch_size'] 
-    else:
-        iteration = 50000 // args['batch_size'] 
+    total_length = sum(1 for _ in dataset)
+    iteration = total_length // args['batch_size'] 
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
