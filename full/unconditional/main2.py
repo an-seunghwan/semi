@@ -384,6 +384,7 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux
 
     iterator = iter(shuffle_and_batch(dataset))
     
+    '''data length must be fixed'''
     if args['dataset'] == 'cmnist':
         iteration = 60000 // args['batch_size'] 
     else:
