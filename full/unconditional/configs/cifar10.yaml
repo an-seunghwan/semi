@@ -1,6 +1,7 @@
 dataset: "cifar10"
 epochs: 100
 latent_dim: 128
-lambda1: 2.
-lambda2: 2.
+x_sigma: 0.05
+lambda1: 1.
+lambda2: 1.
 lambda3: 10.

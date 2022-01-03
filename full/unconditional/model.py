@@ -352,12 +352,35 @@ class AuxiliaryClassifier(K.models.Model):
                  name='AuxiliaryClassifier', **kwargs):
         super(AuxiliaryClassifier, self).__init__(name=name, **kwargs)
         
-        self.dense = [layers.Dense(64, activation='relu'),
-                      layers.Dense(32, activation='relu'),
+        self.dense = [layers.Dense(512),
+                      layers.BatchNormalization(),
+                      layers.Activation('swish'),
+                      layers.Dense(512),
+                      layers.BatchNormalization(),
+                      layers.Activation('swish'),
                       layers.Dense(num_classes, activation='softmax')]
-        
-    def call(self, x):
+    
+    @tf.function
+    def call(self, x, training=True):
         for d in self.dense:
-            x = d(x)
+            x = d(x, training=training)
         return x
+#%%
+class IndependentVAE(K.models.Model):
+    def __init__(self, args, num_classes, name="IndependentVAE", **kwargs):
+        super(IndependentVAE, self).__init__(name=name, **kwargs)
+        self.args = args
+        self.ae = AutoEncoder(num_classes, args['depth'], args['width'], args['slope'], args['latent_dim'])
+        self.prior = Prior(args, num_classes)
+        self.prior.build_graph()
+        self.aux_classifier = AuxiliaryClassifier(num_classes)
+    
+    @tf.function
+    def call(self, x, training=True):
+        z, c, prob, xhat = self.ae(x, training=training)
+        z_ = tf.stop_gradient(z)
+        c_ = tf.stop_gradient(c)
+        nf_args = self.prior(z_, c_)
+        aux_prob = self.aux_classifier(z, training=training)
+        return [[z, c, prob, xhat], nf_args, aux_prob]
 #%%

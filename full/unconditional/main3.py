@@ -5,7 +5,7 @@
 211227: image file directly save
 211227: stop gradient is done outside of model
 211227: model_separate.py (decouple z and c encoders)
-220103: min I(z;y) : independent regularization
+220103: min I(z;y) : independent regularization (auxiliary classifier is included in VAE model)
 '''
 #%%
 import argparse
@@ -26,7 +26,7 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model import VAE, AuxiliaryClassifier
+from model import IndependentVAE
 # from criterion import ELBO_criterion
 from mixup import augment
 #%%
@@ -107,7 +107,7 @@ def get_args():
                         help="adjust classification loss weight")
     parser.add_argument('--lambda2', default=5., type=float,
                         help="adjust mutual information loss weight")
-    parser.add_argument('--lambda3', default=0., type=float,
+    parser.add_argument('--lambda3', default=5., type=float,
                         help="adjust y|z entropy loss weight")
     # parser.add_argument('--ewm', '--elbo-weight-max', default=1e-3, type=float, 
     #                     metavar='weight for elbo loss part')
@@ -242,11 +242,9 @@ def main():
 
     dataset, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     
-    model = VAE(args, num_classes)
+    model = IndependentVAE(args, num_classes)
     model.build(input_shape=(None, 32, 32, 3))
     # model.summary()
-    if args['lambda3'] > 0:
-        aux_classifier = AuxiliaryClassifier(num_classes)
     
     # decay_model = VAE(args, num_classes)
     # decay_model.build(input_shape=(None, 32, 32, 3))
@@ -272,8 +270,7 @@ def main():
     weight_decay : - lr * \lambda * weight
     '''
     optimizer = K.optimizers.Adam(learning_rate=args['lr'])
-    if args['lambda3'] > 0:
-        aux_optimizer = K.optimizers.Adam(learning_rate=args['lr'] * 10.)
+    aux_optimizer = K.optimizers.Adam(learning_rate=args['lr'] * 5.)
     
     lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
                                                                 decay_steps=args['decay_steps'], 
@@ -304,10 +301,7 @@ def main():
         #     loss, nf_loss, accuracy, sample_recon = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
         # else:
         #     loss, nf_loss, accuracy = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
-        if args['lambda3'] > 0:
-            loss, nf_loss, accuracy, yz_entropy, yz_accuracy = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux_classifier, aux_optimizer)
-        else:
-            loss, nf_loss, accuracy = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
+        loss, nf_loss, accuracy, yz_entropy, yz_accuracy = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux_optimizer)
         val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
@@ -315,9 +309,8 @@ def main():
             tf.summary.scalar('loss', loss.result(), step=epoch)
             tf.summary.scalar('nf_loss', nf_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
-            if args['lambda3'] > 0:
-                tf.summary.scalar('yz_entropy', yz_entropy.result(), step=epoch)
-                tf.summary.scalar('yz_accuracy', yz_accuracy.result(), step=epoch)
+            tf.summary.scalar('yz_entropy', yz_entropy.result(), step=epoch)
+            tf.summary.scalar('yz_accuracy', yz_accuracy.result(), step=epoch)
             # if epoch % args['reconstruct_freq'] == 0:
             #     tf.summary.image("train recon image", sample_recon, step=epoch)
         with val_writer.as_default():
@@ -335,9 +328,8 @@ def main():
         loss.reset_states()
         nf_loss.reset_states()
         accuracy.reset_states()
-        if args['lambda3'] > 0:
-            yz_entropy.reset_states()
-            yz_accuracy.reset_states()
+        yz_entropy.reset_states()
+        yz_accuracy.reset_states()
         val_nf_loss.reset_states()
         val_recon_loss.reset_states()
         val_elbo_loss.reset_states()
@@ -365,13 +357,12 @@ def main():
     #         if epoch == args['adjust_lr'][0]:
     #             args['ewm'] = args['ewm'] * 5
 #%%
-def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux_classifier=None, aux_optimizer=None):
+def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux_optimizer=None):
     loss_avg = tf.keras.metrics.Mean()
     nf_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
-    if args['lambda3'] > 0:
-        yz_entropy_avg = tf.keras.metrics.Mean()
-        yz_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
+    yz_entropy_avg = tf.keras.metrics.Mean()
+    yz_accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     # '''elbo part weight'''
     # ew = weight_schedule(epoch, args['aew'], args['ewm'])
@@ -396,11 +387,7 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux
             image = augment(image)
         
         with tf.GradientTape(persistent=True) as tape:
-            # [[_, _, prob, xhat], nf_args] = model(image, training=True)
-            z, c, prob, xhat = model.ae(image, training=True)
-            z_ = tf.stop_gradient(z)
-            c_ = tf.stop_gradient(c)
-            nf_args = model.prior(z_, c_)
+            [[_, _, prob, xhat], nf_args, aux_prob] = model(image, training=True)
 
             '''reconstruction'''
             if args['br']:
@@ -416,7 +403,10 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux
             prob_recon = tf.nn.softmax(model.ae.c_encode(xhat, training=True), axis=-1)
             info = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(prob_recon, 1e-10, 1.0)), axis=-1))
             
-            loss = recon_loss + args['lambda1'] * cls_loss + args['lambda2'] * info
+            '''y|z entropy'''
+            aux_entropy = tf.reduce_mean(tf.reduce_sum(aux_prob * tf.math.log(tf.clip_by_value(aux_prob, 1e-10, 1.0)), axis=-1))
+                        
+            loss = recon_loss + args['lambda1'] * cls_loss + args['lambda2'] * info + args['lambda3'] * aux_entropy
             
             '''prior'''
             z_nf_loss = tf.reduce_mean(tf.reduce_sum(tf.square(nf_args[0] - 0) / 2., axis=1))
@@ -425,50 +415,34 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux
             c_nf_loss -= tf.reduce_mean(nf_args[3], axis=-1)
             nf_loss = z_nf_loss + c_nf_loss
             
-            if args['lambda3'] > 0:
-                aux_prob = aux_classifier(z)
-                '''y|z entropy'''
-                aux_entropy = tf.reduce_mean(tf.reduce_sum(aux_prob * tf.math.log(tf.clip_by_value(aux_prob, 1e-10, 1.0)), axis=-1))
-                '''y|z classification'''
-                aux_cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(aux_prob, 1e-10, 1.0)), axis=-1))
-                            
-                loss += args['lambda3'] * aux_entropy 
+            '''y|z classification'''
+            aux_cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(aux_prob, 1e-10, 1.0)), axis=-1))
             
-        grads = tape.gradient(loss, model.ae.trainable_variables) 
-        optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) 
+        grads = tape.gradient(loss, model.ae.trainable_variables + model.aux_classifier.trainable_variables) 
+        optimizer.apply_gradients(zip(grads, model.ae.trainable_variables + model.aux_classifier.trainable_variables)) 
         # weight_decay(model.ae, decay_model.ae, decay_rate=args['weight_decay'] * args['lr']) # weight decay
         
         grad = tape.gradient(nf_loss, model.prior.trainable_weights)
         optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
         
-        if args['lambda3'] > 0:
-            grad = tape.gradient(aux_cls_loss, aux_classifier.trainable_weights)
-            aux_optimizer.apply_gradients(zip(grad, aux_classifier.trainable_weights))
+        grad = tape.gradient(aux_cls_loss, model.aux_classifier.trainable_weights)
+        aux_optimizer.apply_gradients(zip(grad, model.aux_classifier.trainable_weights))
         
         loss_avg(loss)
         nf_loss_avg(nf_loss)
         _, _, prob, _ = model.ae(image, training=False)
         accuracy(tf.argmax(label, axis=1, output_type=tf.int32), prob)
+        yz_entropy_avg(aux_entropy)
+        yz_accuracy(tf.argmax(label, axis=1, output_type=tf.int32), aux_prob)
         
-        if args['lambda3'] > 0:
-            yz_entropy_avg(aux_entropy)
-            yz_accuracy(tf.argmax(label, axis=1, output_type=tf.int32), aux_prob)
-            
-            progress_bar.set_postfix({
-                'EPOCH': f'{epoch:04d}',
-                'Loss': f'{loss_avg.result():.4f}',
-                'NF Loss': f'{nf_loss_avg.result():.4f}',
-                'Accuracy': f'{accuracy.result():.3%}',
-                'YZ Entropy': f'{yz_entropy_avg.result():.4f}',
-                'YZ Accuracy': f'{yz_accuracy.result():.3f}',
-            })
-        else:
-            progress_bar.set_postfix({
-                'EPOCH': f'{epoch:04d}',
-                'Loss': f'{loss_avg.result():.4f}',
-                'NF Loss': f'{nf_loss_avg.result():.4f}',
-                'Accuracy': f'{accuracy.result():.3%}',
-            })
+        progress_bar.set_postfix({
+            'EPOCH': f'{epoch:04d}',
+            'Loss': f'{loss_avg.result():.4f}',
+            'NF Loss': f'{nf_loss_avg.result():.4f}',
+            'Accuracy': f'{accuracy.result():.3%}',
+            'YZ Entropy': f'{yz_entropy_avg.result():.4f}',
+            'YZ Accuracy': f'{yz_accuracy.result():.3f}',
+        })
     
     if epoch % args['reconstruct_freq'] == 0:
         generate_and_save_images(model, image[0][tf.newaxis, ...], num_classes, epoch, f'logs/{args["dataset"]}/{current_time}')
@@ -478,10 +452,7 @@ def train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes, aux
     #     return loss_avg, nf_loss_avg, accuracy, sample_recon
     # else:
     #     return loss_avg, nf_loss_avg, accuracy
-    if args['lambda3'] > 0:
-        return loss_avg, nf_loss_avg, accuracy, yz_entropy_avg, yz_accuracy
-    else:
-        return loss_avg, nf_loss_avg, accuracy
+    return loss_avg, nf_loss_avg, accuracy, yz_entropy_avg, yz_accuracy
 #%%
 def validate(dataset, model, epoch, args, split):
     nf_loss_avg = tf.keras.metrics.Mean()
@@ -491,7 +462,7 @@ def validate(dataset, model, epoch, args, split):
 
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
-        [[_, _, prob, xhat], nf_args] = model(image, training=False)
+        [[_, _, prob, xhat], nf_args, _] = model(image, training=False)
         '''reconstruction'''
         if args['br']:
             recon_loss = tf.reduce_mean(- tf.reduce_sum(image * tf.math.log(xhat) + 
