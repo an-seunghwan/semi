@@ -1,7 +1,7 @@
 #%%
 import tensorflow as tf
 #%%
-def ELBO_criterion(args, num_classes, x, xhat, mean, log_sigma, log_prob, dmi):
+def ELBO_criterion(args, num_classes, x, xhat, mean, log_sigma, log_prob, dmi=0.):
         '''reconstruction'''
         if args['br']:
             recon_loss = tf.reduce_mean(- tf.reduce_sum(x * tf.math.log(xhat) + 
