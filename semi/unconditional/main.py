@@ -158,7 +158,7 @@ def get_args():
                         help='L2 regularization parameter for dense layers in Real NVP')
     parser.add_argument('--decay_steps', default=1, type=int,
                         help='decay steps for exponential decay schedule')
-    parser.add_argument('--decay_rate', default=0.95, type=float,
+    parser.add_argument('--decay_rate', default=0.9, type=float,
                         help='decay rate for exponential decay schedule')
     parser.add_argument('--gradclip', default=1., type=float,
                         help='gradclip value')
