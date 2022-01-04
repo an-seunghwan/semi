@@ -219,7 +219,7 @@ def generate_and_save_images(model, image, num_classes, step, save_dir):
     for i in range(num_classes):
         label = np.zeros((z.shape[0], num_classes))
         label[:, i] = 1
-        xhat = model.ae.decode(z, label, training=False)
+        xhat = model.ae.decode(z, tf.cast(label, tf.float32), training=False)
         plt.subplot(1, num_classes+1, i+2)
         plt.imshow(xhat[0])
         plt.title('{}'.format(i))
