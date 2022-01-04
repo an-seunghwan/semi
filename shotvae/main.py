@@ -198,6 +198,7 @@ def main():
     log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
     datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
+    total_length = sum(1 for _ in datasetU)
     
     model = VAE(num_classes=num_classes, depth=args['depth'], width=args['width'], slope=args['slope'],
                 latent_dim=args['ldc'], temperature=args['temperature'])
@@ -257,9 +258,9 @@ def main():
             # optimizer.lr = learning_rate_fn(epoch)
         
         if epoch % args['reconstruct_freq'] == 0:
-            labeled_loss, unlabeled_loss, accuracy, sample_recon = train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes)
+            labeled_loss, unlabeled_loss, accuracy, sample_recon = train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes, total_length)
         else:
-            labeled_loss, unlabeled_loss, accuracy = train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes)
+            labeled_loss, unlabeled_loss, accuracy = train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes, total_length)
         val_z_kl_loss, val_y_kl_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, decay_model, epoch, args, num_classes, split='Validation')
         test_z_kl_loss, test_y_kl_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, decay_model, epoch, args, num_classes, split='Test')
         
@@ -315,7 +316,7 @@ def main():
             if epoch == args['adjust_lr'][0]:
                 args['ewm'] = args['ewm'] * 5
 #%%
-def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes):
+def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classe, total_length):
     labeled_loss_avg = tf.keras.metrics.Mean()
     unlabeled_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
@@ -336,7 +337,8 @@ def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_cl
     iteratorL = iter(shuffle_and_batch(datasetL))
     iteratorU = iter(shuffle_and_batch(datasetU))
     
-    iteration = (50000 - args['validation_examples']) // args['batch_size'] 
+    # iteration = (50000 - args['validation_examples']) // args['batch_size'] 
+    iteration = total_length // args['batch_size'] 
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         

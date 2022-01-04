@@ -240,6 +240,7 @@ def main():
     log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
     datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
+    total_length = sum(1 for _ in datasetU)
     
     model = VAE(args, num_classes)
     model.build(input_shape=(None, 32, 32, 3))
@@ -299,7 +300,7 @@ def main():
         #     loss, nf_loss, accuracy, sample_recon = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
         # else:
         #     loss, nf_loss, accuracy = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
-        loss, nf_loss, accuracy = train(datasetL, datasetU, model, optimizer, optimizer_nf, epoch, args, num_classes)
+        loss, nf_loss, accuracy = train(datasetL, datasetU, model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
@@ -351,7 +352,7 @@ def main():
     #         if epoch == args['adjust_lr'][0]:
     #             args['ewm'] = args['ewm'] * 5
 #%%
-def train(datasetL, datasetU, model, optimizer, optimizer_nf, epoch, args, num_classes):
+def train(datasetL, datasetU, model, optimizer, optimizer_nf, epoch, args, num_classes, total_length):
     loss_avg = tf.keras.metrics.Mean()
     nf_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
@@ -369,7 +370,7 @@ def train(datasetL, datasetU, model, optimizer, optimizer_nf, epoch, args, num_c
     iteratorL = iter(shuffle_and_batch2(datasetL))
     iteratorU = iter(shuffle_and_batch(datasetU))
     
-    iteration = 60000 // args['batch_size'] 
+    iteration = total_length // args['batch_size'] 
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
