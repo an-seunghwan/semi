@@ -2,8 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\sl\unconditional') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/sl/unconditional') # main directory (repository)
+os.chdir(r'D:\semi\semi\unconditional') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/semi/unconditional') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -42,10 +42,14 @@ def get_args():
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    parser.add_argument('--reconstruct_freq', '-rf', default=50, type=int,
-                        metavar='N', help='reconstruct frequency (default: 50)')
+    parser.add_argument('--reconstruct_freq', '-rf', default=3, type=int,
+                        metavar='N', help='reconstruct frequency (default: 5)')
+    parser.add_argument('--labeled_examples', type=int, default=4000, 
+                        help='number labeled examples (default: 4000')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
+    parser.add_argument('--augment', action='store_true', 
+                        help="apply augmentation to image")
 
     '''Deep VAE Model Parameters (Encoder and Decoder)'''
     # parser.add_argument('--net-name', default="wideresnet-28-2", type=str, help="the name for network to use")
@@ -147,17 +151,17 @@ def load_config(args):
             args[key] = config[key]
     return args
 #%%
-args = vars(get_args().parse_args(args=['--config_path', 'configs/cmnist.yaml']))
+args = vars(get_args().parse_args(args=['--config_path', 'configs/cmnist_100.yaml']))
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
     args = load_config(args)
 
-log_path = f'logs/{args["dataset"]}'
+log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
-dataset, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
+datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20211228-203211'
+model_path = log_path + '/20211229-161239'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 model.build(input_shape=(None, 32, 32, 3))
@@ -167,7 +171,7 @@ model.summary()
 '''style transfer'''
 x = []
 y = []
-for example in dataset:
+for example in datasetU:
     x.append(example[0])
     y.append(example[1])
     if len(x) == 100: break

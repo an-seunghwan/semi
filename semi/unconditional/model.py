@@ -193,7 +193,7 @@ class AutoEncoder(K.models.Model):
         self.FeatureExtractor = WideResNet(num_classes, depth, width, slope, input_shape)
         self.z_layer = layers.Dense(latent_dim) 
         self.c_layer = layers.Dense(num_classes) 
-        self.Decoder = Decoder(latent_dim, output_channel, activation)
+        self.decoder = Decoder(latent_dim, output_channel, activation)
         
     def z_encode(self, x, training=False):
         h = self.FeatureExtractor(x, training=training)
@@ -206,7 +206,7 @@ class AutoEncoder(K.models.Model):
         return c
     
     def decode(self, z, y, training=False):
-        return self.Decoder(z, y, training=training) 
+        return self.decoder(z, y, training=training) 
         
     @tf.function
     def call(self, x, training=True):
@@ -214,7 +214,7 @@ class AutoEncoder(K.models.Model):
         z = self.z_layer(h)
         c = self.c_layer(h)
         prob = tf.nn.softmax(c, axis=-1)
-        xhat = self.Decoder(z, prob, training=training) 
+        xhat = self.decoder(z, prob, training=training) 
         return z, c, prob, xhat
 #%%
 class CouplingLayer(K.models.Model):
