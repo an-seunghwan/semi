@@ -11,8 +11,8 @@
 import argparse
 import os
 
-# os.chdir(r'D:\semi\full\unconditional') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/full/unconditional') # main directory (repository)
+os.chdir(r'D:\semi\full\unconditional') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/full/unconditional') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -271,7 +271,7 @@ def main():
     weight_decay : - lr * \lambda * weight
     '''
     optimizer = K.optimizers.Adam(learning_rate=args['lr'])
-    aux_optimizer = K.optimizers.Adam(learning_rate=args['lr'])
+    aux_optimizer = K.optimizers.Adam(learning_rate=args['lr'] * 10.)
     
     lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
                                                                 decay_steps=args['decay_steps'], 
