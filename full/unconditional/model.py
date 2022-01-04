@@ -354,8 +354,8 @@ class AuxiliaryClassifier(K.models.Model):
         
         self.dense = [layers.Dense(64),
                       layers.Activation('relu'),
-                      layers.Dense(32),
-                      layers.Activation('relu'),
+                    #   layers.Dense(32),
+                    #   layers.Activation('relu'),
                       layers.Dense(num_classes, activation='softmax')]
     
     @tf.function
