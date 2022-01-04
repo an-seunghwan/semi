@@ -177,6 +177,49 @@ class Decoder(K.models.Model):
         h = self.conv(skip)
         return h
 #%%
+class DeepDecoder(K.models.Model):
+    def __init__(self, 
+                 output_channel, 
+                 activation, 
+                 name="DeepDecoder", **kwargs):
+        super(DeepDecoder, self).__init__(name=name, **kwargs)
+        self.num_feature = 32
+        
+        self.dense = layers.Dense(8192)
+        self.norm = layers.BatchNormalization()
+        self.relu = layers.ReLU()
+        self.reshape = layers.Reshape((4, 4, 512))
+        self.units = self._build_unit()
+        self.conv = layers.Conv2D(filters = output_channel, kernel_size = 4, strides = 1, 
+                                activation=activation,
+                                padding = 'same', use_bias=False)
+    
+    def _build_unit(self):
+        dims = [self.num_feature * d for d in [8, 4, 2, 1]]
+        units = []
+        for i in range(len(dims)):
+            units.append(
+                K.Sequential(
+                    [
+                        layers.Conv2DTranspose(filters = dims[i], kernel_size = 5, strides = 2 if i != len(dims) else 1, 
+                                                padding = 'same', use_bias=False),
+                        layers.BatchNormalization(),
+                        layers.ReLU(),
+                    ]
+                )
+            )
+        return units
+    
+    @tf.function
+    def call(self, z, prob, training=True):
+        h = tf.concat([z, prob], axis=-1)
+        h = self.relu(self.norm(self.dense(h)))
+        h = self.reshape(h)
+        for i in range(len(self.units)):
+            h = self.units[i](h, training=training)
+        h = self.conv(h)
+        return h
+#%%
 class AutoEncoder(K.models.Model):
     def __init__(self, 
                  num_classes=10,
@@ -187,14 +230,18 @@ class AutoEncoder(K.models.Model):
                  output_channel=3, 
                  activation='sigmoid',
                  input_shape=(None, 32, 32, 3), 
+                 dataset='cifar10',
                  name='AutoEncoder', **kwargs):
         super(AutoEncoder, self).__init__(name=name, **kwargs)
         
         self.FeatureExtractor = WideResNet(num_classes, depth, width, slope, input_shape)
         self.z_layer = layers.Dense(latent_dim) 
         self.c_layer = layers.Dense(num_classes) 
-        self.Decoder = Decoder(latent_dim, output_channel, activation)
-        
+        if dataset == 'cmnist':
+            self.decoder = Decoder(latent_dim, output_channel, activation)
+        else:
+            self.decoder = DeepDecoder(output_channel, activation)
+            
     def z_encode(self, x, training=False):
         h = self.FeatureExtractor(x, training=training)
         z = self.z_layer(h)
@@ -206,7 +253,7 @@ class AutoEncoder(K.models.Model):
         return c
     
     def decode(self, z, y, training=False):
-        return self.Decoder(z, y, training=training) 
+        return self.decoder(z, y, training=training) 
         
     @tf.function
     def call(self, x, training=True):
@@ -214,7 +261,7 @@ class AutoEncoder(K.models.Model):
         z = self.z_layer(h)
         c = self.c_layer(h)
         prob = tf.nn.softmax(c, axis=-1)
-        xhat = self.Decoder(z, prob, training=training) 
+        xhat = self.decoder(z, prob, training=training) 
         return z, c, prob, xhat
 #%%
 class CouplingLayer(K.models.Model):
@@ -334,7 +381,7 @@ class VAE(K.models.Model):
     def __init__(self, args, num_classes, name="VAE", **kwargs):
         super(VAE, self).__init__(name=name, **kwargs)
         self.args = args
-        self.ae = AutoEncoder(num_classes, args['depth'], args['width'], args['slope'], args['latent_dim'])
+        self.ae = AutoEncoder(num_classes, args['depth'], args['width'], args['slope'], args['latent_dim'], dataset=args['dataset'])
         self.prior = Prior(args, num_classes)
         self.prior.build_graph()
     
