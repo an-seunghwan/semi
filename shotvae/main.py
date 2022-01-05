@@ -428,7 +428,7 @@ def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_cl
             elbo_lossU += kl_beta_z * pwm * posterior_loss_zU
             loss_unsupervised = (ew * elbo_lossU) + (ucw * posterior_loss_yU)
 
-        grads = tape.gradient(loss_supervised, model.trainable_variables) 
+        grads = tape.gradient(loss_unsupervised, model.trainable_variables) 
         # '''only SGD''' 
         # # optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
         # for g, var in zip(grads, model.trainable_variables):
