@@ -317,7 +317,7 @@ def train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes,
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''mutual information'''
-    # dmi = tf.constant(weight_schedule(epoch, args['akb'], args['dmi']), dtype=tf.float32)
+    dmi = tf.convert_to_tensor(weight_schedule(epoch, args['akb'], args['dmi']), dtype=tf.float32)
     '''elbo part weight'''
     ew = weight_schedule(epoch, args['aew'], args['ewm'])
     '''mix-up parameters'''
