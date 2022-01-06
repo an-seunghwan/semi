@@ -246,29 +246,6 @@ def main():
     model.build(input_shape=(None, 32, 32, 3))
     # model.summary()
     
-    # decay_model = VAE(args, num_classes)
-    # decay_model.build(input_shape=(None, 32, 32, 3))
-    # decay_model.set_weights(model.get_weights())
-
-    '''
-    <SGD + momentum + weight_decay>
-    \lambda: weight_decay parameter
-    \beta_1: momemtum
-    
-    v(0) = 0
-    for i in range(epochs):
-        grad(i+1) = grad(i) + \lambda * weight
-        v(i+1) = \beta_1 * v(i) + grad(i+1)
-        weight(i+1) = weight(i) - lr * v(i+1)
-    
-    weight(i+1) 
-    = weight(i) - lr * (\beta_1 * v(i) + grad(i+1))
-    = weight(i) - lr * (\beta_1 * v(i) + grad(i) + \lambda * weight)
-    = weight(i) - lr * (\beta_1 * v(i) + grad(i)) - lr * \lambda * weight
-    
-    SGD + momentum : weight(i) - lr * (\beta_1 * v(i) + grad(i))
-    weight_decay : - lr * \lambda * weight
-    '''
     optimizer = K.optimizers.Adam(learning_rate=args['lr'])
     
     lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
@@ -284,17 +261,6 @@ def main():
         
         '''learning rate schedule'''
         optimizer_nf.lr = lr_schedule(epoch)
-        # if epoch == 0:
-        #     '''warm-up'''
-        #     optimizer.lr = args['lr'] * 0.2
-        # elif epoch < args['adjust_lr'][0]:
-        #     optimizer.lr = args['lr']
-        # elif epoch < args['adjust_lr'][1]:
-        #     optimizer.lr = args['lr'] * 0.1
-        # elif epoch < args['adjust_lr'][2]:
-        #     optimizer.lr = args['lr'] * 0.01
-        # else:
-        #     optimizer.lr = args['lr'] * 0.001
         
         # if epoch % args['reconstruct_freq'] == 0:
         #     loss, nf_loss, accuracy, sample_recon = train(dataset, model, optimizer, optimizer_nf, epoch, args, num_classes)
