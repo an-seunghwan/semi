@@ -1,5 +1,4 @@
 dataset: "cmnist"
 epochs: 100
-latent_dim: 6
+latent_dim: 7
 labeled_examples: 100
-reconstruct_freq: 1
