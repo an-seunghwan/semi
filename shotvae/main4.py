@@ -7,7 +7,10 @@
 220103: dmi calculation is included in ELBO_criterion
 220104: convert dmi -> tf.convert_to_tensor(dmi, dtype=tf.float32)
 220104: monitoring KL-divergence and its absolute value
-220106: mixmatch version weight decay is applied
+220105: apply weight decay directly in train function 
+220105: weight decay is NOT anymore the option of SGD optimizer, and apply it manually
+220105: manual SGD optimization
+220106: modify SGD + weight decay
 '''
 #%%
 import argparse
@@ -208,6 +211,11 @@ def main():
     model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
     # model.summary()
     
+    buffer_model = VAE(num_classes=num_classes, depth=args['depth'], width=args['width'], slope=args['slope'],
+                    latent_dim=args['ldc'], temperature=args['temperature'])
+    buffer_model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
+    # decay_model.set_weights(model.get_weights())
+
     '''
     <SGD + momentum + weight_decay>
     lambda: weight_decay parameter
@@ -216,22 +224,11 @@ def main():
     
     v(0) = 0
     for t in range(0, epochs):
-        v(t+1) = beta_1 * v(t) + grad(t+1) + lambda * weight(t)
-        weight(t+1) 
-        = weight(t) - lr * v(t+1)
-        = weight(t) - lr * (beta_1 * v(t) + grad(t+1) + lambda * weight(t))
-        = (weight(t) - lr * grad(t+1)) - lr * (beta_1 * v(t) + lambda * weight(t))
-    
-    SGD : weight(t) - lr * grad(t+1)
-    weight_decay (+ momentum) : - lr * (beta_1 * v(t) + lambda * weight(t))
+        grad(t+1) = grad(t+1) + lambda * weight(t)
+        v(t+1) = beta_1 * v(t) + grad(t+1)
+        weight(t+1) = weight(t) - lr * v(t+1)
+                    = weight(t) - lr * (beta_1 * v(t) + grad(t+1))
     '''
-    optimizer = K.optimizers.SGD(learning_rate=args['lr'],
-                                momentum=args['beta1'])
-
-    # learning_rate_fn = K.optimizers.schedules.PiecewiseConstantDecay(
-    #     args['adjust_lr'], 
-    #     [args['lr'] * t for t in [1., 0.1, 0.01, 0.001]]
-    # )
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -242,21 +239,20 @@ def main():
         '''learning rate schedule'''
         if epoch == 0:
             '''warm-up'''
-            optimizer.lr = args['lr'] * 0.2
+            lr = args['lr'] * 0.2
         elif epoch < args['adjust_lr'][0]:
-            optimizer.lr = args['lr']
+            lr = args['lr']
         elif epoch < args['adjust_lr'][1]:
-            optimizer.lr = args['lr'] * 0.1
+            lr = args['lr'] * 0.1
         elif epoch < args['adjust_lr'][2]:
-            optimizer.lr = args['lr'] * 0.01
+            lr = args['lr'] * 0.01
         else:
-            optimizer.lr = args['lr'] * 0.001
-            # optimizer.lr = learning_rate_fn(epoch)
+            lr = args['lr'] * 0.001
         
         if epoch % args['reconstruct_freq'] == 0:
-            labeled_loss, unlabeled_loss, abs_kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length)
+            labeled_loss, unlabeled_loss, abs_kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
         else:
-            labeled_loss, unlabeled_loss, abs_kl_y_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length)
+            labeled_loss, unlabeled_loss, abs_kl_y_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
         val_z_kl_loss, val_y_kl_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, num_classes, split='Validation')
         test_z_kl_loss, test_y_kl_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, num_classes, split='Test')
         
@@ -307,14 +303,14 @@ def main():
             f.write(str(key) + ' : ' + str(value) + '\n')
             
     if epoch == 0:
-        optimizer.lr = args['lr']
+        lr = args['lr']
         
     if args['dataset'] == 'cifar10':
         if args['labeled_examples'] >= 2500:
             if epoch == args['adjust_lr'][0]:
                 args['ewm'] = args['ewm'] * 5
 #%%
-def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length):
+def train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length):
     labeled_loss_avg = tf.keras.metrics.Mean()
     unlabeled_loss_avg = tf.keras.metrics.Mean()
     abs_kl_y_loss_avg = tf.keras.metrics.Mean()
@@ -322,7 +318,6 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
     
     '''mutual information'''
     # dmi = tf.constant(weight_schedule(epoch, args['akb'], args['dmi']), dtype=tf.float32)
-    dmi = tf.convert_to_tensor(weight_schedule(epoch, args['akb'], args['dmi']), dtype=tf.float32)
     '''elbo part weight'''
     ew = weight_schedule(epoch, args['aew'], args['ewm'])
     '''mix-up parameters'''
@@ -379,10 +374,17 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             loss_supervised = (ew * elbo_lossL) + posterior_loss_yL
 
         grads = tape.gradient(loss_supervised, model.trainable_variables) 
-        '''SGD + weight decay''' 
-        optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
-        weight_decay(model, decay_rate=args['wd'])
-        # weight_decay(model, decay_rate=args['wd'] * args['lr'])
+        '''SGD + weight decay'''
+        '''1. update gradient and buffer'''
+        if epoch == 0:
+            for g, var, buffer_var in zip(grads, model.trainable_variables, buffer_model.trainable_variables):
+                buffer_var.assign(g + tf.constant(args['wd'], tf.float32) * var)
+        else:
+            for g, var, buffer_var in zip(grads, model.trainable_variables, buffer_model.trainable_variables):
+                buffer_var.assign(tf.constant(args['beta1'], tf.float32) * buffer_var + g + tf.constant(args['wd'], tf.float32) * var)
+        '''2. update weight'''
+        for var, buffer_var in zip(model.trainable_variables, buffer_model.trainable_variables):
+                var.assign(var - tf.constant(lr, tf.float32) * buffer_var)
         
         '''unlabeled'''
         with tf.GradientTape() as tape:
@@ -405,9 +407,16 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
 
         grads = tape.gradient(loss_unsupervised, model.trainable_variables) 
         '''SGD + weight decay'''
-        optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
-        weight_decay(model, decay_rate=args['wd'])
-        # weight_decay(model, decay_rate=args['wd'] * args['lr'])
+        '''1. update gradient and buffer'''
+        if epoch == 0:
+            for g, var, buffer_var in zip(grads, model.trainable_variables, buffer_model.trainable_variables):
+                buffer_var.assign(g + tf.constant(args['wd'], tf.float32) * var)
+        else:
+            for g, var, buffer_var in zip(grads, model.trainable_variables, buffer_model.trainable_variables):
+                buffer_var.assign(tf.constant(args['beta1'], tf.float32) * buffer_var + g + tf.constant(args['wd'], tf.float32) * var)
+        '''2. update weight'''
+        for var, buffer_var in zip(model.trainable_variables, buffer_model.trainable_variables):
+                var.assign(var - tf.constant(lr, tf.float32) * buffer_var)
         
         labeled_loss_avg(loss_supervised)
         unlabeled_loss_avg(loss_unsupervised)

@@ -7,7 +7,7 @@
 220103: dmi calculation is included in ELBO_criterion
 220104: convert dmi -> tf.convert_to_tensor(dmi, dtype=tf.float32)
 220104: monitoring KL-divergence and its absolute value
-220106: mixmatch version weight decay is applied
+220106: NO weight decay
 '''
 #%%
 import argparse
@@ -379,10 +379,9 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             loss_supervised = (ew * elbo_lossL) + posterior_loss_yL
 
         grads = tape.gradient(loss_supervised, model.trainable_variables) 
-        '''SGD + weight decay''' 
+        '''SGD''' 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
-        weight_decay(model, decay_rate=args['wd'])
-        # weight_decay(model, decay_rate=args['wd'] * args['lr'])
+        # weight_decay(model, decay_model, decay_rate=args['wd'] * args['lr'])
         
         '''unlabeled'''
         with tf.GradientTape() as tape:
@@ -404,10 +403,9 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             loss_unsupervised = (ew * elbo_lossU) + (ucw * posterior_loss_yU)
 
         grads = tape.gradient(loss_unsupervised, model.trainable_variables) 
-        '''SGD + weight decay'''
+        '''SGD''' 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
-        weight_decay(model, decay_rate=args['wd'])
-        # weight_decay(model, decay_rate=args['wd'] * args['lr'])
+        # weight_decay(model, decay_model, decay_rate=args['wd'] * args['lr'])
         
         labeled_loss_avg(loss_supervised)
         unlabeled_loss_avg(loss_unsupervised)
