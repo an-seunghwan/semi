@@ -161,7 +161,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220104-195301'
+model_path = log_path + '/20220105-195906'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 model.build(input_shape=(None, 32, 32, 3))
@@ -214,9 +214,9 @@ plt.savefig('{}/style_transfer.png'.format(model_path),
 # plt.show()
 plt.close()
 #%%
-'''interpolation'''
-z_epsilon1, _ = model.prior.zNF(latent.numpy()[[1], :])
-z_epsilon2, _ = model.prior.zNF(latent.numpy()[[32], :])
+'''interpolation: smooth'''
+z_epsilon1, _ = model.prior.zNF(latent.numpy()[[7], :])
+z_epsilon2, _ = model.prior.zNF(latent.numpy()[[62], :])
 
 interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 20))
 z_interpolation = model.prior.zflow(interpolation)
@@ -230,7 +230,24 @@ for i in range(len(z_interpolation)):
     axes.flatten()[i].imshow(xhat_[i])
     axes.flatten()[i].axis('off')
 plt.tight_layout()
-plt.savefig('{}/style_interpolation.png'.format(model_path),
+plt.savefig('{}/style_interpolation_smooth.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+plt.close()
+#%%
+'''interpolation: non-smooth'''
+z_interpolation = np.squeeze(np.linspace(latent.numpy()[[7], :], latent.numpy()[[62], :], 20))
+
+label = np.zeros((z_interpolation.shape[0], num_classes))
+label[:, 3] = 1
+xhat_ = model.ae.decode(z_interpolation, label, training=False)
+
+fig, axes = plt.subplots(1, 20, figsize=(20, 6))
+for i in range(len(z_interpolation)):
+    axes.flatten()[i].imshow(xhat_[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/style_interpolation_nonsmooth.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
 # plt.show()
 plt.close()
@@ -261,7 +278,7 @@ plt.close()
 #%%
 '''style latent random sampling of c'''
 tf.random.set_seed(1)
-z = model.ae.z_encode(tf.cast(x.numpy()[[idx[0]]], tf.float32), training=False)
+z = model.ae.z_encode(tf.cast(x.numpy()[[idx[1]]], tf.float32), training=False)
 c_epsilon = tf.random.normal(shape=(100, num_classes))
 c = model.prior.cflow(c_epsilon)
 pi = tf.nn.softmax(c)
