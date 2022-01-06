@@ -2,3 +2,4 @@ dataset: "cmnist"
 epochs: 100
 latent_dim: 7
 labeled_examples: 100
+x_sigma: 0.1

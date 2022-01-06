@@ -10,8 +10,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\semi\unconditional') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/semi/unconditional') # main directory (repository)
+# os.chdir(r'D:\semi\semi\unconditional') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/semi/unconditional') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -29,14 +29,14 @@ from model import VAE
 # from criterion import ELBO_criterion
 from mixup import augment
 #%%
-config = tf.compat.v1.ConfigProto()
-'''
-GPU 메모리를 전부 할당하지 않고, 아주 적은 비율만 할당되어 시작됨
-프로세스의 메모리 수요에 따라 자동적으로 증가
-but
-GPU 메모리를 처음부터 전체 비율을 사용하지 않음
-'''
-config.gpu_options.allow_growth = True
+# config = tf.compat.v1.ConfigProto()
+# '''
+# GPU 메모리를 전부 할당하지 않고, 아주 적은 비율만 할당되어 시작됨
+# 프로세스의 메모리 수요에 따라 자동적으로 증가
+# but
+# GPU 메모리를 처음부터 전체 비율을 사용하지 않음
+# '''
+# config.gpu_options.allow_growth = True
 
 # '''
 # 분산 학습 설정
@@ -399,8 +399,8 @@ def train(datasetL, datasetU, model, optimizer, optimizer_nf, epoch, args, num_c
 
             '''unlabeled: reconstruction'''
             if args['br']:
-                recon_loss = tf.reduce_mean(- tf.reduce_sum(imageU * tf.math.log(xhat) + 
-                                                            (1. - imageU) * tf.math.log(1. - xhat), axis=[1, 2, 3]))
+                recon_loss = tf.reduce_mean(- tf.reduce_sum(imageU * tf.math.log(tf.clip_by_value(xhat, 1e-10, 1.0)) + 
+                                                            (1. - imageU) * tf.math.log(tf.clip_by_value(1. - xhat, 1e-10, 1.0)), axis=[1, 2, 3]))
             else:
                 recon_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(xhat - imageU) / (2. * (args['x_sigma'] ** 2)), axis=[1, 2, 3]))
                 
