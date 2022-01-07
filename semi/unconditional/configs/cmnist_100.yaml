@@ -1,6 +1,6 @@
 dataset: "cmnist"
 epochs: 100
-latent_dim: 6
+latent_dim: 8
 labeled_examples: 100
 # x_sigma: 0.5
 lambda1: 20
