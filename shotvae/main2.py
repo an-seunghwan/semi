@@ -381,8 +381,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
         grads = tape.gradient(loss_supervised, model.trainable_variables) 
         '''SGD + weight decay''' 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
-        weight_decay(model, decay_rate=args['wd'])
-        # weight_decay(model, decay_rate=args['wd'] * args['lr'])
+        # weight_decay(model, decay_rate=args['wd'])
+        weight_decay(model, decay_rate=args['wd'] * args['lr'])
         
         '''unlabeled'''
         with tf.GradientTape() as tape:
@@ -406,8 +406,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
         grads = tape.gradient(loss_unsupervised, model.trainable_variables) 
         '''SGD + weight decay'''
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
-        weight_decay(model, decay_rate=args['wd'])
-        # weight_decay(model, decay_rate=args['wd'] * args['lr'])
+        # weight_decay(model, decay_rate=args['wd'])
+        weight_decay(model, decay_rate=args['wd'] * args['lr'])
         
         labeled_loss_avg(loss_supervised)
         unlabeled_loss_avg(loss_unsupervised)

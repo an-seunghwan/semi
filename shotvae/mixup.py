@@ -56,9 +56,13 @@ def optimal_match_mix(image, mean, log_sigma, log_prob, mix_weight):
     
     return image_mix, mean_mix, sigma_mix, pseudo_label
 #%%
-# def weight_decay(model, decay_model, decay_rate):
-#     for var, decay_var in zip(model.variables, decay_model.variables):
-#         decay_var.assign(var - decay_rate * decay_var)
+def weight_decay_decoupled(model, buffer_model, decay_rate):
+    # weight decay
+    for var, buffer_var in zip(model.variables, buffer_model.variables):
+        var.assign(var - decay_rate * buffer_var)
+    # update buffer model
+    for var, buffer_var in zip(model.variables, buffer_model.variables):
+        buffer_var.assign(var)
         
 def weight_decay(model, decay_rate):
     for var in model.trainable_variables:

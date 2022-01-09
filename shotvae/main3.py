@@ -327,7 +327,7 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
     ew = weight_schedule(epoch, args['aew'], args['ewm'])
     '''mix-up parameters'''
     kl_beta_z = weight_schedule(epoch, args['akb'], args['kbmc'])
-    kl_beta_y = weight_schedule(epoch, args['akb'], args['kbmd'])
+    kl_beta_y = weight_schedule(epoch, args['akb'], args['kbmd']) * 100.
     pwm = weight_schedule(epoch, args['apw'], args['pwm'])
     '''un-supervised classification weight'''
     ucw = weight_schedule(epoch, round(args['wmf'] * args['epochs']), args['wrd'])
