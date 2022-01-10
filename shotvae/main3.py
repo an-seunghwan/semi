@@ -295,6 +295,14 @@ def main():
         test_recon_loss.reset_states()
         test_elbo_loss.reset_states()
         test_accuracy.reset_states()
+        
+        if epoch == 0:
+            optimizer.lr = args['lr']
+            
+        if args['dataset'] == 'cifar10':
+            if args['labeled_examples'] >= 2500:
+                if epoch == args['adjust_lr'][0]:
+                    args['ewm'] = args['ewm'] * 5
 
     '''model & configurations save'''        
     model_path = f'{log_path}/{current_time}'
@@ -305,14 +313,6 @@ def main():
     with open(model_path + '/args_{}.txt'.format(current_time), "w") as f:
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
-            
-    if epoch == 0:
-        optimizer.lr = args['lr']
-        
-    if args['dataset'] == 'cifar10':
-        if args['labeled_examples'] >= 2500:
-            if epoch == args['adjust_lr'][0]:
-                args['ewm'] = args['ewm'] * 5
 #%%
 def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length):
     labeled_loss_avg = tf.keras.metrics.Mean()
@@ -327,7 +327,7 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
     ew = weight_schedule(epoch, args['aew'], args['ewm'])
     '''mix-up parameters'''
     kl_beta_z = weight_schedule(epoch, args['akb'], args['kbmc'])
-    kl_beta_y = weight_schedule(epoch, args['akb'], args['kbmd']) * 100.
+    kl_beta_y = weight_schedule(epoch, args['akb'], args['kbmd'])
     pwm = weight_schedule(epoch, args['apw'], args['pwm'])
     '''un-supervised classification weight'''
     ucw = weight_schedule(epoch, round(args['wmf'] * args['epochs']), args['wrd'])

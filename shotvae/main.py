@@ -303,6 +303,14 @@ def main():
         test_recon_loss.reset_states()
         test_elbo_loss.reset_states()
         test_accuracy.reset_states()
+        
+        if epoch == 0:
+            optimizer.lr = args['lr']
+            
+        if args['dataset'] == 'cifar10':
+            if args['labeled_examples'] >= 2500:
+                if epoch == args['adjust_lr'][0]:
+                    args['ewm'] = args['ewm'] * 5
 
     '''model & configurations save'''        
     model_path = f'{log_path}/{current_time}'
@@ -313,14 +321,6 @@ def main():
     with open(model_path + '/args_{}.txt'.format(current_time), "w") as f:
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
-            
-    if epoch == 0:
-        optimizer.lr = args['lr']
-        
-    if args['dataset'] == 'cifar10':
-        if args['labeled_examples'] >= 2500:
-            if epoch == args['adjust_lr'][0]:
-                args['ewm'] = args['ewm'] * 5
 #%%
 def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes, total_length):
     labeled_loss_avg = tf.keras.metrics.Mean()
