@@ -8,6 +8,7 @@
 220104: convert dmi -> tf.convert_to_tensor(dmi, dtype=tf.float32)
 220104: monitoring KL-divergence and its absolute value
 220107: decoupled weight decay https://arxiv.org/pdf/1711.05101.pdf
+220110: modify mixup shuffle & optimal matching argument
 '''
 #%%
 import argparse
@@ -142,7 +143,7 @@ def get_args():
     '''Optimizer Transport Estimation Parameters'''
     parser.add_argument('--epsilon', default=0.1, type=float,
                         help="the label smoothing epsilon for labeled data")
-    # parser.add_argument('--om', action='store_true', help="the optimal match for unlabeled data mixup")
+    parser.add_argument('--om', action='store_true', help="the optimal match for unlabeled data mixup")
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -399,7 +400,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
             
             '''mix-up'''
             with tape.stop_recording():
-                image_mixU, mean_mixU, sigma_mixU, pseudo_labelU = optimal_match_mix(imageU, meanU, log_sigmaU, log_probU, mix_weight[1])
+                image_mixU, mean_mixU, sigma_mixU, pseudo_labelU = optimal_match_mix(imageU, meanU, log_sigmaU, log_probU, mix_weight[1], args['om'])
             smoothed_meanU, smoothed_log_sigmaU, smoothed_log_probU, _, _, _ = model([image_mixU, _])
             
             posterior_loss_zU = tf.reduce_mean(tf.math.square(smoothed_meanU - mean_mixU))

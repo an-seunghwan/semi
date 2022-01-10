@@ -27,10 +27,13 @@ def label_smoothing(image, label, mean, log_sigma, mix_weight):
     # y_batch_L_shuffle = tf.random.shuffle(y_batch_L)
     # mean_shuffle = tf.random.shuffle(mean)
     # logvar_shuffle = tf.random.shuffle(logvar)
-    image_shuffle = tf.gather(image, tf.random.shuffle(tf.range(tf.shape(image)[0])))
-    label_shuffle = tf.gather(label, tf.random.shuffle(tf.range(tf.shape(label)[0])))
-    mean_shuffle = tf.gather(mean, tf.random.shuffle(tf.range(tf.shape(mean)[0])))
-    log_sigma_shuffle = tf.gather(log_sigma, tf.random.shuffle(tf.range(tf.shape(log_sigma)[0])))
+    
+    shuffled_indices = tf.random.shuffle(tf.range(start=0, limit=tf.shape(image)[0], dtype=tf.int32))
+    
+    image_shuffle = tf.gather(image, shuffled_indices)
+    label_shuffle = tf.gather(label, shuffled_indices)
+    mean_shuffle = tf.gather(mean, shuffled_indices)
+    log_sigma_shuffle = tf.gather(log_sigma, shuffled_indices)
     
     image_mix = mix_weight * image_shuffle + (1. - mix_weight) * image
     mean_mix = mix_weight * mean_shuffle + (1. - mix_weight) * mean
@@ -38,16 +41,24 @@ def label_smoothing(image, label, mean, log_sigma, mix_weight):
     
     return image_mix, label_shuffle, mean_mix, sigma_mix
 #%%
-def optimal_match_mix(image, mean, log_sigma, log_prob, mix_weight):
-    kl_metric = np.zeros((tf.shape(mean)[0], tf.shape(mean)[0]))
-    for i in range(tf.shape(mean)[0]):
-        kl_metric[i, :] = gaussian_kl_divergence(mean, mean.numpy()[i], log_sigma, log_sigma.numpy()[i]).numpy()
+def optimal_match_mix(image, mean, log_sigma, log_prob, mix_weight, optimal_match=True):
+    if optimal_match:
+        kl_metric = np.zeros((tf.shape(mean)[0], tf.shape(mean)[0]))
+        for i in range(tf.shape(mean)[0]):
+            kl_metric[i, :] = gaussian_kl_divergence(mean, mean.numpy()[i], log_sigma, log_sigma.numpy()[i]).numpy()
+        unsupervised_mix_up_index = np.argsort(kl_metric, axis=1)[:, 1]
         
-    unsupervised_mix_up_index = np.argsort(kl_metric, axis=1)[:, 1]
-    image_shuffle = tf.gather(image, unsupervised_mix_up_index)
-    mean_shuffle = tf.gather(mean, unsupervised_mix_up_index)
-    log_sigma_shuffle = tf.gather(log_sigma, unsupervised_mix_up_index)
-    log_prob_shuffle = tf.gather(log_prob, unsupervised_mix_up_index)
+        image_shuffle = tf.gather(image, unsupervised_mix_up_index)
+        mean_shuffle = tf.gather(mean, unsupervised_mix_up_index)
+        log_sigma_shuffle = tf.gather(log_sigma, unsupervised_mix_up_index)
+        log_prob_shuffle = tf.gather(log_prob, unsupervised_mix_up_index)
+    else:
+        shuffled_indices = tf.random.shuffle(tf.range(start=0, limit=tf.shape(image)[0], dtype=tf.int32))
+        
+        image_shuffle = tf.gather(image, shuffled_indices)
+        mean_shuffle = tf.gather(mean, shuffled_indices)
+        log_sigma_shuffle = tf.gather(log_sigma, shuffled_indices)
+        log_prob_shuffle = tf.gather(log_prob, shuffled_indices)
     
     image_mix = mix_weight * image_shuffle + (1. - mix_weight) * image
     mean_mix = mix_weight * mean_shuffle + (1. - mix_weight) * mean
