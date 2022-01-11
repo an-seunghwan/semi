@@ -300,12 +300,13 @@ def main():
         #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
         # else:
         #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
-        loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, total_length)
+        loss, recon_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, total_length)
         val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
+            tf.summary.scalar('recon_loss', recon_loss.result(), step=epoch)
             tf.summary.scalar('nf_loss', nf_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
             # if epoch % args['reconstruct_freq'] == 0:
@@ -323,6 +324,7 @@ def main():
 
         # Reset metrics every epoch
         loss.reset_states()
+        recon_loss.reset_states()
         nf_loss.reset_states()
         accuracy.reset_states()
         val_nf_loss.reset_states()
@@ -354,6 +356,7 @@ def main():
 #%%
 def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, total_length):
     loss_avg = tf.keras.metrics.Mean()
+    recon_loss_avg = tf.keras.metrics.Mean()
     nf_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
@@ -444,6 +447,7 @@ def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args
         optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
         
         loss_avg(loss)
+        recon_loss_avg(recon_lossU)
         nf_loss_avg(nf_loss)
         probL = tf.nn.softmax(model.ae.c_encode(imageL, training=False), axis=-1)
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
@@ -460,7 +464,7 @@ def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args
     #     return labeled_loss_avg, unlabeled_loss_avg, kl_y_loss_avg, accuracy, sample_recon
     # else:
     #     return labeled_loss_avg, unlabeled_loss_avg, kl_y_loss_avg, accuracy
-    return loss_avg, nf_loss_avg, accuracy
+    return loss_avg, recon_loss_avg, nf_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, args, split):
     nf_loss_avg = tf.keras.metrics.Mean()
