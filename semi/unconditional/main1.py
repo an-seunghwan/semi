@@ -425,7 +425,7 @@ def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args
             
             '''mix-up'''
             with tape.stop_recording():
-                image_mixL, z_mixL, c_mixL, label_shuffleL = label_smoothing(imageL, labelL, mix_weight[0])
+                image_mixL, z_mixL, c_mixL, label_shuffleL = label_smoothing(imageL, z, c, labelL, mix_weight[0])
             smoothed_zL, smoothed_cL, smoothed_probL, _ = model.ae(image_mixL, training=True)
             
             mixup_zL = tf.reduce_mean(tf.math.square(smoothed_zL - z_mixL))
