@@ -9,7 +9,7 @@ def ELBO_criterion(args, x, xhat, prob, prob_recon, nf_args, label=None):
         else:
             recon_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(xhat - x) / (2. * (args['x_sigma'] ** 2)), axis=[1, 2, 3]))
         
-        if label is None:
+        if label is not None:
             '''classification'''
             cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(prob, 1e-10, 1.0)), axis=-1))
             '''mutual information'''
@@ -24,7 +24,7 @@ def ELBO_criterion(args, x, xhat, prob, prob_recon, nf_args, label=None):
         z_nf_loss -= tf.reduce_mean(nf_args[1], axis=-1)
         c_nf_loss = tf.reduce_mean(tf.reduce_sum(tf.square(nf_args[2] - 0) / 2., axis=1))
         c_nf_loss -= tf.reduce_mean(nf_args[3], axis=-1)
-        nf_loss = z_nf_loss + c_nf_loss
+        nf_loss = z_nf_loss + c_nf_losss
         
         return recon_loss, cls_loss, info, nf_loss
 #%%

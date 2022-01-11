@@ -419,7 +419,6 @@ def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args
             # c_ = tf.stop_gradient(c)
             # nf_args = model.prior(z_, c_)
             prob_reconL = tf.nn.softmax(model.ae.c_encode(imageL, training=True), axis=-1)
-            probL = tf.nn.softmax(model.ae.c_encode(imageL, training=True), axis=-1)
             
             recon_lossL, cls_lossL, infoL, nf_lossL = ELBO_criterion(args, imageL, xhatL, probL, prob_reconL, nf_args, label=labelL)
             
