@@ -1,6 +1,16 @@
 #%%
 '''
-220111: mutual information is not included yet
+<check list>
+- mutual information loss
+- AE optimizer
+    1) SGD + momentum
+    2) decoupled weight decay
+    3) learning rate schedule *****
+- NF 
+    1) Adam 
+    2) gradient clipping
+    3) learning rate schedule (exponential)
+    4) decoupled weight deacy ***** (current: L2 regularization)
 '''
 #%%
 import argparse
@@ -290,7 +300,7 @@ def main():
         #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
         # else:
         #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
-        loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, num_classes, total_length)
+        loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, total_length)
         val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
@@ -342,7 +352,7 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, num_classes, total_length):
+def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, total_length):
     loss_avg = tf.keras.metrics.Mean()
     nf_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
@@ -427,7 +437,7 @@ def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args
                 buffer_var.assign(tf.convert_to_tensor(args['beta1'], tf.float32) * buffer_var + g + tf.convert_to_tensor(args['wd'], tf.float32) * var)
         '''2. update weight'''
         for var, buffer_var in zip(model.ae.trainable_variables, buffer_model.ae.trainable_variables):
-                var.assign(var - tf.convert_to_tensor(lr, tf.float32) * buffer_var)
+            var.assign(var - tf.convert_to_tensor(lr, tf.float32) * buffer_var)
         
         '''Normalizing Flow'''
         grad = tape.gradient(nf_loss, model.prior.trainable_weights)
@@ -452,7 +462,7 @@ def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args
     #     return labeled_loss_avg, unlabeled_loss_avg, kl_y_loss_avg, accuracy
     return loss_avg, nf_loss_avg, accuracy
 #%%
-def validate(dataset, model, epoch, args, num_classes, split):
+def validate(dataset, model, epoch, args, split):
     nf_loss_avg = tf.keras.metrics.Mean()
     recon_loss_avg = tf.keras.metrics.Mean()   
     elbo_loss_avg = tf.keras.metrics.Mean()   
