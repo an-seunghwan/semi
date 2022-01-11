@@ -24,7 +24,7 @@ def ELBO_criterion(args, x, xhat, prob, prob_recon, nf_args, label=None):
         z_nf_loss -= tf.reduce_mean(nf_args[1], axis=-1)
         c_nf_loss = tf.reduce_mean(tf.reduce_sum(tf.square(nf_args[2] - 0) / 2., axis=1))
         c_nf_loss -= tf.reduce_mean(nf_args[3], axis=-1)
-        nf_loss = z_nf_loss + c_nf_losss
+        nf_loss = z_nf_loss + c_nf_loss
         
         return recon_loss, cls_loss, info, nf_loss
 #%%
