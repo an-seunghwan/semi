@@ -23,7 +23,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 from preprocess import fetch_dataset
 from model import VAE
 from criterion import ELBO_criterion
-from mixup import augment, weight_decay, label_smoothing
+from mixup import augment, label_smoothing
 #%%
 # config = tf.compat.v1.ConfigProto()
 # '''
@@ -141,17 +141,17 @@ parser.add_argument('--K2', default=8, type=int,
 parser.add_argument('--coupling_MLP_num', default=4, type=int,
                     help='number of dense layers in single coupling layer')
 
-# '''Normalizing Flow Optimizer Parameters'''
-# parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.0001, type=float,
-#                     metavar='LR', help='initial learning rate for normalizing flow')
-# parser.add_argument('--reg', default=0.01, type=float,
-#                     help='L2 regularization parameter for dense layers in Real NVP')
-# parser.add_argument('--decay_steps', default=1, type=int,
-#                     help='decay steps for exponential decay schedule')
-# parser.add_argument('--decay_rate', default=0.9, type=float,
-#                     help='decay rate for exponential decay schedule')
-# parser.add_argument('--gradclip', default=1., type=float,
-#                     help='gradclip value')
+'''Normalizing Flow Optimizer Parameters'''
+parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.001, type=float,
+                    metavar='LR', help='initial learning rate for normalizing flow')
+parser.add_argument('--reg', default=0.01, type=float,
+                    help='L2 regularization parameter for dense layers in Real NVP')
+parser.add_argument('--decay_steps', default=1, type=int,
+                    help='decay steps for exponential decay schedule')
+parser.add_argument('--decay_rate', default=0.95, type=float,
+                    help='decay rate for exponential decay schedule')
+parser.add_argument('--gradclip', default=1., type=float,
+                    help='gradclip value')
 
 '''Optimizer Transport Estimation Parameters'''
 parser.add_argument('--epsilon', default=0.1, type=float,
@@ -247,10 +247,10 @@ def main():
     # decay_model.set_weights(model.get_weights())
     
     '''optimizer'''
-    # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
-    #                                                             decay_steps=args['decay_steps'], 
-    #                                                             decay_rate=args['decay_rate'])
-    # optimizer_nf = K.optimizers.Adam(args['lr_nf'], clipvalue=args['gradclip']) 
+    lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
+                                                                decay_steps=args['decay_steps'], 
+                                                                decay_rate=args['decay_rate'])
+    optimizer_nf = K.optimizers.Adam(args['lr_nf'], clipvalue=args['gradclip']) 
 
     '''
     <SGD + momentum + weight_decay>
@@ -284,12 +284,13 @@ def main():
         #     lr = args['lr'] * 0.01
         # else:
         #     lr = args['lr'] * 0.001
+        optimizer_nf.lr = lr_schedule(epoch)
         
         # if epoch % args['reconstruct_freq'] == 0:
         #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
         # else:
         #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
-        loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
+        loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, num_classes, total_length)
         val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
@@ -341,7 +342,7 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length):
+def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, num_classes, total_length):
     loss_avg = tf.keras.metrics.Mean()
     nf_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
@@ -415,7 +416,7 @@ def train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes,
             loss = (ew * recon_lossU) + mixup_yL + ucw * mixup_yU + cls_lossL
 
         '''AutoEncoder'''
-        grads = tape.gradient(loss, model.trainable_variables) 
+        grads = tape.gradient(loss, model.ae.trainable_variables) 
         '''SGD + weight decay'''
         '''1. update gradient and buffer'''
         if (epoch == 0) and (batch_num == 0): # initialize buffer model weights only once
@@ -429,18 +430,8 @@ def train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes,
                 var.assign(var - tf.convert_to_tensor(lr, tf.float32) * buffer_var)
         
         '''Normalizing Flow'''
-        grads = tape.gradient(nf_loss, model.trainable_variables) 
-        '''SGD + weight decay'''
-        '''1. update gradient and buffer'''
-        if (epoch == 0) and (batch_num == 0): # initialize buffer model weights only once
-            for g, var, buffer_var in zip(grads, model.prior.trainable_variables, buffer_model.prior.trainable_variables):
-                buffer_var.assign(g + tf.convert_to_tensor(args['wd'], tf.float32) * var)
-        else:
-            for g, var, buffer_var in zip(grads, model.prior.trainable_variables, buffer_model.prior.trainable_variables):
-                buffer_var.assign(tf.convert_to_tensor(args['beta1'], tf.float32) * buffer_var + g + tf.convert_to_tensor(args['wd'], tf.float32) * var)
-        '''2. update weight'''
-        for var, buffer_var in zip(model.prior.trainable_variables, buffer_model.prior.trainable_variables):
-                var.assign(var - tf.convert_to_tensor(lr, tf.float32) * buffer_var)
+        grad = tape.gradient(nf_loss, model.prior.trainable_weights)
+        optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
         
         loss_avg(loss)
         nf_loss_avg(nf_loss)
