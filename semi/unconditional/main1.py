@@ -154,7 +154,7 @@ parser.add_argument('--coupling_MLP_num', default=4, type=int,
 '''Normalizing Flow Optimizer Parameters'''
 parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.001, type=float,
                     metavar='LR', help='initial learning rate for normalizing flow')
-parser.add_argument('--reg', default=0.01, type=float,
+parser.add_argument('--reg', default=0.0001, type=float,
                     help='L2 regularization parameter for dense layers in Real NVP')
 parser.add_argument('--decay_steps', default=1, type=int,
                     help='decay steps for exponential decay schedule')
