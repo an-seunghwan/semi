@@ -41,6 +41,10 @@ def _list_to_tf_dataset(dataset):
     )
 #%%
 def split_dataset(dataset, num_labeled, num_validations, num_classes):
+    '''
+    validation and train are disjoint
+    labeled is included in unlabeled
+    '''
     dataset = dataset.shuffle(buffer_size=10000)
     counter = [0 for _ in range(num_classes)]
     labeled = []

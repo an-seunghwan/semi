@@ -4,8 +4,8 @@
 - mutual information loss
 - AE optimizer
     1) SGD + momentum
-    2) decoupled weight decay
-    3) learning rate schedule *****
+    2) weight decay
+    3) learning rate schedule 
 - NF 
     1) Adam 
     2) gradient clipping
@@ -33,7 +33,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 from preprocess import fetch_dataset
 from model import VAE
 from criterion import ELBO_criterion
-from mixup import augment, label_smoothing
+from mixup import augment, label_smoothing, non_smooth_mixup
 #%%
 # config = tf.compat.v1.ConfigProto()
 # '''
@@ -57,121 +57,121 @@ def arg_as_list(s):
         raise argparse.ArgumentTypeError("Argument \"%s\" is not a list" % (s))
     return v
 #%%
-# def get_args():
-parser = argparse.ArgumentParser('parameters')
+def get_args():
+    parser = argparse.ArgumentParser('parameters')
 
-# parser.add_argument('-bp', '--base_path', default=".")
-parser.add_argument('--dataset', type=str, default='cifar10',
-                    help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra, cmnist)')
-# parser.add_argument('-is', "--image-size", default=[32, 32], type=arg_as_list,
-#                     metavar='Image Size List', help='the size of h * w for image')
-# parser.add_argument("--channel", default=3, type=int,
-#                     metavar='Channel size', help='the size of image channel')
-parser.add_argument('-b', '--batch-size', default=128, type=int,
-                    metavar='N', help='mini-batch size (default: 128)')
+    # parser.add_argument('-bp', '--base_path', default=".")
+    parser.add_argument('--dataset', type=str, default='cifar10',
+                        help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra, cmnist)')
+    # parser.add_argument('-is', "--image-size", default=[32, 32], type=arg_as_list,
+    #                     metavar='Image Size List', help='the size of h * w for image')
+    # parser.add_argument("--channel", default=3, type=int,
+    #                     metavar='Channel size', help='the size of image channel')
+    parser.add_argument('-b', '--batch-size', default=128, type=int,
+                        metavar='N', help='mini-batch size (default: 128)')
 
-'''SSL VAE Train PreProcess Parameter'''
-parser.add_argument('--epochs', default=600, type=int, 
-                    metavar='N', help='number of total epochs to run')
-parser.add_argument('--start-epoch', default=0, type=int, 
-                    metavar='N', help='manual epoch number (useful on restarts)')
-parser.add_argument('--reconstruct-freq', '-rf', default=50, type=int,
-                    metavar='N', help='reconstruct frequency (default: 50)')
-parser.add_argument('--labeled_examples', type=int, default=4000, 
-                    help='number labeled examples (default: 4000')
-parser.add_argument('--validation_examples', type=int, default=5000, 
-                    help='number validation examples (default: 5000')
-parser.add_argument('--augment', action='store_true', 
-                    help="apply augmentation to image")
+    '''SSL VAE Train PreProcess Parameter'''
+    parser.add_argument('--epochs', default=600, type=int, 
+                        metavar='N', help='number of total epochs to run')
+    parser.add_argument('--start-epoch', default=0, type=int, 
+                        metavar='N', help='manual epoch number (useful on restarts)')
+    parser.add_argument('--reconstruct-freq', '-rf', default=50, type=int,
+                        metavar='N', help='reconstruct frequency (default: 50)')
+    parser.add_argument('--labeled_examples', type=int, default=4000, 
+                        help='number labeled examples (default: 4000')
+    parser.add_argument('--validation_examples', type=int, default=5000, 
+                        help='number validation examples (default: 5000')
+    parser.add_argument('--augment', action='store_true', 
+                        help="apply augmentation to image")
 
-'''Deep VAE Model Parameters'''
-# parser.add_argument('--net-name', default="wideresnet-28-2", type=str, help="the name for network to use")
-parser.add_argument('--depth', type=int, default=28, 
-                    help='depth for WideResnet (default: 28)')
-parser.add_argument('--width', type=int, default=2, 
-                    help='widen factor for WideResnet (default: 2)')
-parser.add_argument('--slope', type=float, default=0.1, 
-                    help='slope parameter for LeakyReLU (default: 0.1)')
-parser.add_argument('-dr', '--drop-rate', default=0, type=float, 
-                    help='drop rate for the network')
-parser.add_argument("--br", "--bce-reconstruction", action='store_true', 
-                    help='Do BCE Reconstruction')
-parser.add_argument("-s", "--x-sigma", default=1, type=float,
-                    help="The standard variance for reconstructed images, work as regularization")
+    '''Deep VAE Model Parameters'''
+    # parser.add_argument('--net-name', default="wideresnet-28-2", type=str, help="the name for network to use")
+    parser.add_argument('--depth', type=int, default=28, 
+                        help='depth for WideResnet (default: 28)')
+    parser.add_argument('--width', type=int, default=2, 
+                        help='widen factor for WideResnet (default: 2)')
+    parser.add_argument('--slope', type=float, default=0.1, 
+                        help='slope parameter for LeakyReLU (default: 0.1)')
+    parser.add_argument('-dr', '--drop-rate', default=0, type=float, 
+                        help='drop rate for the network')
+    parser.add_argument("--br", "--bce-reconstruction", action='store_true', 
+                        help='Do BCE Reconstruction')
+    parser.add_argument("-s", "--x-sigma", default=1, type=float,
+                        help="The standard variance for reconstructed images, work as regularization")
 
-'''VAE parameters'''
-parser.add_argument('--latent_dim', "--latent_dim_continuous", default=128, type=int,
-                    metavar='Latent Dim For Continuous Variable',
-                    help='feature dimension in latent space for continuous variable')
+    '''VAE parameters'''
+    parser.add_argument('--latent_dim', "--latent_dim_continuous", default=128, type=int,
+                        metavar='Latent Dim For Continuous Variable',
+                        help='feature dimension in latent space for continuous variable')
 
-'''VAE Loss Function Parameters'''
-# parser.add_argument("-ei", "--evaluate-inference", action='store_true',
-#                     help='Calculate the inference accuracy for unlabeled dataset')
-parser.add_argument('--kbmc', '--kl-beta-max-continuous', default=1e-3, type=float, 
-                    metavar='KL Beta', help='the epoch to linear adjust kl beta')
-parser.add_argument('--kbmd', '--kl-beta-max-discrete', default=1e-3, type=float, 
-                    metavar='KL Beta', help='the epoch to linear adjust kl beta')
-parser.add_argument('--akb', '--adjust-kl-beta-epoch', default=200, type=int, 
-                    metavar='KL Beta', help='the max epoch to adjust kl beta')
-parser.add_argument('--ewm', '--elbo-weight-max', default=1e-3, type=float, 
-                    metavar='weight for elbo loss part')
-parser.add_argument('--aew', '--adjust-elbo-weight', default=400, type=int,
-                    metavar="the epoch to adjust elbo weight to max")
-parser.add_argument('--wrd', default=1, type=float,
-                    help="the max weight for the optimal transport estimation of discrete variable c")
-parser.add_argument('--wmf', '--weight-modify-factor', default=0.4, type=float,
-                    help="weight  will get wrz at amf * epochs")
-parser.add_argument('--pwm', '--posterior-weight-max', default=1, type=float,
-                    help="the max value for posterior weight")
-parser.add_argument('--apw', '--adjust-posterior-weight', default=200, type=float,
-                    help="adjust posterior weight")
+    '''VAE Loss Function Parameters'''
+    # parser.add_argument("-ei", "--evaluate-inference", action='store_true',
+    #                     help='Calculate the inference accuracy for unlabeled dataset')
+    parser.add_argument('--kbmc', '--kl-beta-max-continuous', default=1e-3, type=float, 
+                        metavar='KL Beta', help='the epoch to linear adjust kl beta')
+    # parser.add_argument('--kbmd', '--kl-beta-max-discrete', default=1e-3, type=float, 
+    #                     metavar='KL Beta', help='the epoch to linear adjust kl beta')
+    parser.add_argument('--akb', '--adjust-kl-beta-epoch', default=200, type=int, 
+                        metavar='KL Beta', help='the max epoch to adjust kl beta')
+    parser.add_argument('--ewm', '--elbo-weight-max', default=1e-3, type=float, 
+                        metavar='weight for elbo loss part')
+    parser.add_argument('--aew', '--adjust-elbo-weight', default=400, type=int,
+                        metavar="the epoch to adjust elbo weight to max")
+    parser.add_argument('--wrd', default=1, type=float,
+                        help="the max weight for the optimal transport estimation of discrete variable c")
+    parser.add_argument('--wmf', '--weight-modify-factor', default=0.4, type=float,
+                        help="weight  will get wrz at amf * epochs")
+    parser.add_argument('--pwm', '--posterior-weight-max', default=1, type=float,
+                        help="the max value for posterior weight")
+    parser.add_argument('--apw', '--adjust-posterior-weight', default=200, type=float,
+                        help="adjust posterior weight")
 
-'''Optimizer Parameters'''
-parser.add_argument('--lr', '--learning-rate', default=1e-1, type=float,
-                    metavar='LR', help='initial learning rate')
-parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
-                    help='beta1 for adam as well as momentum for SGD')
-# parser.add_argument('-ad', "--adjust-lr", default=[400, 500, 550], type=arg_as_list,
-#                     help="The milestone list for adjust learning rate")
-parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
+    '''Optimizer Parameters'''
+    parser.add_argument('--lr', '--learning-rate', default=1e-1, type=float,
+                        metavar='LR', help='initial learning rate')
+    parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
+                        help='beta1 for adam as well as momentum for SGD')
+    parser.add_argument('-ad', "--adjust-lr", default=[400, 500, 550], type=arg_as_list,
+                        help="The milestone list for adjust learning rate")
+    parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
 
-'''Normalizing Flow Model Parameters'''
-parser.add_argument('--z_mask', default='checkerboard', type=str,
-                    help='mask type of continuous latent for Real NVP (e.g. checkerboard or half)')
-parser.add_argument('--c_mask', default='half', type=str,
-                    help='mask type of discrete latent for Real NVP (e.g. checkerboard or half)')
-parser.add_argument('--z_emb', default=256, type=int,
-                    help='embedding dimension of continuous latent for coupling layer')
-parser.add_argument('--c_emb', default=256, type=int,
-                    help='embedding dimension of discrete latent for coupling layer')
-parser.add_argument('--K1', default=8, type=int,
-                    help='number of coupling layers in Real NVP (continous latent)')
-parser.add_argument('--K2', default=8, type=int,
-                    help='number of coupling layers in Real NVP (discrete latent)')
-parser.add_argument('--coupling_MLP_num', default=4, type=int,
-                    help='number of dense layers in single coupling layer')
+    '''Normalizing Flow Model Parameters'''
+    parser.add_argument('--z_mask', default='checkerboard', type=str,
+                        help='mask type of continuous latent for Real NVP (e.g. checkerboard or half)')
+    parser.add_argument('--c_mask', default='half', type=str,
+                        help='mask type of discrete latent for Real NVP (e.g. checkerboard or half)')
+    parser.add_argument('--z_emb', default=256, type=int,
+                        help='embedding dimension of continuous latent for coupling layer')
+    parser.add_argument('--c_emb', default=256, type=int,
+                        help='embedding dimension of discrete latent for coupling layer')
+    parser.add_argument('--K1', default=8, type=int,
+                        help='number of coupling layers in Real NVP (continous latent)')
+    parser.add_argument('--K2', default=8, type=int,
+                        help='number of coupling layers in Real NVP (discrete latent)')
+    parser.add_argument('--coupling_MLP_num', default=4, type=int,
+                        help='number of dense layers in single coupling layer')
 
-'''Normalizing Flow Optimizer Parameters'''
-parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.001, type=float,
-                    metavar='LR', help='initial learning rate for normalizing flow')
-parser.add_argument('--reg', default=0.0001, type=float,
-                    help='L2 regularization parameter for dense layers in Real NVP')
-parser.add_argument('--decay_steps', default=1, type=int,
-                    help='decay steps for exponential decay schedule')
-parser.add_argument('--decay_rate', default=0.95, type=float,
-                    help='decay rate for exponential decay schedule')
-parser.add_argument('--gradclip', default=1., type=float,
-                    help='gradclip value')
+    '''Normalizing Flow Optimizer Parameters'''
+    parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.0001, type=float,
+                        metavar='LR', help='initial learning rate for normalizing flow')
+    parser.add_argument('--reg', default=0.01, type=float,
+                        help='L2 regularization parameter for dense layers in Real NVP')
+    parser.add_argument('--decay_steps', default=1, type=int,
+                        help='decay steps for exponential decay schedule')
+    parser.add_argument('--decay_rate', default=0.95, type=float,
+                        help='decay rate for exponential decay schedule')
+    parser.add_argument('--gradclip', default=1., type=float,
+                        help='gradclip value')
 
-'''Optimizer Transport Estimation Parameters'''
-parser.add_argument('--epsilon', default=0.1, type=float,
-                    help="the label smoothing epsilon for labeled data")
+    '''Optimizer Transport Estimation Parameters'''
+    parser.add_argument('--epsilon', default=0.1, type=float,
+                        help="the label smoothing epsilon for labeled data")
 
-'''Configuration'''
-parser.add_argument('--config_path', type=str, default=None, 
-                    help='path to yaml config file, overwrites args')
+    '''Configuration'''
+    parser.add_argument('--config_path', type=str, default=None, 
+                        help='path to yaml config file, overwrites args')
 
-    # return parser.parse_args()
+    return parser.parse_args()
 #%%
 def load_config(args):
     dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -232,10 +232,10 @@ def generate_and_save_images(model, image, num_classes, step, save_dir):
     plt.close()
 #%%
 def main():
-    # '''argparse to dictionary'''
-    # args = vars(get_args())
-    '''argparse debugging'''
-    args = vars(parser.parse_args(args=['--config_path', 'configs/cifar10_4000.yaml']))
+    '''argparse to dictionary'''
+    args = vars(get_args())
+    # '''argparse debugging'''
+    # args = vars(parser.parse_args(args=['--config_path', 'configs/cifar10_4000.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -286,27 +286,28 @@ def main():
         if epoch == 0:
             '''warm-up'''
             lr = args['lr'] * 0.2
-        # elif epoch < args['adjust_lr'][0]:
-        #     lr = args['lr']
-        # elif epoch < args['adjust_lr'][1]:
-        #     lr = args['lr'] * 0.1
-        # elif epoch < args['adjust_lr'][2]:
-        #     lr = args['lr'] * 0.01
-        # else:
-        #     lr = args['lr'] * 0.001
+        elif epoch < args['adjust_lr'][0]:
+            lr = args['lr']
+        elif epoch < args['adjust_lr'][1]:
+            lr = args['lr'] * 0.1
+        elif epoch < args['adjust_lr'][2]:
+            lr = args['lr'] * 0.01
+        else:
+            lr = args['lr'] * 0.001
         optimizer_nf.lr = lr_schedule(epoch)
         
         # if epoch % args['reconstruct_freq'] == 0:
         #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
         # else:
         #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
-        loss, recon_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, total_length)
+        loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, num_classes, total_length)
         val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
             tf.summary.scalar('recon_loss', recon_loss.result(), step=epoch)
+            tf.summary.scalar('info_loss', info_loss.result(), step=epoch)
             tf.summary.scalar('nf_loss', nf_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
             # if epoch % args['reconstruct_freq'] == 0:
@@ -325,6 +326,7 @@ def main():
         # Reset metrics every epoch
         loss.reset_states()
         recon_loss.reset_states()
+        info_loss.reset_states()
         nf_loss.reset_states()
         accuracy.reset_states()
         val_nf_loss.reset_states()
@@ -339,10 +341,10 @@ def main():
         if epoch == 0:
             lr = args['lr']
             
-        # if args['dataset'] == 'cifar10':
-        #     if args['labeled_examples'] >= 2500:
-        #         if epoch == args['adjust_lr'][0]:
-        #             args['ewm'] = args['ewm'] * 5
+        if args['dataset'] == 'cifar10':
+            if args['labeled_examples'] >= 2500:
+                if epoch == args['adjust_lr'][0]:
+                    args['ewm'] = args['ewm'] * 5
 
     '''model & configurations save'''        
     model_path = f'{log_path}/{current_time}'
@@ -354,14 +356,18 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, total_length):
+def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, num_classes, total_length):
     loss_avg = tf.keras.metrics.Mean()
     recon_loss_avg = tf.keras.metrics.Mean()
+    info_loss_avg = tf.keras.metrics.Mean()
     nf_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''elbo part weight'''
     ew = weight_schedule(epoch, args['aew'], args['ewm'])
+    '''mix-up parameters'''
+    beta_z = weight_schedule(epoch, args['akb'], args['kbmc'])
+    pwm = weight_schedule(epoch, args['apw'], args['pwm'])
     '''un-supervised classification weight'''
     ucw = weight_schedule(epoch, round(args['wmf'] * args['epochs']), args['wrd'])
 
@@ -405,31 +411,33 @@ def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args
         mix_weight = [tf.constant(np.random.beta(args['epsilon'], args['epsilon'])), # labeled
                       tf.constant(np.random.beta(2.0, 2.0))] # unlabeled
         
+        '''1. labeled'''
         with tf.GradientTape(persistent=True) as tape:
-            [[z, c, probU, xhatU], nf_args] = model(imageU, training=True)
-            # z, c, probU, xhatU = model.ae(imageU, training=True) # unlabeled
+            [[z, c, probL, xhatL], nf_args] = model(imageL, training=True)
+            # z, c, probL, xhatL = model.ae(imageL, training=True) # unlabeled
             # z_ = tf.stop_gradient(z)
             # c_ = tf.stop_gradient(c)
             # nf_args = model.prior(z_, c_)
+            prob_reconL = tf.nn.softmax(model.ae.c_encode(imageL, training=True), axis=-1)
             probL = tf.nn.softmax(model.ae.c_encode(imageL, training=True), axis=-1)
             
-            recon_lossU, cls_lossL, nf_loss = ELBO_criterion(args, imageU, xhatU, labelL, probL, nf_args)
+            recon_lossL, cls_lossL, infoL, nf_lossL = ELBO_criterion(args, imageL, xhatL, probL, prob_reconL, nf_args, label=labelL)
             
             '''mix-up'''
             with tape.stop_recording():
-                image_mixL, label_shuffleL = label_smoothing(imageL, labelL, mix_weight[0], tag='labeled')
-                image_mixU, pseudo_labelU = label_smoothing(imageU, probU, mix_weight[1], tag='unlabeled')
-            smoothed_probL = tf.nn.softmax(model.ae.c_encode(image_mixL, training=True), axis=-1)
-            smoothed_probU = tf.nn.softmax(model.ae.c_encode(image_mixU, training=True), axis=-1)
+                image_mixL, z_mixL, c_mixL, label_shuffleL = label_smoothing(imageL, labelL, mix_weight[0])
+            smoothed_zL, smoothed_cL, smoothed_probL, _ = model.ae(image_mixL, training=True)
             
+            mixup_zL = tf.reduce_mean(tf.math.square(smoothed_zL - z_mixL))
+            mixup_zL += tf.reduce_mean(tf.math.square(smoothed_cL - c_mixL))
             mixup_yL = - tf.reduce_mean(mix_weight[0] * tf.reduce_sum(label_shuffleL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
-            mixup_yU = - tf.reduce_mean(tf.reduce_sum(pseudo_labelU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
             
-            loss = (ew * recon_lossU) + mixup_yL + ucw * mixup_yU + cls_lossL
+            elbo_lossL = recon_lossL + beta_z * pwm * mixup_zL
+            loss_supervised = (ew * elbo_lossL) + mixup_yL + cls_lossL + infoL
 
         '''AutoEncoder'''
-        grads = tape.gradient(loss, model.ae.trainable_variables) 
+        grads = tape.gradient(loss_supervised, model.ae.trainable_variables) 
         '''SGD + weight decay'''
         '''1. update gradient and buffer'''
         if (epoch == 0) and (batch_num == 0): # initialize buffer model weights only once
@@ -443,28 +451,75 @@ def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args
             var.assign(var - tf.convert_to_tensor(lr, tf.float32) * buffer_var)
         
         '''Normalizing Flow'''
-        grad = tape.gradient(nf_loss, model.prior.trainable_weights)
+        grad = tape.gradient(nf_lossL, model.prior.trainable_weights)
         optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
         
-        loss_avg(loss)
+        '''2. unlabeled'''
+        with tf.GradientTape(persistent=True) as tape:
+            [[z, c, probU, xhatU], nf_args] = model(imageU, training=True)
+            # z, c, probU, xhatU = model.ae(imageU, training=True) # unlabeled
+            # z_ = tf.stop_gradient(z)
+            # c_ = tf.stop_gradient(c)
+            # nf_args = model.prior(z_, c_)
+            prob_reconU = tf.nn.softmax(model.ae.c_encode(imageU, training=True), axis=-1)
+            
+            recon_lossU, _, infoU, nf_lossU = ELBO_criterion(args, imageU, xhatU, probU, prob_reconU, nf_args)
+            
+            '''mix-up'''
+            with tape.stop_recording():
+                image_mixU, z_mixU, c_mixU, pseudo_labelU = non_smooth_mixup(imageU, z, c, probU, mix_weight[1])
+            smoothed_zU, smoothed_cU, smoothed_probU, _ = model.ae(image_mixU, training=True)
+            
+            mixup_zU = tf.reduce_mean(tf.math.square(smoothed_zU - z_mixU))
+            mixup_zU += tf.reduce_mean(tf.math.square(smoothed_cU - c_mixU))
+            mixup_yU = - tf.reduce_mean(tf.reduce_sum(pseudo_labelU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
+            
+            elbo_lossU = recon_lossU + beta_z * pwm * mixup_zU
+            loss_unsupervised = (ew * elbo_lossU) + (ucw * mixup_yU) + infoU
+
+        '''AutoEncoder'''
+        grads = tape.gradient(loss_unsupervised, model.ae.trainable_variables) 
+        '''SGD + weight decay'''
+        '''1. update gradient and buffer'''
+        if (epoch == 0) and (batch_num == 0): # initialize buffer model weights only once
+            for g, var, buffer_var in zip(grads, model.ae.trainable_variables, buffer_model.ae.trainable_variables):
+                buffer_var.assign(g + tf.convert_to_tensor(args['wd'], tf.float32) * var)
+        else:
+            for g, var, buffer_var in zip(grads, model.ae.trainable_variables, buffer_model.ae.trainable_variables):
+                buffer_var.assign(tf.convert_to_tensor(args['beta1'], tf.float32) * buffer_var + g + tf.convert_to_tensor(args['wd'], tf.float32) * var)
+        '''2. update weight'''
+        for var, buffer_var in zip(model.ae.trainable_variables, buffer_model.ae.trainable_variables):
+            var.assign(var - tf.convert_to_tensor(lr, tf.float32) * buffer_var)
+        
+        '''Normalizing Flow'''
+        grad = tape.gradient(nf_lossU, model.prior.trainable_weights)
+        optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
+        
+        loss_avg(loss_unsupervised)
         recon_loss_avg(recon_lossU)
-        nf_loss_avg(nf_loss)
+        info_loss_avg(infoU)
+        nf_loss_avg(nf_lossU)
         probL = tf.nn.softmax(model.ae.c_encode(imageL, training=False), axis=-1)
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
 
         progress_bar.set_postfix({
             'EPOCH': f'{epoch:04d}',
             'Loss': f'{loss_avg.result():.4f}',
+            'Recon': f'{recon_loss_avg.result():.4f}',
+            'Info': f'{info_loss_avg.result():.4f}',
             'NF': f'{nf_loss_avg.result():.4f}',
             'Accuracy': f'{accuracy.result():.3%}'
         })
+        
+    if epoch % args['reconstruct_freq'] == 0:
+        generate_and_save_images(model, imageU[0][tf.newaxis, ...], num_classes, epoch, f'logs/{args["dataset"]}_{args["labeled_examples"]}/{current_time}')
     
     # if epoch % args['reconstruct_freq'] == 0:
     #     sample_recon = generate_and_save_images(model, imageU[0][tf.newaxis, ...], num_classes)
     #     return labeled_loss_avg, unlabeled_loss_avg, kl_y_loss_avg, accuracy, sample_recon
     # else:
     #     return labeled_loss_avg, unlabeled_loss_avg, kl_y_loss_avg, accuracy
-    return loss_avg, recon_loss_avg, nf_loss_avg, accuracy
+    return loss_avg, recon_loss_avg, info_loss_avg, nf_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, args, split):
     nf_loss_avg = tf.keras.metrics.Mean()
@@ -474,7 +529,7 @@ def validate(dataset, model, epoch, args, split):
 
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
-        [[z, c, prob, xhat], nf_args] = model(image, training=True)
+        [[z, c, prob, xhat], nf_args] = model(image, training=False)
         recon_loss, cls_loss, nf_loss = ELBO_criterion(args, image, xhat, label, prob, nf_args)
         nf_loss_avg(nf_loss)
         recon_loss_avg(recon_loss)

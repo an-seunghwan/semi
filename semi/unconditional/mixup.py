@@ -14,19 +14,34 @@ def augment(x):
     x = tf.map_fn(lambda batch: tf.image.random_crop(batch, size=(32, 32, 3)), x, parallel_iterations=cpu_count())
     return x
 #%%
-def label_smoothing(image, label, mix_weight, tag):
+def label_smoothing(image, z, c, label, mix_weight):
     shuffled_indices = tf.random.shuffle(tf.range(start=0, limit=tf.shape(image)[0], dtype=tf.int32))
     
     image_shuffle = tf.gather(image, shuffled_indices)
+    z_shuffle = tf.gather(z, shuffled_indices)
+    c_shuffle = tf.gather(c, shuffled_indices)
+    label_mix = tf.gather(label, shuffled_indices)
     
     image_mix = mix_weight * image_shuffle + (1. - mix_weight) * image
-    if tag == 'labeled':
-        label_mix = tf.gather(label, shuffled_indices)
-    if tag == 'unlabeled':
-        label_shuffle = tf.gather(label, shuffled_indices)
-        label_mix = mix_weight * label_shuffle + (1. - mix_weight) * label
+    z_mix = mix_weight * z_shuffle + (1. - mix_weight) * z
+    c_mix = mix_weight * c_shuffle + (1. - mix_weight) * c
     
-    return image_mix, label_mix
+    return image_mix, z_mix, c_mix, label_mix
+#%%
+def non_smooth_mixup(image, z, c, prob, mix_weight):
+    shuffled_indices = tf.random.shuffle(tf.range(start=0, limit=tf.shape(image)[0], dtype=tf.int32))
+    
+    image_shuffle = tf.gather(image, shuffled_indices)
+    z_shuffle = tf.gather(z, shuffled_indices)
+    c_shuffle = tf.gather(c, shuffled_indices)
+    prob_shuffle = tf.gather(prob, shuffled_indices)
+    
+    image_mix = mix_weight * image_shuffle + (1. - mix_weight) * image
+    z_mix = mix_weight * z_shuffle + (1. - mix_weight) * z
+    c_mix = mix_weight * c_shuffle + (1. - mix_weight) * c
+    prob_mix = mix_weight * prob_shuffle + (1. - mix_weight) * prob
+    
+    return image_mix, z_mix, c_mix, prob_mix
 #%%
 def weight_decay_decoupled(model, buffer_model, decay_rate):
     # weight decay
