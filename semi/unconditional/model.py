@@ -231,10 +231,10 @@ class CouplingLayer(K.models.Model):
         self.output_dim = output_dim
         self.activation = activation
         self.dense = [
-            layers.Dense(self.embedding_dim, activation='relu', kernel_regularizer=K.regularizers.l2(reg)) 
+            layers.Dense(self.embedding_dim, activation='relu') 
             for _ in range(coupling_MLP_num)
             ] + [
-            layers.Dense(self.output_dim, activation=self.activation, kernel_regularizer=K.regularizers.l2(reg))
+            layers.Dense(self.output_dim, activation=self.activation)
             ]
     
     def call(self, x):
