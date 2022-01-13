@@ -1,5 +1,7 @@
 #%%
 '''
+custom SGD + weight decay ver.1
+
 211222: lr schedule -> modify lr manually, instead of tensorflow function
 211227: tf.abs -> tf.math.abs
 211229: convert dmi -> tf.cast(dmi, tf.float32)

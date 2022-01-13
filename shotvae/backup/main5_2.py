@@ -1,14 +1,14 @@
 #%%
 '''
+custom SGD + weight decay ver.2
+
 211222: lr schedule -> modify lr manually, instead of tensorflow function
 211227: tf.abs -> tf.math.abs
 211229: convert dmi -> tf.cast(dmi, tf.float32)
 220101: convert dmi -> tf.constant(dmi, dtype=tf.float32)
 220104: convert dmi -> tf.convert_to_tensor(dmi, dtype=tf.float32)
 220104: monitoring KL-divergence and its absolute value
-220105: apply weight decay directly in train function 
-220105: weight decay is NOT anymore the option of SGD optimizer, and apply it manually
-220105: manual SGD optimization
+220107: decoupled weight decay https://arxiv.org/pdf/1711.05101.pdf
 220110: modify mixup shuffle & optimal matching argument
 '''
 #%%
@@ -32,7 +32,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 from preprocess import fetch_dataset
 from model import VAE
 from criterion2 import ELBO_criterion
-from mixup import augment, optimal_match_mix, weight_decay, label_smoothing 
+from mixup import augment, optimal_match_mix, weight_decay_decoupled, label_smoothing 
 #%%
 # config = tf.compat.v1.ConfigProto()
 # '''
@@ -210,11 +210,11 @@ def main():
     model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
     # model.summary()
     
-    decay_model = VAE(num_classes=num_classes, depth=args['depth'], width=args['width'], slope=args['slope'],
+    buffer_model = VAE(num_classes=num_classes, depth=args['depth'], width=args['width'], slope=args['slope'],
                     latent_dim=args['ldc'], temperature=args['temperature'])
-    decay_model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
-    # decay_model.set_weights(model.get_weights())
-
+    buffer_model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
+    buffer_model.set_weights(model.get_weights())
+    
     '''
     <SGD + momentum + weight_decay>
     lambda: weight_decay parameter
@@ -228,13 +228,13 @@ def main():
         = weight(t) - lr * v(t+1)
         = weight(t) - lr * (beta_1 * v(t) + grad(t+1) + lambda * weight(t))
         = (weight(t) - lr * grad(t+1)) - lr * (beta_1 * v(t) + lambda * weight(t))
+        = (weight(t) - lr * (grad(t+1) + beta_1 * v(t)) - lr * lambda * weight(t))
     
     SGD : weight(t) - lr * grad(t+1)
     weight_decay (+ momentum) : - lr * (beta_1 * v(t) + lambda * weight(t))
     '''
-    # optimizer = K.optimizers.SGD(learning_rate=args['lr'],
-    #                             momentum=args['beta1'])
-    optimizer = K.optimizers.SGD(learning_rate=args['lr'])
+    optimizer = K.optimizers.SGD(learning_rate=args['lr'],
+                                momentum=args['beta1'])
 
     # learning_rate_fn = K.optimizers.schedules.PiecewiseConstantDecay(
     #     args['adjust_lr'], 
@@ -262,9 +262,9 @@ def main():
             # optimizer.lr = learning_rate_fn(epoch)
         
         if epoch % args['reconstruct_freq'] == 0:
-            labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes, total_length)
+            labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
         else:
-            labeled_loss, unlabeled_loss, kl_y_loss, accuracy = train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes, total_length)
+            labeled_loss, unlabeled_loss, kl_y_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
         val_z_kl_loss, val_y_kl_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, num_classes, split='Validation')
         test_z_kl_loss, test_y_kl_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, num_classes, split='Test')
         
@@ -322,13 +322,14 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_classes, total_length):
+def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length):
     labeled_loss_avg = tf.keras.metrics.Mean()
     unlabeled_loss_avg = tf.keras.metrics.Mean()
     kl_y_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''mutual information'''
+    # dmi = tf.constant(weight_schedule(epoch, args['akb'], args['dmi']), dtype=tf.float32)
     dmi = tf.convert_to_tensor(weight_schedule(epoch, args['akb'], args['dmi']), dtype=tf.float32)
     '''elbo part weight'''
     ew = weight_schedule(epoch, args['aew'], args['ewm'])
@@ -346,14 +347,6 @@ def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_cl
     
     # iteration = (50000 - args['validation_examples']) // args['batch_size'] 
     iteration = total_length // args['batch_size'] 
-    
-    # update decay model
-    if epoch == 0:
-        for decay_var, var in zip(decay_model.trainable_variables, model.trainable_variables):
-            decay_var.assign(tf.constant(args['wd'], tf.float32) * var)
-    else:
-        for decay_var, var in zip(decay_model.trainable_variables, model.trainable_variables):
-            decay_var.assign(tf.constant(args['beta1'], tf.float32) * decay_var + tf.constant(args['wd'], tf.float32) * var)
     
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
@@ -394,17 +387,10 @@ def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_cl
             loss_supervised = (ew * elbo_lossL) + posterior_loss_yL
 
         grads = tape.gradient(loss_supervised, model.trainable_variables) 
-        # '''only SGD''' 
-        # # optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
-        # for g, var in zip(grads, model.trainable_variables):
-        #     var.assign(var - optimizer.lr * g)
-        # '''weight decay'''
-        # for var, decay_var in zip(model.trainable_variables, decay_model.trainable_variables):
-        #     var.assign(var - optimizer.lr * decay_var)
-        '''SGD + weight decay'''
-        for g, var, decay_var in zip(grads, model.trainable_variables, decay_model.trainable_variables):
-            var.assign(var - optimizer.lr * (g + decay_var))
-        # weight_decay(model, decay_model, decay_rate=args['wd'] * args['lr'])
+        '''SGD + momentum''' 
+        optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
+        '''decoupled weight decay'''
+        weight_decay_decoupled(model, buffer_model, decay_rate=args['wd'] * args['lr'])
         
         '''unlabeled'''
         with tf.GradientTape() as tape:
@@ -426,17 +412,10 @@ def train(datasetL, datasetU, model, decay_model, optimizer, epoch, args, num_cl
             loss_unsupervised = (ew * elbo_lossU) + (ucw * posterior_loss_yU)
 
         grads = tape.gradient(loss_unsupervised, model.trainable_variables) 
-        # '''only SGD''' 
-        # # optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
-        # for g, var in zip(grads, model.trainable_variables):
-        #     var.assign(var - optimizer.lr * g)
-        # '''weight decay'''
-        # for var, decay_var in zip(model.trainable_variables, decay_model.trainable_variables):
-        #     var.assign(var - optimizer.lr * decay_var)
-        '''SGD + weight decay'''
-        for g, var, decay_var in zip(grads, model.trainable_variables, decay_model.trainable_variables):
-            var.assign(var - optimizer.lr * (g + decay_var))
-        # weight_decay(model, decay_model, decay_rate=args['wd'] * args['lr'])
+        '''SGD + momentum''' 
+        optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
+        '''decoupled weight decay'''
+        weight_decay_decoupled(model, buffer_model, decay_rate=args['wd'] * args['lr'])
         
         labeled_loss_avg(loss_supervised)
         unlabeled_loss_avg(loss_unsupervised)

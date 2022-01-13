@@ -1,10 +1,11 @@
 #%%
 '''
+mixmatch style weight decay
+
 211222: lr schedule -> modify lr manually, instead of tensorflow function
 211227: tf.abs -> tf.math.abs
 211229: convert dmi -> tf.cast(dmi, tf.float32)
 220101: convert dmi -> tf.constant(dmi, dtype=tf.float32)
-220103: dmi calculation is included in ELBO_criterion
 220104: convert dmi -> tf.convert_to_tensor(dmi, dtype=tf.float32)
 220104: monitoring KL-divergence and its absolute value
 220106: mixmatch version weight decay is applied
@@ -30,7 +31,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
 from model import VAE
-from criterion import ELBO_criterion
+from criterion2 import ELBO_criterion
 from mixup import augment, optimal_match_mix, weight_decay, label_smoothing 
 #%%
 # config = tf.compat.v1.ConfigProto()
@@ -255,16 +256,16 @@ def main():
             # optimizer.lr = learning_rate_fn(epoch)
         
         if epoch % args['reconstruct_freq'] == 0:
-            labeled_loss, unlabeled_loss, abs_kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length)
+            labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length)
         else:
-            labeled_loss, unlabeled_loss, abs_kl_y_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length)
+            labeled_loss, unlabeled_loss, kl_y_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length)
         val_z_kl_loss, val_y_kl_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, num_classes, split='Validation')
         test_z_kl_loss, test_y_kl_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, num_classes, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('labeled_loss', labeled_loss.result(), step=epoch)
             tf.summary.scalar('unlabeled_loss', unlabeled_loss.result(), step=epoch)
-            tf.summary.scalar('absolute_kl_y_loss', abs_kl_y_loss.result(), step=epoch)
+            tf.summary.scalar('kl_y_loss', kl_y_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
             if epoch % args['reconstruct_freq'] == 0:
                 tf.summary.image("train recon image", sample_recon, step=epoch)
@@ -284,7 +285,7 @@ def main():
         # Reset metrics every epoch
         labeled_loss.reset_states()
         unlabeled_loss.reset_states()
-        abs_kl_y_loss.reset_states()
+        kl_y_loss.reset_states()
         accuracy.reset_states()
         val_z_kl_loss.reset_states()
         val_y_kl_loss.reset_states()
@@ -318,7 +319,7 @@ def main():
 def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length):
     labeled_loss_avg = tf.keras.metrics.Mean()
     unlabeled_loss_avg = tf.keras.metrics.Mean()
-    abs_kl_y_loss_avg = tf.keras.metrics.Mean()
+    kl_y_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''mutual information'''
@@ -362,8 +363,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
         '''labeled'''
         with tf.GradientTape() as tape:
             meanL, log_sigmaL, log_probL, _, _, xhatL = model([imageL, labelL])
-            recon_lossL, kl_zL, kl_yL = ELBO_criterion(args, num_classes, imageL, xhatL, meanL, log_sigmaL, log_probL, dmi)
-            prior_klL = (kl_beta_z * kl_zL) + (kl_beta_y * kl_yL)
+            recon_lossL, kl_zL, kl_yL = ELBO_criterion(args, num_classes, imageL, xhatL, meanL, log_sigmaL, log_probL)
+            prior_klL = (kl_beta_z * kl_zL) + (kl_beta_y * tf.math.abs(kl_yL - dmi))
             elbo_lossL = recon_lossL + prior_klL
             
             '''mix-up''' # instead of KL-divergence?
@@ -388,8 +389,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
         '''unlabeled'''
         with tf.GradientTape() as tape:
             meanU, log_sigmaU, log_probU, _, _, xhatU = model([imageU, None])
-            recon_lossU, kl_zU, kl_yU = ELBO_criterion(args, num_classes, imageU, xhatU, meanU, log_sigmaU, log_probU, dmi)
-            prior_klU = (kl_beta_z * kl_zU) + (kl_beta_y * kl_yU)
+            recon_lossU, kl_zU, kl_yU = ELBO_criterion(args, num_classes, imageU, xhatU, meanU, log_sigmaU, log_probU)
+            prior_klU = (kl_beta_z * kl_zU) + (kl_beta_y * tf.math.abs(kl_yU - dmi))
             elbo_lossU = recon_lossU + prior_klU
             
             '''mix-up'''
@@ -412,7 +413,7 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
         
         labeled_loss_avg(loss_supervised)
         unlabeled_loss_avg(loss_unsupervised)
-        abs_kl_y_loss_avg(kl_yU)
+        kl_y_loss_avg(kl_yU)
         _, _, log_probL, _, _, _ = model([imageL, labelL], training=False)
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), log_probL)
 
@@ -420,15 +421,15 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             'EPOCH': f'{epoch:04d}',
             'labeled Loss': f'{labeled_loss_avg.result():.4f}',
             'unlabeled Loss': f'{unlabeled_loss_avg.result():.4f}',
-            'absolute KL': f'{abs_kl_y_loss_avg.result():.4f}',
+            'KL': f'{kl_y_loss_avg.result():.4f}',
             'Accuracy': f'{accuracy.result():.3%}'
         })
     
     if epoch % args['reconstruct_freq'] == 0:
         sample_recon = generate_and_save_images(model, imageU[0][tf.newaxis, ...], num_classes)
-        return labeled_loss_avg, unlabeled_loss_avg, abs_kl_y_loss_avg, accuracy, sample_recon
+        return labeled_loss_avg, unlabeled_loss_avg, kl_y_loss_avg, accuracy, sample_recon
     else:
-        return labeled_loss_avg, unlabeled_loss_avg, abs_kl_y_loss_avg, accuracy
+        return labeled_loss_avg, unlabeled_loss_avg, kl_y_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, args, num_classes, split):
     z_kl_loss_avg = tf.keras.metrics.Mean()
