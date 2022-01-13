@@ -386,7 +386,7 @@ def train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes,
                 buffer_var.assign(tf.convert_to_tensor(args['beta1'], tf.float32) * buffer_var + g + tf.convert_to_tensor(args['wd'], tf.float32) * var)
         '''2. update weight'''
         for var, buffer_var in zip(model.trainable_variables, buffer_model.trainable_variables):
-                var.assign(var - tf.convert_to_tensor(lr, tf.float32) * buffer_var)
+            var.assign(var - tf.convert_to_tensor(lr, tf.float32) * buffer_var)
         
         '''unlabeled'''
         with tf.GradientTape() as tape:
@@ -414,7 +414,7 @@ def train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes,
             buffer_var.assign(tf.convert_to_tensor(args['beta1'], tf.float32) * buffer_var + g + tf.convert_to_tensor(args['wd'], tf.float32) * var)
         '''2. update weight'''
         for var, buffer_var in zip(model.trainable_variables, buffer_model.trainable_variables):
-                var.assign(var - tf.convert_to_tensor(lr, tf.float32) * buffer_var)
+            var.assign(var - tf.convert_to_tensor(lr, tf.float32) * buffer_var)
         
         labeled_loss_avg(loss_supervised)
         unlabeled_loss_avg(loss_unsupervised)

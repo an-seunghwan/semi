@@ -11,6 +11,7 @@ custom SGD + weight decay ver.2
 220104: monitoring KL-divergence and its absolute value
 220107: decoupled weight decay https://arxiv.org/pdf/1711.05101.pdf
 220110: modify mixup shuffle & optimal matching argument
+220113: modify weight decay factor = weight decay * scheduled lr
 '''
 #%%
 import argparse
@@ -214,7 +215,7 @@ def main():
     buffer_model = VAE(num_classes=num_classes, depth=args['depth'], width=args['width'], slope=args['slope'],
                     latent_dim=args['ldc'], temperature=args['temperature'])
     buffer_model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
-    buffer_model.set_weights(model.get_weights())
+    buffer_model.set_weights(model.get_weights()) # weight initialization
     
     '''
     <SGD + momentum + weight_decay>
@@ -391,7 +392,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
         '''SGD + momentum''' 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
         '''decoupled weight decay'''
-        weight_decay_decoupled(model, buffer_model, decay_rate=args['wd'] * args['lr'])
+        weight_decay_decoupled(model, buffer_model, decay_rate=args['wd'] * optimizer.lr)
         
         '''unlabeled'''
         with tf.GradientTape() as tape:
@@ -416,7 +417,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
         '''SGD + momentum''' 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
         '''decoupled weight decay'''
-        weight_decay_decoupled(model, buffer_model, decay_rate=args['wd'] * args['lr'])
+        weight_decay_decoupled(model, buffer_model, decay_rate=args['wd'] * optimizer.lr)
         
         labeled_loss_avg(loss_supervised)
         unlabeled_loss_avg(loss_unsupervised)
