@@ -8,16 +8,15 @@
     3) learning rate schedule 
 - NF 
     1) Adam 
-    2) gradient clipping
-    3) learning rate schedule (exponential)
-    4) decoupled weight deacy ***** (current: L2 regularization)
+    2) gradient norm clipping
+    2) decoupled weight deacy
 '''
 #%%
 import argparse
 import os
 
-os.chdir(r'D:\semi\semi\unconditional') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/semi/unconditional') # main directory (repository)
+# os.chdir(r'D:\semi\semi\unconditional') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/semi/unconditional') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
