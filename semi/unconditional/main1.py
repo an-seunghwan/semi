@@ -16,8 +16,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\semi\unconditional') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/semi/unconditional') # main directory (repository)
+# os.chdir(r'D:\semi\semi\unconditional') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/semi/unconditional') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -301,8 +301,8 @@ def main():
         # else:
         #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
         loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args, num_classes, total_length)
-        val_nf_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
-        test_nf_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
+        val_nf_loss, val_recon_loss, val_info_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
+        test_nf_loss, test_recon_loss, test_info_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
@@ -315,11 +315,13 @@ def main():
         with val_writer.as_default():
             tf.summary.scalar('nf_loss', val_nf_loss.result(), step=epoch)
             tf.summary.scalar('recon_loss', val_recon_loss.result(), step=epoch)
+            tf.summary.scalar('info_loss', val_info_loss.result(), step=epoch)
             tf.summary.scalar('elbo_loss', val_elbo_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', val_accuracy.result(), step=epoch)
         with test_writer.as_default():
             tf.summary.scalar('nf_loss', test_nf_loss.result(), step=epoch)
             tf.summary.scalar('recon_loss', test_recon_loss.result(), step=epoch)
+            tf.summary.scalar('info_loss', test_info_loss.result(), step=epoch)
             tf.summary.scalar('elbo_loss', test_elbo_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', test_accuracy.result(), step=epoch)
 
@@ -331,10 +333,12 @@ def main():
         accuracy.reset_states()
         val_nf_loss.reset_states()
         val_recon_loss.reset_states()
+        val_info_loss.reset_states()
         val_elbo_loss.reset_states()
         val_accuracy.reset_states()
         test_nf_loss.reset_states()
         test_recon_loss.reset_states()
+        test_info_loss.reset_states()
         test_elbo_loss.reset_states()
         test_accuracy.reset_states()
         
@@ -523,21 +527,23 @@ def train(datasetL, datasetU, model, buffer_model, lr, optimizer_nf, epoch, args
 def validate(dataset, model, epoch, args, split):
     nf_loss_avg = tf.keras.metrics.Mean()
     recon_loss_avg = tf.keras.metrics.Mean()   
+    info_loss_avg = tf.keras.metrics.Mean()   
     elbo_loss_avg = tf.keras.metrics.Mean()   
     accuracy = tf.keras.metrics.Accuracy()
 
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
         [[z, c, prob, xhat], nf_args] = model(image, training=False)
-        recon_loss, cls_loss, nf_loss = ELBO_criterion(args, image, xhat, label, prob, nf_args)
+        recon_loss, cls_loss, info, nf_loss = ELBO_criterion(args, image, xhat, label, prob, nf_args)
         nf_loss_avg(nf_loss)
         recon_loss_avg(recon_loss)
+        info_loss_avg(info)
         elbo_loss_avg(recon_loss + nf_loss + cls_loss)
         accuracy(tf.argmax(prob, axis=1, output_type=tf.int32), 
                  tf.argmax(label, axis=1, output_type=tf.int32))
-    print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, NF: {nf_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
+    print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, RECON: {recon_loss_avg.result():.4f}, Info: {info_loss_avg.result():.4f}, NF: {nf_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
-    return nf_loss_avg, recon_loss_avg, elbo_loss_avg, accuracy
+    return nf_loss_avg, recon_loss_avg, info_loss_avg, elbo_loss_avg, accuracy
 #%%
 def weight_schedule(epoch, epochs, weight_max):
     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
