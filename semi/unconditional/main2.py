@@ -162,7 +162,7 @@ def get_args():
                         help='beta1 for adam')
     parser.add_argument('-b2_nf', '--beta2_nf', default=0.99, type=float, metavar='Beta2 In ADAM',
                         help='beta2 for adam')
-    parser.add_argument('-ad_nf', "--adjust_lr_nf", default=[100, 200, 300], type=arg_as_list,
+    parser.add_argument('-ad_nf', "--adjust_lr_nf", default=[0.25, 0.5, 0.75], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
     parser.add_argument('--start_epoch_nf', default=200, type=int,
                         help="NF training start epoch")
@@ -308,11 +308,11 @@ def main():
             optimizer.lr = args['lr'] * (args['lr_gamma'] ** 3)
             
         if epoch >= args['start_epoch_nf']: # no warm-up
-            if epoch < args['start_epoch_nf'] + args['adjust_lr_nf'][0]:
+            if epoch < args['start_epoch_nf'] + int((args['epochs'] - args['start_epoch_nf']) * args['adjust_lr_nf'][0]):
                 optimizer_nf.lr = args['lr_nf']
-            elif epoch < args['start_epoch_nf'] + args['adjust_lr_nf'][1]:
+            elif epoch < args['start_epoch_nf'] + int((args['epochs'] - args['start_epoch_nf']) * args['adjust_lr_nf'][1]):
                 optimizer_nf.lr = args['lr_nf'] * args['lr_gamma_nf']
-            elif epoch < args['start_epoch_nf'] + args['adjust_lr_nf'][2]:
+            elif epoch < args['start_epoch_nf'] + int((args['epochs'] - args['start_epoch_nf']) * args['adjust_lr_nf'][2]):
                 optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma_nf'] ** 2)
             else:
                 optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma_nf'] ** 3)
