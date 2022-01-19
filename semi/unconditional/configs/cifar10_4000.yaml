@@ -1,4 +1,2 @@
 dataset: "cifar10"
-epochs: 100
-latent_dim: 128
 reconstruct-freq: 5

@@ -162,7 +162,7 @@ def get_args():
                         help='beta1 for adam')
     parser.add_argument('-b2_nf', '--beta2_nf', default=0.99, type=float, metavar='Beta2 In ADAM',
                         help='beta2 for adam')
-    parser.add_argument('-ad_nf', "--adjust-lr-nf", default=[100, 200, 300], type=arg_as_list,
+    parser.add_argument('-ad_nf', "--adjust_lr_nf", default=[100, 200, 300], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
     parser.add_argument('--start_epoch_nf', default=200, type=int,
                         help="NF training start epoch")
@@ -282,7 +282,7 @@ def main():
     optimizer = K.optimizers.SGD(learning_rate=args['lr'],
                                 momentum=args['beta1'])
     optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
-                                     beta_1=args['b1_nf'], beta_2=args['b2_nf']) 
+                                     beta_1=args['beta1_nf'], beta_2=args['beta2_nf']) 
     # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
     #                                                             decay_steps=args['decay_steps'], 
     #                                                             decay_rate=args['decay_rate'])
@@ -308,14 +308,14 @@ def main():
             optimizer.lr = args['lr'] * (args['lr_gamma'] ** 3)
             
         if epoch >= args['start_epoch_nf']: # no warm-up
-            if epoch < args['start_epoch_nf'] + args['ad_nf'][0]:
+            if epoch < args['start_epoch_nf'] + args['adjust_lr_nf'][0]:
                 optimizer_nf.lr = args['lr_nf']
-            elif epoch < args['start_epoch_nf'] + args['ad_nf'][1]:
-                optimizer_nf.lr = args['lr_nf'] * args['lr_gamma']
-            elif epoch < args['start_epoch_nf'] + args['ad_nf'][2]:
-                optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma'] ** 2)
+            elif epoch < args['start_epoch_nf'] + args['adjust_lr_nf'][1]:
+                optimizer_nf.lr = args['lr_nf'] * args['lr_gamma_nf']
+            elif epoch < args['start_epoch_nf'] + args['adjust_lr_nf'][2]:
+                optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma_nf'] ** 2)
             else:
-                optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma'] ** 3)
+                optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma_nf'] ** 3)
         
         # if epoch % args['reconstruct_freq'] == 0:
         #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
