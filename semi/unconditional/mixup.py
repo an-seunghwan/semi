@@ -45,10 +45,10 @@ def non_smooth_mixup(image, z, c, prob, mix_weight):
 #%%
 def weight_decay_decoupled(model, buffer_model, decay_rate):
     # weight decay
-    for var, buffer_var in zip(model.variables, buffer_model.variables):
+    for var, buffer_var in zip(model.trainable_weights, buffer_model.trainable_weights):
         var.assign(var - decay_rate * buffer_var)
     # update buffer model
-    for var, buffer_var in zip(model.variables, buffer_model.variables):
+    for var, buffer_var in zip(model.trainable_weights, buffer_model.trainable_weights):
         buffer_var.assign(var)
         
 def weight_decay(model, decay_rate):

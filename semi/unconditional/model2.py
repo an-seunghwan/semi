@@ -280,13 +280,13 @@ class Permuatation(K.layers.Layer):
         
     @tf.function
     def call(self, x):
-        # return tf.gather(x, self.perm, axis=-1)
-        return tf.gather(x, tf.squeeze(self.perm, axis=1), axis=-1)
+        return tf.gather(x, self.perm, axis=-1)
+        # return tf.gather(x, tf.squeeze(self.perm, axis=1), axis=-1)
     
     @tf.function
     def reverse(self, x):
-        # return tf.gather(x, tf.argsort(self.perm), axis=-1)
-        return tf.gather(x, tf.squeeze(tf.argsort(self.perm)), axis=-1)
+        return tf.gather(x, tf.argsort(self.perm), axis=-1)
+        # return tf.gather(x, tf.squeeze(tf.argsort(self.perm)), axis=-1)
 #%%
 class NormalizingFlow(K.models.Model):
     def __init__(self, 
