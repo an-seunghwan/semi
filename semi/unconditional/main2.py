@@ -8,15 +8,16 @@
     3) learning rate schedule 
 - NF 
     1) Adam 
-    2) gradient norm clipping
-    2) decoupled weight deacy
+    # 2) gradient norm clipping
+    3) decoupled weight deacy
+    4) learning rate schedule
 '''
 #%%
 import argparse
 import os
 
-# os.chdir(r'D:\semi\semi\unconditional') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/semi/unconditional') # main directory (repository)
+os.chdir(r'D:\semi\semi\unconditional') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/semi/unconditional') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -132,35 +133,45 @@ def get_args():
                         help='beta1 for adam as well as momentum for SGD')
     parser.add_argument('-ad', "--adjust-lr", default=[400, 500, 550], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
+    parser.add_argument('--lr_gamma', default=0.1, type=float)
     parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
-    parser.add_argument('--z_mask', default='checkerboard', type=str,
-                        help='mask type of continuous latent for Real NVP (e.g. checkerboard or half)')
-    parser.add_argument('--c_mask', default='half', type=str,
-                        help='mask type of discrete latent for Real NVP (e.g. checkerboard or half)')
-    parser.add_argument('--z_emb', default=256, type=int,
+    # parser.add_argument('--z_mask', default='checkerboard', type=str,
+    #                     help='mask type of continuous latent for Real NVP (e.g. checkerboard or half)')
+    # parser.add_argument('--c_mask', default='half', type=str,
+    #                     help='mask type of discrete latent for Real NVP (e.g. checkerboard or half)')
+    parser.add_argument('--z_hidden_dim', default=256, type=int,
                         help='embedding dimension of continuous latent for coupling layer')
-    parser.add_argument('--c_emb', default=256, type=int,
+    parser.add_argument('--c_hidden_dim', default=256, type=int,
                         help='embedding dimension of discrete latent for coupling layer')
-    parser.add_argument('--K1', default=8, type=int,
+    parser.add_argument('--z_n_blocks', default=6, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
-    parser.add_argument('--K2', default=8, type=int,
+    parser.add_argument('--c_n_blocks', default=6, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
-    parser.add_argument('--coupling_MLP_num', default=4, type=int,
-                        help='number of dense layers in single coupling layer')
+    # parser.add_argument('--coupling_MLP_num', default=4, type=int,
+    #                     help='number of dense layers in single coupling layer')
 
     '''Normalizing Flow Optimizer Parameters'''
-    parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.001, type=float,
+    parser.add_argument('--lr_nf', '--learning-rate-nf', default=1e-3, type=float,
                         metavar='LR', help='initial learning rate for normalizing flow')
-    parser.add_argument('--wd_nf', '--weight-decay-nf', default=5e-5, type=float,
+    parser.add_argument('--lr_gamma_nf', default=0.5, type=float)
+    parser.add_argument('--wd_nf', '--weight-decay-nf', default=2e-5, type=float,
                         help='L2 regularization parameter for dense layers in Real NVP')
+    parser.add_argument('-b1_nf', '--beta1_nf', default=0.9, type=float, metavar='Beta1 In ADAM',
+                        help='beta1 for adam')
+    parser.add_argument('-b2_nf', '--beta2_nf', default=0.99, type=float, metavar='Beta2 In ADAM',
+                        help='beta2 for adam')
+    parser.add_argument('-ad_nf', "--adjust-lr-nf", default=[100, 200, 300], type=arg_as_list,
+                        help="The milestone list for adjust learning rate")
+    parser.add_argument('--start_epoch_nf', default=200, type=int,
+                        help="NF training start epoch")
     # parser.add_argument('--decay_steps', default=1, type=int,
     #                     help='decay steps for exponential decay schedule')
     # parser.add_argument('--decay_rate', default=0.95, type=float,
     #                     help='decay rate for exponential decay schedule')
-    parser.add_argument('--gradnorm', default=100., type=float,
-                        help='gradnorm value')
+    # parser.add_argument('--gradnorm', default=100., type=float,
+    #                     help='gradnorm value')
 
     '''Optimizer Transport Estimation Parameters'''
     parser.add_argument('--epsilon', default=0.1, type=float,
@@ -270,10 +281,12 @@ def main():
     '''optimizer'''
     optimizer = K.optimizers.SGD(learning_rate=args['lr'],
                                 momentum=args['beta1'])
+    optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
+                                     beta_1=args['b1_nf'], beta_2=args['b2_nf']) 
     # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
     #                                                             decay_steps=args['decay_steps'], 
     #                                                             decay_rate=args['decay_rate'])
-    optimizer_nf = K.optimizers.Adam(args['lr_nf'], clipnorm=args['gradnorm']) 
+    # optimizer_nf = K.optimizers.Adam(args['lr_nf'], clipnorm=args['gradnorm']) 
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -288,12 +301,21 @@ def main():
         elif epoch < args['adjust_lr'][0]:
             optimizer.lr = args['lr']
         elif epoch < args['adjust_lr'][1]:
-            optimizer.lr = args['lr'] * 0.1
+            optimizer.lr = args['lr'] * args['lr_gamma']
         elif epoch < args['adjust_lr'][2]:
-            optimizer.lr = args['lr'] * 0.01
+            optimizer.lr = args['lr'] * (args['lr_gamma'] ** 2)
         else:
-            optimizer.lr = args['lr'] * 0.001
-        # optimizer_nf.lr = lr_schedule(epoch)
+            optimizer.lr = args['lr'] * (args['lr_gamma'] ** 3)
+            
+        if epoch >= args['start_epoch_nf']: # no warm-up
+            if epoch < args['start_epoch_nf'] + args['ad_nf'][0]:
+                optimizer_nf.lr = args['lr_nf']
+            elif epoch < args['start_epoch_nf'] + args['ad_nf'][1]:
+                optimizer_nf.lr = args['lr_nf'] * args['lr_gamma']
+            elif epoch < args['start_epoch_nf'] + args['ad_nf'][2]:
+                optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma'] ** 2)
+            else:
+                optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma'] ** 3)
         
         # if epoch % args['reconstruct_freq'] == 0:
         #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
@@ -445,11 +467,12 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         '''decoupled weight decay'''
         weight_decay_decoupled(model.ae, buffer_model.ae, decay_rate=args['wd'] * optimizer.lr)
         
-        '''Normalizing Flow'''
-        grad = tape.gradient(nf_lossL, model.prior.trainable_weights)
-        optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
-        '''decoupled weight decay'''
-        weight_decay_decoupled(model.prior, buffer_model.prior, decay_rate=args['wd_nf'] * optimizer_nf.lr)
+        if epoch >= args['start_epoch_nf']:
+            '''Normalizing Flow'''
+            grad = tape.gradient(nf_lossL, model.prior.trainable_weights)
+            optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
+            '''decoupled weight decay'''
+            weight_decay_decoupled(model.prior, buffer_model.prior, decay_rate=args['wd_nf'] * optimizer_nf.lr)
         
         '''2. unlabeled'''
         with tf.GradientTape(persistent=True) as tape:
@@ -481,11 +504,12 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         '''decoupled weight decay'''
         weight_decay_decoupled(model.ae, buffer_model.ae, decay_rate=args['wd'] * optimizer.lr)
         
-        '''Normalizing Flow'''
-        grad = tape.gradient(nf_lossU, model.prior.trainable_weights)
-        optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
-        '''decoupled weight decay'''
-        weight_decay_decoupled(model.prior, buffer_model.prior, decay_rate=args['wd_nf'] * optimizer_nf.lr)
+        if epoch >= args['start_epoch_nf']:
+            '''Normalizing Flow'''
+            grad = tape.gradient(nf_lossU, model.prior.trainable_weights)
+            optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
+            '''decoupled weight decay'''
+            weight_decay_decoupled(model.prior, buffer_model.prior, decay_rate=args['wd_nf'] * optimizer_nf.lr)
         
         loss_avg(loss_unsupervised)
         recon_loss_avg(recon_lossU)
