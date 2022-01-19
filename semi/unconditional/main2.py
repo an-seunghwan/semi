@@ -143,11 +143,11 @@ def get_args():
     #                     help='mask type of discrete latent for Real NVP (e.g. checkerboard or half)')
     parser.add_argument('--z_hidden_dim', default=256, type=int,
                         help='embedding dimension of continuous latent for coupling layer')
-    parser.add_argument('--c_hidden_dim', default=256, type=int,
+    parser.add_argument('--c_hidden_dim', default=64, type=int,
                         help='embedding dimension of discrete latent for coupling layer')
     parser.add_argument('--z_n_blocks', default=6, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
-    parser.add_argument('--c_n_blocks', default=6, type=int,
+    parser.add_argument('--c_n_blocks', default=3, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
     # parser.add_argument('--coupling_MLP_num', default=4, type=int,
     #                     help='number of dense layers in single coupling layer')
@@ -170,8 +170,8 @@ def get_args():
     #                     help='decay steps for exponential decay schedule')
     # parser.add_argument('--decay_rate', default=0.95, type=float,
     #                     help='decay rate for exponential decay schedule')
-    # parser.add_argument('--gradnorm', default=100., type=float,
-    #                     help='gradnorm value')
+    # parser.add_argument('--gradclip', default=1., type=float,
+    #                     help='gradclip value')
 
     '''Optimizer Transport Estimation Parameters'''
     parser.add_argument('--epsilon', default=0.1, type=float,
@@ -281,8 +281,11 @@ def main():
     '''optimizer'''
     optimizer = K.optimizers.SGD(learning_rate=args['lr'],
                                 momentum=args['beta1'])
+    # optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
+    #                                  beta_1=args['beta1_nf'], beta_2=args['beta2_nf'],
+    #                                  clipvalue=args['gradclip']) 
     optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
-                                     beta_1=args['beta1_nf'], beta_2=args['beta2_nf']) 
+                                     beta_1=args['beta1_nf'], beta_2=args['beta2_nf'])
     # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
     #                                                             decay_steps=args['decay_steps'], 
     #                                                             decay_rate=args['decay_rate'])
