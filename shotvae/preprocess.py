@@ -40,12 +40,12 @@ def _list_to_tf_dataset(dataset):
         output_shapes={'image': (32, 32, 3), 'label': ()}
     )
 #%%
-def split_dataset(dataset, num_labeled, num_validations, num_classes):
+def split_dataset(args, dataset, num_labeled, num_validations, num_classes):
     '''
     validation and train are disjoint
     labeled is included in unlabeled
     '''
-    dataset = dataset.shuffle(buffer_size=10000)
+    dataset = dataset.shuffle(buffer_size=10000, seed=args['seed'])
     counter = [0 for _ in range(num_classes)]
     labeled = []
     unlabeled = []
@@ -107,7 +107,8 @@ def fetch_dataset(args, log_path):
     if any([not os.path.exists(f'{dataset_path}/{split}.tfrecord') for split in ['trainL', 'trainU', 'validation', 'test']]):
         train, test = download_dataset(dataset_name=args['dataset'])
         
-        trainL, trainU, validation = split_dataset(dataset=train,
+        trainL, trainU, validation = split_dataset(args, 
+                                                   dataset=train,
                                                    num_labeled=args['labeled_examples'],
                                                    num_validations=args['validation_examples'],
                                                    num_classes=num_classes)
