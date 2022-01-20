@@ -222,9 +222,8 @@ class Scale(K.layers.Layer):
                  n_units,
                  **kwargs):
         super(Scale, self).__init__(**kwargs)
-        self.scale = self.add_weight(shape=(n_units, ),
-                                    initializer='zeros',
-                                    trainable=True)
+        self.scale = tf.Variable(tf.zeros((n_units, )),
+                                trainable=True)
     
     @tf.function
     def call(self, x):
@@ -293,8 +292,8 @@ class NormalizingFlow(K.models.Model):
                  latent_dim,
                  hidden_dim,
                  n_blocks,
-                 name='NormalizingFlow', **kwargs):
-        super(NormalizingFlow, self).__init__(name=name, **kwargs)
+                 **kwargs):
+        super(NormalizingFlow, self).__init__(**kwargs)
         self.n_blocks = n_blocks
         
         self.affine_layers = [AffineCoupling(latent_dim, hidden_dim) for _ in range(n_blocks)]
