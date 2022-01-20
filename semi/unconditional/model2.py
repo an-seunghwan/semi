@@ -223,6 +223,7 @@ class Scale(K.layers.Layer):
                  **kwargs):
         super(Scale, self).__init__(**kwargs)
         self.scale = tf.Variable(tf.zeros((n_units, )),
+                                name='scale',
                                 trainable=True)
     
     @tf.function
@@ -275,6 +276,7 @@ class Permuatation(K.layers.Layer):
                  **kwargs):
         super(Permuatation, self).__init__(**kwargs)
         self.perm = tf.Variable(tf.random.shuffle(tf.range(start=0, limit=n_units, dtype=tf.int32)),
+                                name='permutation',
                                 trainable=False)
         
     @tf.function

@@ -63,6 +63,8 @@ def get_args():
     # parser.add_argument('-bp', '--base_path', default=".")
     parser.add_argument('--dataset', type=str, default='cifar10',
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra, cmnist)')
+    parser.add_argument('--seed', type=int, default=1, 
+                        help='seed for repeatable results (ex. generating color MNIST)')
     # parser.add_argument('-is', "--image-size", default=[32, 32], type=arg_as_list,
     #                     metavar='Image Size List', help='the size of h * w for image')
     # parser.add_argument("--channel", default=3, type=int,
@@ -375,6 +377,15 @@ def main():
                     args['ewm'] = args['ewm'] * 5
 
     '''model & configurations save'''        
+    # weight name for saving
+    for i, w in enumerate(model.variables):
+        split_name = w.name.split('/')
+        if len(split_name) == 1:
+            new_name = split_name[0] + '_' + str(i)    
+        else:
+            new_name = split_name[0] + '_' + str(i) + '/' + split_name[1] + '_' + str(i)
+        model.variables[i]._handle_name = new_name
+    
     model_path = f'{log_path}/{current_time}'
     if not os.path.exists(model_path):
         os.makedirs(model_path)
