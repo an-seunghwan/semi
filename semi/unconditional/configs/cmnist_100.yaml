@@ -1,7 +1,7 @@
 dataset: "cmnist"
-epochs: 2
+epochs: 200
 lr: 0.01
-latent_dim: 8
+latent_dim: 6
 labeled_examples: 100
 # x_sigma: 0.5
 reconstruct_freq: 1

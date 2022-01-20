@@ -217,158 +217,158 @@ class AutoEncoder(K.models.Model):
         xhat = self.decoder(z, prob, training=training) 
         return z, c, prob, xhat
 #%%
-class Scale(K.layers.Layer):
-    def __init__(self,
-                 n_units,
-                 **kwargs):
-        super(Scale, self).__init__(**kwargs)
-        self.scale = tf.Variable(tf.zeros((n_units, )),
-                                name='scale',
-                                trainable=True)
+# class Scale(K.layers.Layer):
+#     def __init__(self,
+#                  n_units,
+#                  **kwargs):
+#         super(Scale, self).__init__(**kwargs)
+#         self.scale = tf.Variable(tf.zeros((n_units, )),
+#                                 name='scale',
+#                                 trainable=True)
     
-    @tf.function
-    def call(self, x):
-        return x * tf.math.exp(self.scale * 3.)
-#%%
-class AffineCoupling(K.layers.Layer):
-    def __init__(self,
-                 n_units,
-                 hidden_dim,
-                 **kwargs):
-        super(AffineCoupling, self).__init__(**kwargs)
-        self.net = K.Sequential(
-                        [
-                            layers.Dense(n_units // 2, activation="relu"),
-                            layers.Dense(hidden_dim, activation="relu"),
-                            layers.Dense(n_units, activation="linear"),
-                            Scale(n_units)
-                        ]
-                    )
+#     @tf.function
+#     def call(self, x):
+#         return x * tf.math.exp(self.scale * 3.)
+# #%%
+# class AffineCoupling(K.layers.Layer):
+#     def __init__(self,
+#                  n_units,
+#                  hidden_dim,
+#                  **kwargs):
+#         super(AffineCoupling, self).__init__(**kwargs)
+#         self.net = K.Sequential(
+#                         [
+#                             layers.Dense(n_units // 2, activation="relu"),
+#                             layers.Dense(hidden_dim, activation="relu"),
+#                             layers.Dense(n_units, activation="linear"),
+#                             Scale(n_units)
+#                         ]
+#                     )
     
-    @tf.function
-    def call(self, x):
-        z1, z2 = tf.split(x, num_or_size_splits=2, axis=-1)
+#     @tf.function
+#     def call(self, x):
+#         z1, z2 = tf.split(x, num_or_size_splits=2, axis=-1)
         
-        log_s, t = tf.split(self.net(z1), num_or_size_splits=2, axis=-1)
-        s = tf.nn.sigmoid(log_s + 2.)
+#         log_s, t = tf.split(self.net(z1), num_or_size_splits=2, axis=-1)
+#         s = tf.nn.sigmoid(log_s + 2.)
         
-        y1 = z1
-        y2 = (z2 + t) * s
-        y = tf.concat([y1, y2], axis=-1)
-        logdet = tf.reduce_sum(tf.math.log(s), axis=-1)
-        return y, logdet
+#         y1 = z1
+#         y2 = (z2 + t) * s
+#         y = tf.concat([y1, y2], axis=-1)
+#         logdet = tf.reduce_sum(tf.math.log(s), axis=-1)
+#         return y, logdet
     
-    @tf.function
-    def reverse(self, y):
-        y1, y2 = tf.split(y, num_or_size_splits=2, axis=-1)
+#     @tf.function
+#     def reverse(self, y):
+#         y1, y2 = tf.split(y, num_or_size_splits=2, axis=-1)
         
-        log_s, t = tf.split(self.net(y1), num_or_size_splits=2, axis=-1)
-        s = tf.nn.sigmoid(log_s + 2.)
+#         log_s, t = tf.split(self.net(y1), num_or_size_splits=2, axis=-1)
+#         s = tf.nn.sigmoid(log_s + 2.)
         
-        z1 = y1
-        z2 = y2 / s - t
-        z = tf.concat([z1, z2], axis=-1)
-        return z
-#%%
-class Permuatation(K.layers.Layer):
-    def __init__(self,
-                 n_units,
-                 **kwargs):
-        super(Permuatation, self).__init__(**kwargs)
-        self.perm = tf.Variable(tf.random.shuffle(tf.range(start=0, limit=n_units, dtype=tf.int32)),
-                                name='permutation',
-                                trainable=False)
+#         z1 = y1
+#         z2 = y2 / s - t
+#         z = tf.concat([z1, z2], axis=-1)
+#         return z
+# #%%
+# class Permuatation(K.layers.Layer):
+#     def __init__(self,
+#                  n_units,
+#                  **kwargs):
+#         super(Permuatation, self).__init__(**kwargs)
+#         self.perm = tf.Variable(tf.random.shuffle(tf.range(start=0, limit=n_units, dtype=tf.int32)),
+#                                 name='permutation',
+#                                 trainable=False)
         
-    @tf.function
-    def call(self, x):
-        return tf.gather(x, self.perm, axis=-1)
-        # return tf.gather(x, tf.squeeze(self.perm, axis=1), axis=-1)
+#     @tf.function
+#     def call(self, x):
+#         return tf.gather(x, self.perm, axis=-1)
+#         # return tf.gather(x, tf.squeeze(self.perm, axis=1), axis=-1)
     
-    @tf.function
-    def reverse(self, x):
-        return tf.gather(x, tf.argsort(self.perm), axis=-1)
-        # return tf.gather(x, tf.squeeze(tf.argsort(self.perm)), axis=-1)
-#%%
-class NormalizingFlow(K.models.Model):
-    def __init__(self, 
-                 latent_dim,
-                 hidden_dim,
-                 n_blocks,
-                 **kwargs):
-        super(NormalizingFlow, self).__init__(**kwargs)
-        self.n_blocks = n_blocks
+#     @tf.function
+#     def reverse(self, x):
+#         return tf.gather(x, tf.argsort(self.perm), axis=-1)
+#         # return tf.gather(x, tf.squeeze(tf.argsort(self.perm)), axis=-1)
+# #%%
+# class NormalizingFlow(K.models.Model):
+#     def __init__(self, 
+#                  latent_dim,
+#                  hidden_dim,
+#                  n_blocks,
+#                  **kwargs):
+#         super(NormalizingFlow, self).__init__(**kwargs)
+#         self.n_blocks = n_blocks
         
-        self.affine_layers = [AffineCoupling(latent_dim, hidden_dim) for _ in range(n_blocks)]
-        self.permutations = [Permuatation(latent_dim) for _ in range(n_blocks - 1)]
+#         self.affine_layers = [AffineCoupling(latent_dim, hidden_dim) for _ in range(n_blocks)]
+#         self.permutations = [Permuatation(latent_dim) for _ in range(n_blocks - 1)]
         
-    @tf.function
-    def call(self, x):
-        out = x
-        logdets = 0.
-        for i in range(self.n_blocks - 1):
-            out, logdet = self.affine_layers[i](out)
-            out = self.permutations[i](out)
-            logdets += logdet
-        out, logdet = self.affine_layers[-1](out)
-        logdets += logdet
-        return out, logdets
+#     @tf.function
+#     def call(self, x):
+#         out = x
+#         logdets = 0.
+#         for i in range(self.n_blocks - 1):
+#             out, logdet = self.affine_layers[i](out)
+#             out = self.permutations[i](out)
+#             logdets += logdet
+#         out, logdet = self.affine_layers[-1](out)
+#         logdets += logdet
+#         return out, logdets
     
-    @tf.function
-    def reverse(self, x):
-        out = self.affine_layers[-1](x)
-        for i in range(self.n_blocks - 1):
-            out = self.permutations[-1-i].reverse(out)
-            out = self.affine_layers[-2-i].reverse(out)
-        return out
-#%%
-# net = NormalizingFlow(20, 64, 4)
-# out, logdet = net(tf.random.normal((2, 20)))
-#%%
-class Prior(K.models.Model):
-    def __init__(self, 
-                 args,
-                 num_classes,
-                 name="Prior", **kwargs):
-        super(Prior, self).__init__(name=name, **kwargs)
-        self.args = args
-        self.num_classes = num_classes
+#     @tf.function
+#     def reverse(self, x):
+#         out = self.affine_layers[-1](x)
+#         for i in range(self.n_blocks - 1):
+#             out = self.permutations[-1-i].reverse(out)
+#             out = self.affine_layers[-2-i].reverse(out)
+#         return out
+# #%%
+# # net = NormalizingFlow(20, 64, 4)
+# # out, logdet = net(tf.random.normal((2, 20)))
+# #%%
+# class Prior(K.models.Model):
+#     def __init__(self, 
+#                  args,
+#                  num_classes,
+#                  name="Prior", **kwargs):
+#         super(Prior, self).__init__(name=name, **kwargs)
+#         self.args = args
+#         self.num_classes = num_classes
         
-        self.zNF = NormalizingFlow(args['latent_dim'], args['z_hidden_dim'], args['z_n_blocks'])
-        self.cNF = NormalizingFlow(num_classes, args['c_hidden_dim'], args['c_n_blocks'])
+#         self.zNF = NormalizingFlow(args['latent_dim'], args['z_hidden_dim'], args['z_n_blocks'])
+#         self.cNF = NormalizingFlow(num_classes, args['c_hidden_dim'], args['c_n_blocks'])
     
-    # def build_graph(self):
-    #     '''
-    #     build model manually due to masked coupling layer
-    #     '''
-    #     dummy_z = tf.random.normal((1, self.args['latent_dim']))
-    #     dummy_c = tf.random.normal((1, self.num_classes))
-    #     _ = self(dummy_z, dummy_c)
-    #     return print('Graph is built!')
+#     # def build_graph(self):
+#     #     '''
+#     #     build model manually due to masked coupling layer
+#     #     '''
+#     #     dummy_z = tf.random.normal((1, self.args['latent_dim']))
+#     #     dummy_c = tf.random.normal((1, self.num_classes))
+#     #     _ = self(dummy_z, dummy_c)
+#     #     return print('Graph is built!')
     
-    def zflow(self, x):
-        return self.zNF.reverse(x)
+#     def zflow(self, x):
+#         return self.zNF.reverse(x)
     
-    def cflow(self, x):
-        return self.cNF.reverse(x)
+#     def cflow(self, x):
+#         return self.cNF.reverse(x)
     
-    def call(self, z, c):
-        z_, logdet1 = self.zNF(z)
-        c_, logdet2 = self.cNF(c)
-        return [z_, logdet1, c_, logdet2]
-#%%
-class VAE(K.models.Model):
-    def __init__(self, args, num_classes, name="VAE", **kwargs):
-        super(VAE, self).__init__(name=name, **kwargs)
-        self.args = args
-        self.ae = AutoEncoder(num_classes, args['depth'], args['width'], args['slope'], args['latent_dim'])
-        self.prior = Prior(args, num_classes)
-        # self.prior.build_graph()
+#     def call(self, z, c):
+#         z_, logdet1 = self.zNF(z)
+#         c_, logdet2 = self.cNF(c)
+#         return [z_, logdet1, c_, logdet2]
+# #%%
+# class VAE(K.models.Model):
+#     def __init__(self, args, num_classes, name="VAE", **kwargs):
+#         super(VAE, self).__init__(name=name, **kwargs)
+#         self.args = args
+#         self.ae = AutoEncoder(num_classes, args['depth'], args['width'], args['slope'], args['latent_dim'])
+#         self.prior = Prior(args, num_classes)
+#         # self.prior.build_graph()
     
-    @tf.function
-    def call(self, x, training=True):
-        z, c, prob, xhat = self.ae(x, training=training)
-        z_ = tf.stop_gradient(z)
-        c_ = tf.stop_gradient(c)
-        nf_args = self.prior(z_, c_)
-        return [[z, c, prob, xhat], nf_args]
-#%%
+#     @tf.function
+#     def call(self, x, training=True):
+#         z, c, prob, xhat = self.ae(x, training=training)
+#         z_ = tf.stop_gradient(z)
+#         c_ = tf.stop_gradient(c)
+#         nf_args = self.prior(z_, c_)
+#         return [[z, c, prob, xhat], nf_args]
+# #%%
