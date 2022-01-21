@@ -286,7 +286,7 @@ def main():
     
     '''optimizer'''
     optimizer = K.optimizers.Adam(learning_rate=args['lr'],
-                                momentum=args['beta1'])
+                                beta_1=args['beta1'])
     # optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
     #                                  beta_1=args['beta1_nf'], beta_2=args['beta2_nf'])
     
