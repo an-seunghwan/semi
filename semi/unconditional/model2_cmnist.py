@@ -1,4 +1,8 @@
 #%%
+'''
+220121: permutation tf.gather -> tf.one_hot matmul
+'''
+#%%
 import tensorflow as tf
 import tensorflow.keras as K
 from tensorflow.keras import layers

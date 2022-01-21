@@ -149,7 +149,7 @@ def get_args():
                         help='embedding dimension of discrete latent for coupling layer')
     parser.add_argument('--z_n_blocks', default=6, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
-    parser.add_argument('--c_n_blocks', default=4, type=int,
+    parser.add_argument('--c_n_blocks', default=3, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
     # parser.add_argument('--coupling_MLP_num', default=4, type=int,
     #                     help='number of dense layers in single coupling layer')
@@ -467,7 +467,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             
             elbo_lossL = recon_lossL + mixup_zL
-            loss_supervised = elbo_lossL + mixup_yL + 5. * cls_lossL + 5. * infoL
+            loss_supervised = elbo_lossL + mixup_yL + 10. * cls_lossL + 10. * infoL
 
         '''AutoEncoder'''
         grads = tape.gradient(loss_supervised, model.ae.trainable_variables) 
@@ -504,7 +504,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             mixup_yU = - tf.reduce_mean(tf.reduce_sum(pseudo_labelU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
             
             elbo_lossU = recon_lossU + mixup_zU
-            loss_unsupervised = elbo_lossU + mixup_yU + 5. * infoU
+            loss_unsupervised = elbo_lossU + mixup_yU + 10. * infoU
 
         '''AutoEncoder'''
         grads = tape.gradient(loss_unsupervised, model.ae.trainable_variables) 
