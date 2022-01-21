@@ -275,19 +275,20 @@ class Permuatation(K.layers.Layer):
                  n_units,
                  **kwargs):
         super(Permuatation, self).__init__(**kwargs)
+        self.n_units = n_units
         self.perm = tf.Variable(tf.random.shuffle(tf.range(start=0, limit=n_units, dtype=tf.int32)),
                                 name='permutation',
                                 trainable=False)
         
     @tf.function
     def call(self, x):
-        return tf.gather(x, self.perm, axis=-1)
-        # return tf.gather(x, tf.squeeze(self.perm, axis=1), axis=-1)
+        # return tf.gather(x, self.perm, axis=-1)
+        return tf.matmul(x, tf.one_hot(self.perm, depth=self.n_units))
     
     @tf.function
     def reverse(self, x):
-        return tf.gather(x, tf.argsort(self.perm), axis=-1)
-        # return tf.gather(x, tf.squeeze(tf.argsort(self.perm)), axis=-1)
+        # return tf.gather(x, tf.argsort(self.perm), axis=-1)
+        return tf.matmul(x, tf.one_hot(tf.argsort(self.perm), depth=self.n_units))
 #%%
 class NormalizingFlow(K.models.Model):
     def __init__(self, 
