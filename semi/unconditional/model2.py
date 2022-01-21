@@ -320,7 +320,7 @@ class NormalizingFlow(K.models.Model):
     
     @tf.function
     def reverse(self, x):
-        out = self.affine_layers[-1](x)
+        out = self.affine_layers[-1].reverse(x)
         for i in range(self.n_blocks - 1):
             out = self.permutations[-1-i].reverse(out)
             out = self.affine_layers[-2-i].reverse(out)

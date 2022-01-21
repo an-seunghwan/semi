@@ -23,27 +23,35 @@ from model2 import VAE
 # from criterion import ELBO_criterion
 from mixup import augment
 #%%
+import ast
+def arg_as_list(s):
+    v = ast.literal_eval(s)
+    if type(v) is not list:
+        raise argparse.ArgumentTypeError("Argument \"%s\" is not a list" % (s))
+    return v
+#%%
 def get_args():
     parser = argparse.ArgumentParser('parameters')
 
-    parser.add_argument('--seed', type=int, default=1, 
-                        help='seed for repeatable results (ex. generating color MNIST)')
+    # parser.add_argument('-bp', '--base_path', default=".")
     parser.add_argument('--dataset', type=str, default='cifar10',
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra, cmnist)')
-    # parser.add_argument("--image_size", default=32, type=int,
-    #                     metavar='Image Size', help='the size of height or width for image')
+    parser.add_argument('--seed', type=int, default=1, 
+                        help='seed for repeatable results (ex. generating color MNIST)')
+    # parser.add_argument('-is', "--image-size", default=[32, 32], type=arg_as_list,
+    #                     metavar='Image Size List', help='the size of h * w for image')
     # parser.add_argument("--channel", default=3, type=int,
     #                     metavar='Channel size', help='the size of image channel')
-    parser.add_argument('--batch_size', default=128, type=int,
+    parser.add_argument('-b', '--batch-size', default=128, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
 
-    '''SL VAE Train PreProcess Parameter'''
+    '''SSL VAE Train PreProcess Parameter'''
     parser.add_argument('--epochs', default=600, type=int, 
                         metavar='N', help='number of total epochs to run')
-    parser.add_argument('--start_epoch', default=0, type=int, 
+    parser.add_argument('--start-epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    parser.add_argument('--reconstruct_freq', '-rf', default=3, type=int,
-                        metavar='N', help='reconstruct frequency (default: 5)')
+    parser.add_argument('--reconstruct-freq', '-rf', default=50, type=int,
+                        metavar='N', help='reconstruct frequency (default: 50)')
     parser.add_argument('--labeled_examples', type=int, default=4000, 
                         help='number labeled examples (default: 4000')
     parser.add_argument('--validation_examples', type=int, default=5000, 
@@ -51,7 +59,7 @@ def get_args():
     parser.add_argument('--augment', action='store_true', 
                         help="apply augmentation to image")
 
-    '''Deep VAE Model Parameters (Encoder and Decoder)'''
+    '''Deep VAE Model Parameters'''
     # parser.add_argument('--net-name', default="wideresnet-28-2", type=str, help="the name for network to use")
     parser.add_argument('--depth', type=int, default=28, 
                         help='depth for WideResnet (default: 28)')
@@ -59,81 +67,90 @@ def get_args():
                         help='widen factor for WideResnet (default: 2)')
     parser.add_argument('--slope', type=float, default=0.1, 
                         help='slope parameter for LeakyReLU (default: 0.1)')
-    parser.add_argument('-dr', '--drop_rate', default=0, type=float, 
+    parser.add_argument('-dr', '--drop-rate', default=0, type=float, 
                         help='drop rate for the network')
-    parser.add_argument("--br", "--bce_reconstruction", action='store_true', 
+    parser.add_argument("--br", "--bce-reconstruction", action='store_true', 
                         help='Do BCE Reconstruction')
-    parser.add_argument('--x_sigma', default=1, type=float,
+    parser.add_argument("-s", "--x-sigma", default=1, type=float,
                         help="The standard variance for reconstructed images, work as regularization")
 
     '''VAE parameters'''
     parser.add_argument('--latent_dim', "--latent_dim_continuous", default=128, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
-    # parser.add_argument('--cmi', "--continuous_mutual_info", default=0, type=float,
-    #                     help='The mutual information bounding between x and the continuous variable z')
-    # parser.add_argument('--dmi', "--discrete_mutual_info", default=0, type=float,
-    #                     help='The mutual information bounding between x and the discrete variable z')
 
-    '''VAE Loss Function Parameters'''
-    parser.add_argument('--lambda1', default=5., type=float,
-                        help="adjust classification loss weight")
-    parser.add_argument('--lambda2', default=10., type=float,
-                        help="adjust mutual information loss weight")
-    # parser.add_argument('--ewm', '--elbo-weight-max', default=1e-3, type=float, 
-    #                     metavar='weight for elbo loss part')
-    # parser.add_argument('--aew', '--adjust-elbo-weight', default=400, type=int,
-    #                     metavar="the epoch to adjust elbo weight to max")
+    # '''VAE Loss Function Parameters'''
+    # # parser.add_argument("-ei", "--evaluate-inference", action='store_true',
+    # #                     help='Calculate the inference accuracy for unlabeled dataset')
+    # parser.add_argument('--kbmc', '--kl-beta-max-continuous', default=1, type=float, 
+    #                     metavar='KL Beta', help='the epoch to linear adjust kl beta')
+    # # parser.add_argument('--kbmd', '--kl-beta-max-discrete', default=1e-3, type=float, 
+    # #                     metavar='KL Beta', help='the epoch to linear adjust kl beta')
+    # parser.add_argument('--akb', '--adjust-kl-beta-epoch', default=100, type=int, 
+    #                     metavar='KL Beta', help='the max epoch to adjust kl beta')
+    # # parser.add_argument('--ewm', '--elbo-weight-max', default=1e-3, type=float, 
+    # #                     metavar='weight for elbo loss part')
+    # # parser.add_argument('--aew', '--adjust-elbo-weight', default=400, type=int,
+    # #                     metavar="the epoch to adjust elbo weight to max")
     # parser.add_argument('--wrd', default=1, type=float,
     #                     help="the max weight for the optimal transport estimation of discrete variable c")
     # parser.add_argument('--wmf', '--weight-modify-factor', default=0.4, type=float,
-    #                     help="weight  will get wrz at amf * epochs")
+    #                     help="weight will get wrz at amf * epochs")
     # parser.add_argument('--pwm', '--posterior-weight-max', default=1, type=float,
     #                     help="the max value for posterior weight")
-    # parser.add_argument('--apw', '--adjust-posterior-weight', default=200, type=float,
+    # parser.add_argument('--apw', '--adjust-posterior-weight', default=100, type=float,
     #                     help="adjust posterior weight")
 
-    '''Optimizer Parameters (Encoder and Decoder)'''
-    parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
+    '''Optimizer Parameters'''
+    parser.add_argument('--lr', '--learning-rate', default=1e-1, type=float,
                         metavar='LR', help='initial learning rate')
-    # parser.add_argument('--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
-    #                     help='beta1 for adam as well as momentum for SGD')
-    # parser.add_argument('--adjust_lr', default=[400, 500, 550], type=arg_as_list,
+    parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
+                        help='beta1 for adam as well as momentum for SGD')
+    # parser.add_argument('-ad', "--adjust-lr", default=[400, 500, 550], type=arg_as_list,
     #                     help="The milestone list for adjust learning rate")
-    # parser.add_argument('--weight_decay', default=5e-4, type=float)
+    parser.add_argument('--lr_gamma', default=0.1, type=float)
+    parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
 
-    # '''Optimizer Transport Estimation Parameters'''
-    # parser.add_argument('--epsilon', default=0.1, type=float,
-    #                     help="the label smoothing epsilon for labeled data")
-    # # parser.add_argument('--om', action='store_true', help="the optimal match for unlabeled data mixup")
-    
     '''Normalizing Flow Model Parameters'''
-    parser.add_argument('--z_mask', default='checkerboard', type=str,
-                        help='mask type of continuous latent for Real NVP (e.g. checkerboard or half)')
-    parser.add_argument('--c_mask', default='half', type=str,
-                        help='mask type of discrete latent for Real NVP (e.g. checkerboard or half)')
-    parser.add_argument('--z_emb', default=256, type=int,
+    # parser.add_argument('--z_mask', default='checkerboard', type=str,
+    #                     help='mask type of continuous latent for Real NVP (e.g. checkerboard or half)')
+    # parser.add_argument('--c_mask', default='half', type=str,
+    #                     help='mask type of discrete latent for Real NVP (e.g. checkerboard or half)')
+    parser.add_argument('--z_hidden_dim', default=256, type=int,
                         help='embedding dimension of continuous latent for coupling layer')
-    parser.add_argument('--c_emb', default=256, type=int,
+    parser.add_argument('--c_hidden_dim', default=64, type=int,
                         help='embedding dimension of discrete latent for coupling layer')
-    parser.add_argument('--K1', default=8, type=int,
+    parser.add_argument('--z_n_blocks', default=6, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
-    parser.add_argument('--K2', default=8, type=int,
+    parser.add_argument('--c_n_blocks', default=3, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
-    parser.add_argument('--coupling_MLP_num', default=4, type=int,
-                        help='number of dense layers in single coupling layer')
-    
+    # parser.add_argument('--coupling_MLP_num', default=4, type=int,
+    #                     help='number of dense layers in single coupling layer')
+
     '''Normalizing Flow Optimizer Parameters'''
-    parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.0001, type=float,
+    parser.add_argument('--lr_nf', '--learning-rate-nf', default=1e-3, type=float,
                         metavar='LR', help='initial learning rate for normalizing flow')
-    parser.add_argument('--reg', default=0.01, type=float,
+    parser.add_argument('--lr_gamma_nf', default=0.5, type=float)
+    parser.add_argument('--wd_nf', '--weight-decay-nf', default=2e-5, type=float,
                         help='L2 regularization parameter for dense layers in Real NVP')
-    parser.add_argument('--decay_steps', default=1, type=int,
-                        help='decay steps for exponential decay schedule')
-    parser.add_argument('--decay_rate', default=0.95, type=float,
-                        help='decay rate for exponential decay schedule')
-    parser.add_argument('--gradclip', default=1., type=float,
-                        help='gradclip value')
+    parser.add_argument('-b1_nf', '--beta1_nf', default=0.9, type=float, metavar='Beta1 In ADAM',
+                        help='beta1 for adam')
+    parser.add_argument('-b2_nf', '--beta2_nf', default=0.99, type=float, metavar='Beta2 In ADAM',
+                        help='beta2 for adam')
+    parser.add_argument('-ad_nf', "--adjust_lr_nf", default=[0.25, 0.5, 0.75], type=arg_as_list,
+                        help="The milestone list for adjust learning rate")
+    parser.add_argument('--start_epoch_nf', default=200, type=int,
+                        help="NF training start epoch")
+    # parser.add_argument('--decay_steps', default=1, type=int,
+    #                     help='decay steps for exponential decay schedule')
+    # parser.add_argument('--decay_rate', default=0.95, type=float,
+    #                     help='decay rate for exponential decay schedule')
+    # parser.add_argument('--gradclip', default=1., type=float,
+    #                     help='gradclip value')
+
+    '''Optimizer Transport Estimation Parameters'''
+    parser.add_argument('--epsilon', default=0.1, type=float,
+                        help="the label smoothing epsilon for labeled data")
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -161,7 +178,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220106-222708'
+model_path = log_path + '/20220121-012559'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 model.build(input_shape=(None, 32, 32, 3))
@@ -215,11 +232,16 @@ plt.savefig('{}/style_transfer.png'.format(model_path),
 plt.close()
 #%%
 '''interpolation: smooth'''
-z_epsilon1, _ = model.prior.zNF(latent.numpy()[[7], :])
-z_epsilon2, _ = model.prior.zNF(latent.numpy()[[62], :])
+z_epsilon1, _ = model.prior.zNF(latent.numpy()[[11], :])
+z_epsilon2, _ = model.prior.zNF(latent.numpy()[[38], :])
 
 interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 20))
-z_interpolation = model.prior.zflow(interpolation)
+# z_interpolation = model.prior.zflow(interpolation)
+out = model.prior.zNF.affine_layers[-1].reverse(interpolation)
+for i in range(model.prior.zNF.n_blocks - 1):
+    out = model.prior.zNF.permutations[-1-i].reverse(out)
+    out = model.prior.zNF.affine_layers[-2-i].reverse(out)
+z_interpolation = out
 
 label = np.zeros((z_interpolation.shape[0], num_classes))
 label[:, 3] = 1
@@ -236,7 +258,8 @@ plt.savefig('{}/style_interpolation_smooth.png'.format(model_path),
 plt.close()
 #%%
 '''interpolation: non-smooth'''
-z_interpolation = np.squeeze(np.linspace(latent.numpy()[[7], :], latent.numpy()[[62], :], 20))
+z_interpolation = np.squeeze(np.linspace(latent.numpy()[[11], :], 
+                                         latent.numpy()[[38], :], 20))
 
 label = np.zeros((z_interpolation.shape[0], num_classes))
 label[:, 3] = 1
@@ -253,7 +276,7 @@ plt.savefig('{}/style_interpolation_nonsmooth.png'.format(model_path),
 plt.close()
 #%%
 '''manipulation'''
-idx = [1, 6, 8, 17, 31, 48, 56, 65, 80, 84]
+idx = [2, 7, 21, 31, 38, 40, 55, 69, 82, 94]
 plt.figure(figsize=(15, 20))
 for j in range(len(idx)):
     z = model.ae.z_encode(tf.cast(x.numpy()[[idx[j]]], tf.float32), training=False)
@@ -280,7 +303,12 @@ plt.close()
 tf.random.set_seed(1)
 z = model.ae.z_encode(tf.cast(x.numpy()[[idx[1]]], tf.float32), training=False)
 c_epsilon = tf.random.normal(shape=(100, num_classes))
-c = model.prior.cflow(c_epsilon)
+# c = model.prior.cflow(c_epsilon)
+out = model.prior.cNF.affine_layers[-1].reverse(c_epsilon)
+for i in range(model.prior.cNF.n_blocks - 1):
+    out = model.prior.cNF.permutations[-1-i].reverse(out)
+    out = model.prior.cNF.affine_layers[-2-i].reverse(out)
+c = out
 pi = tf.nn.softmax(c)
 xhat = model.ae.decode(tf.tile(z, (len(pi), 1)), pi, training=False)
 
@@ -297,7 +325,12 @@ plt.close()
 '''style latent random sampling of z'''
 tf.random.set_seed(1)
 z_epsilon = tf.random.normal(shape=(100, args['latent_dim']))
-z = model.prior.zflow(z_epsilon)
+# z = model.prior.zflow(z_epsilon)
+out = model.prior.zNF.affine_layers[-1].reverse(z_epsilon)
+for i in range(model.prior.zNF.n_blocks - 1):
+    out = model.prior.zNF.permutations[-1-i].reverse(out)
+    out = model.prior.zNF.affine_layers[-2-i].reverse(out)
+z = out
 pi = np.zeros((len(z), num_classes))
 pi[:, 4] = 1
 xhat = model.ae.decode(z, pi, training=False)
