@@ -1,9 +1,10 @@
 dataset: "cmnist"
-epochs: 300
+epochs: 600
 lr: 0.001
 latent_dim: 6
+x_sigma: 0.05
 labeled_examples: 100
-reconstruct_freq: 3
+reconstruct_freq: 10
 start_epoch_nf: 0
-z_hidden_dim: 64
-z_n_blocks: 3
+z_hidden_dim: 128
+z_n_blocks: 4

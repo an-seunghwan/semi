@@ -145,11 +145,11 @@ def get_args():
     #                     help='mask type of discrete latent for Real NVP (e.g. checkerboard or half)')
     parser.add_argument('--z_hidden_dim', default=256, type=int,
                         help='embedding dimension of continuous latent for coupling layer')
-    parser.add_argument('--c_hidden_dim', default=64, type=int,
+    parser.add_argument('--c_hidden_dim', default=128, type=int,
                         help='embedding dimension of discrete latent for coupling layer')
     parser.add_argument('--z_n_blocks', default=6, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
-    parser.add_argument('--c_n_blocks', default=3, type=int,
+    parser.add_argument('--c_n_blocks', default=4, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
     # parser.add_argument('--coupling_MLP_num', default=4, type=int,
     #                     help='number of dense layers in single coupling layer')
@@ -247,7 +247,7 @@ def main():
     '''argparse to dictionary'''
     args = vars(get_args())
     # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/cifar10_4000.yaml']))
+    # args = vars(parser.parse_args(args=['--config_path', 'configs/cmnist_100.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -283,15 +283,15 @@ def main():
     '''optimizer'''
     optimizer = K.optimizers.SGD(learning_rate=args['lr'],
                                 momentum=args['beta1'])
+    optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
+                                     beta_1=args['beta1_nf'], beta_2=args['beta2_nf'])
+    
     # optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
     #                                  beta_1=args['beta1_nf'], beta_2=args['beta2_nf'],
     #                                  clipvalue=args['gradclip']) 
-    optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
-                                     beta_1=args['beta1_nf'], beta_2=args['beta2_nf'])
     # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
     #                                                             decay_steps=args['decay_steps'], 
     #                                                             decay_rate=args['decay_rate'])
-    # optimizer_nf = K.optimizers.Adam(args['lr_nf'], clipnorm=args['gradnorm']) 
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -312,8 +312,11 @@ def main():
         else:
             optimizer.lr = args['lr'] * (args['lr_gamma'] ** 3)
             
-        if epoch >= args['start_epoch_nf']: # no warm-up
-            if epoch < args['start_epoch_nf'] + int((args['epochs'] - args['start_epoch_nf']) * args['adjust_lr_nf'][0]):
+        if epoch >= args['start_epoch_nf']: 
+            if epoch == args['start_epoch_nf']: 
+                '''warm-up'''
+                optimizer_nf.lr = args['lr_nf'] * 0.2
+            elif epoch < args['start_epoch_nf'] + int((args['epochs'] - args['start_epoch_nf']) * args['adjust_lr_nf'][0]):
                 optimizer_nf.lr = args['lr_nf']
             elif epoch < args['start_epoch_nf'] + int((args['epochs'] - args['start_epoch_nf']) * args['adjust_lr_nf'][1]):
                 optimizer_nf.lr = args['lr_nf'] * args['lr_gamma_nf']
@@ -403,7 +406,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''elbo part weight'''
-    ew = weight_schedule(epoch, args['aew'], args['ewm'])
+    ew = weight_schedule(epoch, args['aew'], args['ewm']) + 1.
     '''mix-up parameters'''
     beta_z = weight_schedule(epoch, args['akb'], args['kbmc'])
     pwm = weight_schedule(epoch, args['apw'], args['pwm'])
@@ -574,14 +577,6 @@ def validate(dataset, model, epoch, args, split):
 #%%
 def weight_schedule(epoch, epochs, weight_max):
     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
-#%%
-# ws = []
-# for i in range(args['epochs']):
-#     if i == args['adjust_lr'][0]:
-#         args['ewm'] = args['ewm'] * 5
-#     ws.append(weight_schedule(i, args['aew'], args['ewm']).numpy())
-# plt.plot(ws)
-# plt.show()
 #%%
 if __name__ == '__main__':
     main()

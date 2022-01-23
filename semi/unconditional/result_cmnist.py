@@ -106,8 +106,8 @@ def get_args():
                         metavar='LR', help='initial learning rate')
     parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
                         help='beta1 for adam as well as momentum for SGD')
-    # parser.add_argument('-ad', "--adjust-lr", default=[400, 500, 550], type=arg_as_list,
-    #                     help="The milestone list for adjust learning rate")
+    parser.add_argument('-ad', "--adjust-lr", default=[400, 500, 550], type=arg_as_list,
+                        help="The milestone list for adjust learning rate")
     parser.add_argument('--lr_gamma', default=0.1, type=float)
     parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
 
@@ -118,11 +118,11 @@ def get_args():
     #                     help='mask type of discrete latent for Real NVP (e.g. checkerboard or half)')
     parser.add_argument('--z_hidden_dim', default=256, type=int,
                         help='embedding dimension of continuous latent for coupling layer')
-    parser.add_argument('--c_hidden_dim', default=64, type=int,
+    parser.add_argument('--c_hidden_dim', default=128, type=int,
                         help='embedding dimension of discrete latent for coupling layer')
     parser.add_argument('--z_n_blocks', default=6, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
-    parser.add_argument('--c_n_blocks', default=3, type=int,
+    parser.add_argument('--c_n_blocks', default=4, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
     # parser.add_argument('--coupling_MLP_num', default=4, type=int,
     #                     help='number of dense layers in single coupling layer')
@@ -178,7 +178,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220121-012559'
+model_path = log_path + '/20220121-211518'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 model.build(input_shape=(None, 32, 32, 3))
@@ -236,12 +236,12 @@ z_epsilon1, _ = model.prior.zNF(latent.numpy()[[11], :])
 z_epsilon2, _ = model.prior.zNF(latent.numpy()[[38], :])
 
 interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 20))
-# z_interpolation = model.prior.zflow(interpolation)
-out = model.prior.zNF.affine_layers[-1].reverse(interpolation)
-for i in range(model.prior.zNF.n_blocks - 1):
-    out = model.prior.zNF.permutations[-1-i].reverse(out)
-    out = model.prior.zNF.affine_layers[-2-i].reverse(out)
-z_interpolation = out
+z_interpolation = model.prior.zflow(interpolation)
+# out = model.prior.zNF.affine_layers[-1].reverse(interpolation)
+# for i in range(model.prior.zNF.n_blocks - 1):
+#     out = model.prior.zNF.permutations[-1-i].reverse(out)
+#     out = model.prior.zNF.affine_layers[-2-i].reverse(out)
+# z_interpolation = out
 
 label = np.zeros((z_interpolation.shape[0], num_classes))
 label[:, 3] = 1
@@ -303,12 +303,12 @@ plt.close()
 tf.random.set_seed(1)
 z = model.ae.z_encode(tf.cast(x.numpy()[[idx[1]]], tf.float32), training=False)
 c_epsilon = tf.random.normal(shape=(100, num_classes))
-# c = model.prior.cflow(c_epsilon)
-out = model.prior.cNF.affine_layers[-1].reverse(c_epsilon)
-for i in range(model.prior.cNF.n_blocks - 1):
-    out = model.prior.cNF.permutations[-1-i].reverse(out)
-    out = model.prior.cNF.affine_layers[-2-i].reverse(out)
-c = out
+c = model.prior.cflow(c_epsilon)
+# out = model.prior.cNF.affine_layers[-1].reverse(c_epsilon)
+# for i in range(model.prior.cNF.n_blocks - 1):
+#     out = model.prior.cNF.permutations[-1-i].reverse(out)
+#     out = model.prior.cNF.affine_layers[-2-i].reverse(out)
+# c = out
 pi = tf.nn.softmax(c)
 xhat = model.ae.decode(tf.tile(z, (len(pi), 1)), pi, training=False)
 
@@ -325,12 +325,12 @@ plt.close()
 '''style latent random sampling of z'''
 tf.random.set_seed(1)
 z_epsilon = tf.random.normal(shape=(100, args['latent_dim']))
-# z = model.prior.zflow(z_epsilon)
-out = model.prior.zNF.affine_layers[-1].reverse(z_epsilon)
-for i in range(model.prior.zNF.n_blocks - 1):
-    out = model.prior.zNF.permutations[-1-i].reverse(out)
-    out = model.prior.zNF.affine_layers[-2-i].reverse(out)
-z = out
+z = model.prior.zflow(z_epsilon)
+# out = model.prior.zNF.affine_layers[-1].reverse(z_epsilon)
+# for i in range(model.prior.zNF.n_blocks - 1):
+#     out = model.prior.zNF.permutations[-1-i].reverse(out)
+#     out = model.prior.zNF.affine_layers[-2-i].reverse(out)
+# z = out
 pi = np.zeros((len(z), num_classes))
 pi[:, 4] = 1
 xhat = model.ae.decode(z, pi, training=False)
