@@ -1,16 +1,15 @@
 #%%
 '''
-<check list>
 - mutual information loss
-- AE optimizer
-    1) SGD + momentum
-    2) weight decay
-    3) learning rate schedule 
-- NF 
-    1) Adam 
-    # 2) gradient norm clipping
-    3) decoupled weight deacy
-    4) learning rate schedule
+- ewm = 1e-3 is stable (others = NaN)
+    - ew + 1 scheduling = unstable
+    - ew * 50 after 400 epochs = accuracy get worse
+- x_sigma = 0.1 is stable
+- NF model parameters
+    - z(128), hidden dim = 256, n_blocks = 6
+    - c(10), hidden dim = 128, n_blocks = 4
+- AE and NF: warm-up
+- NF: training after 200 epochs
 '''
 #%%
 import argparse
@@ -75,9 +74,9 @@ def get_args():
     '''SSL VAE Train PreProcess Parameter'''
     parser.add_argument('--epochs', default=600, type=int, 
                         metavar='N', help='number of total epochs to run')
-    parser.add_argument('--start-epoch', default=0, type=int, 
+    parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    parser.add_argument('--reconstruct-freq', '-rf', default=50, type=int,
+    parser.add_argument('--reconstruct_freq', '-rf', default=50, type=int,
                         metavar='N', help='reconstruct frequency (default: 50)')
     parser.add_argument('--labeled_examples', type=int, default=4000, 
                         help='number labeled examples (default: 4000')
@@ -94,11 +93,11 @@ def get_args():
                         help='widen factor for WideResnet (default: 2)')
     parser.add_argument('--slope', type=float, default=0.1, 
                         help='slope parameter for LeakyReLU (default: 0.1)')
-    parser.add_argument('-dr', '--drop-rate', default=0, type=float, 
+    parser.add_argument('-dr', '--drop_rate', default=0, type=float, 
                         help='drop rate for the network')
-    parser.add_argument("--br", "--bce-reconstruction", action='store_true', 
+    parser.add_argument("--br", "--bce_reconstruction", action='store_true', 
                         help='Do BCE Reconstruction')
-    parser.add_argument("-s", "--x-sigma", default=1, type=float,
+    parser.add_argument("-s", "--x_sigma", default=1, type=float,
                         help="The standard variance for reconstructed images, work as regularization")
 
     '''VAE parameters'''
@@ -129,14 +128,14 @@ def get_args():
                         help="adjust posterior weight")
 
     '''Optimizer Parameters'''
-    parser.add_argument('--lr', '--learning-rate', default=1e-1, type=float,
+    parser.add_argument('--lr', '--learning_rate', default=1e-1, type=float,
                         metavar='LR', help='initial learning rate')
     parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
                         help='beta1 for adam as well as momentum for SGD')
-    parser.add_argument('-ad', "--adjust-lr", default=[400, 500, 550], type=arg_as_list,
+    parser.add_argument('-ad', "--adjust_lr", default=[400, 500, 550], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
     parser.add_argument('--lr_gamma', default=0.1, type=float)
-    parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
+    parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
     # parser.add_argument('--z_mask', default='checkerboard', type=str,
@@ -195,35 +194,35 @@ def load_config(args):
             args[key] = config[key]
     return args
 #%%
-# def generate_and_save_images(model, image, num_classes):
-#     z = model.get_latent(image, training=False)
+def generate_and_save_images1(model, image, num_classes):
+    z = model.ae.z_encode(image, training=False)
     
-#     buf = io.BytesIO()
-#     figure = plt.figure(figsize=(10, 2))
-#     plt.subplot(1, num_classes+1, 1)
-#     plt.imshow((image[0] + 1) / 2)
-#     plt.title('original')
-#     plt.axis('off')
-#     for i in range(num_classes):
-#         label = np.zeros((z.shape[0], num_classes))
-#         label[:, i] = 1
-#         xhat = model.decode_sample(z, label, training=False)
-#         plt.subplot(1, num_classes+1, i+2)
-#         plt.imshow((xhat[0] + 1) / 2)
-#         plt.title('{}'.format(i))
-#         plt.axis('off')
-#     plt.savefig(buf, format='png')
-#     # Closing the figure prevents it from being displayed directly inside the notebook.
-#     plt.close(figure)
-#     buf.seek(0)
-#     # Convert PNG buffer to TF image
-#     # Convert PNG buffer to TF image
-#     image = tf.image.decode_png(buf.getvalue(), channels=4)
-#     # Add the batch dimension
-#     image = tf.expand_dims(image, 0)
-#     return image
+    buf = io.BytesIO()
+    figure = plt.figure(figsize=(10, 2))
+    plt.subplot(1, num_classes+1, 1)
+    plt.imshow(image[0])
+    plt.title('original')
+    plt.axis('off')
+    for i in range(num_classes):
+        label = np.zeros((z.shape[0], num_classes))
+        label[:, i] = 1
+        xhat = model.ae.decode(z, label, training=False)
+        plt.subplot(1, num_classes+1, i+2)
+        plt.imshow(xhat[0])
+        plt.title('{}'.format(i))
+        plt.axis('off')
+    plt.savefig(buf, format='png')
+    # Closing the figure prevents it from being displayed directly inside the notebook.
+    plt.close(figure)
+    buf.seek(0)
+    # Convert PNG buffer to TF image
+    # Convert PNG buffer to TF image
+    image = tf.image.decode_png(buf.getvalue(), channels=4)
+    # Add the batch dimension
+    image = tf.expand_dims(image, 0)
+    return image
 
-def generate_and_save_images(model, image, num_classes, step, save_dir):
+def generate_and_save_images2(model, image, num_classes, step, save_dir):
     z = model.ae.z_encode(image, training=False)
     
     plt.figure(figsize=(10, 2))
@@ -325,11 +324,11 @@ def main():
             else:
                 optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma_nf'] ** 3)
         
-        # if epoch % args['reconstruct_freq'] == 0:
-        #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
-        # else:
-        #     labeled_loss, unlabeled_loss, kl_y_loss, accuracy = train(datasetL, datasetU, model, buffer_model, lr, epoch, args, num_classes, total_length)
-        loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
+        if epoch % args['reconstruct_freq'] == 0:
+            loss, recon_loss, info_loss, nf_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
+        else:
+            loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
+        # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         val_nf_loss, val_recon_loss, val_info_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_nf_loss, test_recon_loss, test_info_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
@@ -339,8 +338,8 @@ def main():
             tf.summary.scalar('info_loss', info_loss.result(), step=epoch)
             tf.summary.scalar('nf_loss', nf_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
-            # if epoch % args['reconstruct_freq'] == 0:
-            #     tf.summary.image("train recon image", sample_recon, step=epoch)
+            if epoch % args['reconstruct_freq'] == 0:
+                tf.summary.image("train recon image", sample_recon, step=epoch)
         with val_writer.as_default():
             tf.summary.scalar('nf_loss', val_nf_loss.result(), step=epoch)
             tf.summary.scalar('recon_loss', val_recon_loss.result(), step=epoch)
@@ -377,7 +376,7 @@ def main():
         if args['dataset'] == 'cifar10':
             if args['labeled_examples'] >= 2500:
                 if epoch == args['adjust_lr'][0]:
-                    args['ewm'] = args['ewm'] * 200
+                    args['ewm'] = args['ewm'] * 5
 
     '''model & configurations save'''        
     # weight name for saving
@@ -545,14 +544,12 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         })
         
     if epoch % args['reconstruct_freq'] == 0:
-        generate_and_save_images(model, imageU[0][tf.newaxis, ...], num_classes, epoch, f'logs/{args["dataset"]}_{args["labeled_examples"]}/{current_time}')
-    
-    # if epoch % args['reconstruct_freq'] == 0:
-    #     sample_recon = generate_and_save_images(model, imageU[0][tf.newaxis, ...], num_classes)
-    #     return labeled_loss_avg, unlabeled_loss_avg, kl_y_loss_avg, accuracy, sample_recon
-    # else:
-    #     return labeled_loss_avg, unlabeled_loss_avg, kl_y_loss_avg, accuracy
-    return loss_avg, recon_loss_avg, info_loss_avg, nf_loss_avg, accuracy
+        sample_recon = generate_and_save_images1(model, imageU[0][tf.newaxis, ...], num_classes)
+        generate_and_save_images2(model, imageU[0][tf.newaxis, ...], num_classes, epoch, f'logs/{args["dataset"]}_{args["labeled_examples"]}/{current_time}')
+        return loss_avg, recon_loss_avg, info_loss_avg, nf_loss_avg, accuracy, sample_recon
+    else:
+        return loss_avg, recon_loss_avg, info_loss_avg, nf_loss_avg, accuracy
+    # return loss_avg, recon_loss_avg, info_loss_avg, nf_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, args, split):
     nf_loss_avg = tf.keras.metrics.Mean()
