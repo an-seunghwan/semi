@@ -124,10 +124,10 @@ def get_args():
                         metavar='LR', help='initial learning rate')
     parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
                         help='beta1 for adam as well as momentum for SGD')
-    parser.add_argument('-ad', "--adjust-lr", default=[200, 250], type=arg_as_list,
-                        help="The milestone list for adjust learning rate")
-    parser.add_argument('--lr_gamma', default=0.1, type=float)
-    parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
+    # parser.add_argument('-ad', "--adjust-lr", default=[200, 250], type=arg_as_list,
+    #                     help="The milestone list for adjust learning rate")
+    # parser.add_argument('--lr_gamma', default=0.1, type=float)
+    # parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
     # parser.add_argument('--z_mask', default='checkerboard', type=str,
@@ -272,10 +272,10 @@ def main():
     '''
     
     '''optimizer'''
-    # optimizer = K.optimizers.Adam(learning_rate=args['lr'],
-    #                             beta_1=args['beta1'])
-    optimizer = K.optimizers.SGD(learning_rate=args['lr'],
-                                momentum=args['beta1'])
+    optimizer = K.optimizers.Adam(learning_rate=args['lr'],
+                                beta_1=args['beta1'])
+    # optimizer = K.optimizers.SGD(learning_rate=args['lr'],
+    #                             momentum=args['beta1'])
     optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
                                     beta_1=args['beta1_nf'], beta_2=args['beta2_nf'])
     
@@ -296,12 +296,12 @@ def main():
         if epoch == 0:
             '''warm-up'''
             optimizer.lr = args['lr'] * 0.2
-        elif epoch < args['adjust_lr'][0]:
-            optimizer.lr = args['lr']
-        elif epoch < args['adjust_lr'][1]:
-            optimizer.lr = args['lr'] * args['lr_gamma']
-        else:
-            optimizer.lr = args['lr'] * (args['lr_gamma'] ** 2)
+        # elif epoch < args['adjust_lr'][0]:
+        #     optimizer.lr = args['lr']
+        # elif epoch < args['adjust_lr'][1]:
+        #     optimizer.lr = args['lr'] * args['lr_gamma']
+        # else:
+        #     optimizer.lr = args['lr'] * (args['lr_gamma'] ** 2)
             
         if epoch >= args['start_epoch_nf']: 
             if epoch == args['start_epoch_nf']: 
@@ -474,8 +474,8 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         grads = tape.gradient(loss_supervised, model.ae.trainable_variables) 
         '''SGD + momentum''' 
         optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) 
-        '''decoupled weight decay'''
-        weight_decay_decoupled(model.ae, buffer_model.ae, decay_rate=args['wd'] * optimizer.lr)
+        # '''decoupled weight decay'''
+        # weight_decay_decoupled(model.ae, buffer_model.ae, decay_rate=args['wd'] * optimizer.lr)
         
         if epoch >= args['start_epoch_nf']:
             '''Normalizing Flow'''
@@ -517,8 +517,8 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         grads = tape.gradient(loss_unsupervised, model.ae.trainable_variables) 
         '''SGD + momentum''' 
         optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) 
-        '''decoupled weight decay'''
-        weight_decay_decoupled(model.ae, buffer_model.ae, decay_rate=args['wd'] * optimizer.lr)
+        # '''decoupled weight decay'''
+        # weight_decay_decoupled(model.ae, buffer_model.ae, decay_rate=args['wd'] * optimizer.lr)
         
         if epoch >= args['start_epoch_nf']:
             '''Normalizing Flow'''
