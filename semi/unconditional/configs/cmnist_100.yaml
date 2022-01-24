@@ -1,5 +1,3 @@
 dataset: "cmnist"
-# lr_gamma_nf: 0.1
-# c_n_blocks: 4
-# c_hidden_dim: 128
-# br: True
+# x_sigma: 0.1
+lr: 0.1

@@ -454,14 +454,20 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             '''mix-up'''
             with tape.stop_recording():
                 image_mixL, z_mixL, c_mixL, label_shuffleL = label_smoothing(imageL, z, c, labelL, mix_weight[0])
-            smoothed_zL, smoothed_cL, smoothed_probL, _ = model.ae(image_mixL, training=True)
+            smoothed_zL, smoothed_cL, smoothed_probL, smoothed_xhatL = model.ae(image_mixL, training=True)
             
             mixup_zL = tf.reduce_mean(tf.math.square(smoothed_zL - z_mixL))
             mixup_zL += tf.reduce_mean(tf.math.square(smoothed_cL - c_mixL))
             mixup_yL = - tf.reduce_mean(mix_weight[0] * tf.reduce_sum(label_shuffleL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             
-            elbo_lossL = recon_lossL + mixup_zL
+            if args['br']:
+                mixup_reconL = tf.reduce_mean(- tf.reduce_sum(image_mixL * tf.math.log(tf.clip_by_value(smoothed_xhatL, 1e-10, 1.0)) + 
+                                                            (1. - image_mixL) * tf.math.log(tf.clip_by_value(1. - smoothed_xhatL, 1e-10, 1.0)), axis=[1, 2, 3]))
+            else:
+                mixup_reconL = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatL - image_mixL) / (2. * (args['x_sigma'] ** 2)), axis=[1, 2, 3]))
+            
+            elbo_lossL = recon_lossL + mixup_reconL + mixup_zL
             loss_supervised = elbo_lossL + mixup_yL + 10. * cls_lossL + 10. * infoL
 
         '''AutoEncoder'''
@@ -492,13 +498,19 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             '''mix-up'''
             with tape.stop_recording():
                 image_mixU, z_mixU, c_mixU, pseudo_labelU = non_smooth_mixup(imageU, z, c, probU, mix_weight[1])
-            smoothed_zU, smoothed_cU, smoothed_probU, _ = model.ae(image_mixU, training=True)
+            smoothed_zU, smoothed_cU, smoothed_probU, smoothed_xhatU = model.ae(image_mixU, training=True)
             
             mixup_zU = tf.reduce_mean(tf.math.square(smoothed_zU - z_mixU))
             mixup_zU += tf.reduce_mean(tf.math.square(smoothed_cU - c_mixU))
             mixup_yU = - tf.reduce_mean(tf.reduce_sum(pseudo_labelU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
             
-            elbo_lossU = recon_lossU + mixup_zU
+            if args['br']:
+                mixup_reconU = tf.reduce_mean(- tf.reduce_sum(image_mixU * tf.math.log(tf.clip_by_value(smoothed_xhatU, 1e-10, 1.0)) + 
+                                                            (1. - image_mixU) * tf.math.log(tf.clip_by_value(1. - smoothed_xhatU, 1e-10, 1.0)), axis=[1, 2, 3]))
+            else:
+                mixup_reconU = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatU - image_mixU) / (2. * (args['x_sigma'] ** 2)), axis=[1, 2, 3]))
+            
+            elbo_lossU = recon_lossU + mixup_reconU + mixup_zU
             loss_unsupervised = elbo_lossU + mixup_yU + 10. * infoU
 
         '''AutoEncoder'''
