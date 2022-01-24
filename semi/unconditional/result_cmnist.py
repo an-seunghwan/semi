@@ -46,14 +46,14 @@ def get_args():
                         metavar='N', help='mini-batch size (default: 128)')
 
     '''SSL VAE Train PreProcess Parameter'''
-    parser.add_argument('--epochs', default=600, type=int, 
+    parser.add_argument('--epochs', default=300, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start-epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    parser.add_argument('--reconstruct-freq', '-rf', default=50, type=int,
-                        metavar='N', help='reconstruct frequency (default: 50)')
-    parser.add_argument('--labeled_examples', type=int, default=4000, 
-                        help='number labeled examples (default: 4000')
+    parser.add_argument('--reconstruct-freq', '-rf', default=10, type=int,
+                        metavar='N', help='reconstruct frequency (default: 10)')
+    parser.add_argument('--labeled_examples', type=int, default=100, 
+                        help='number labeled examples (default: 100')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
     parser.add_argument('--augment', action='store_true', 
@@ -75,7 +75,7 @@ def get_args():
                         help="The standard variance for reconstructed images, work as regularization")
 
     '''VAE parameters'''
-    parser.add_argument('--latent_dim', "--latent_dim_continuous", default=128, type=int,
+    parser.add_argument('--latent_dim', "--latent_dim_continuous", default=6, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
 
@@ -102,27 +102,27 @@ def get_args():
     #                     help="adjust posterior weight")
 
     '''Optimizer Parameters'''
-    parser.add_argument('--lr', '--learning-rate', default=1e-1, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                         metavar='LR', help='initial learning rate')
     parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
                         help='beta1 for adam as well as momentum for SGD')
-    parser.add_argument('-ad', "--adjust-lr", default=[400, 500, 550], type=arg_as_list,
-                        help="The milestone list for adjust learning rate")
-    parser.add_argument('--lr_gamma', default=0.1, type=float)
-    parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
+    # parser.add_argument('-ad', "--adjust-lr", default=[400, 500, 550], type=arg_as_list,
+    #                     help="The milestone list for adjust learning rate")
+    # parser.add_argument('--lr_gamma', default=0.1, type=float)
+    # parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
     # parser.add_argument('--z_mask', default='checkerboard', type=str,
     #                     help='mask type of continuous latent for Real NVP (e.g. checkerboard or half)')
     # parser.add_argument('--c_mask', default='half', type=str,
     #                     help='mask type of discrete latent for Real NVP (e.g. checkerboard or half)')
-    parser.add_argument('--z_hidden_dim', default=256, type=int,
+    parser.add_argument('--z_hidden_dim', default=64, type=int,
                         help='embedding dimension of continuous latent for coupling layer')
-    parser.add_argument('--c_hidden_dim', default=128, type=int,
+    parser.add_argument('--c_hidden_dim', default=64, type=int,
                         help='embedding dimension of discrete latent for coupling layer')
-    parser.add_argument('--z_n_blocks', default=6, type=int,
+    parser.add_argument('--z_n_blocks', default=3, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
-    parser.add_argument('--c_n_blocks', default=4, type=int,
+    parser.add_argument('--c_n_blocks', default=3, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
     # parser.add_argument('--coupling_MLP_num', default=4, type=int,
     #                     help='number of dense layers in single coupling layer')
@@ -139,7 +139,7 @@ def get_args():
                         help='beta2 for adam')
     parser.add_argument('-ad_nf', "--adjust_lr_nf", default=[0.25, 0.5, 0.75], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
-    parser.add_argument('--start_epoch_nf', default=200, type=int,
+    parser.add_argument('--start_epoch_nf', default=0, type=int,
                         help="NF training start epoch")
     # parser.add_argument('--decay_steps', default=1, type=int,
     #                     help='decay steps for exponential decay schedule')
@@ -178,7 +178,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220121-211518'
+model_path = log_path + '/20220123-180155'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 model.build(input_shape=(None, 32, 32, 3))

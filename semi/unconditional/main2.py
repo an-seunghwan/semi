@@ -377,7 +377,7 @@ def main():
         if args['dataset'] == 'cifar10':
             if args['labeled_examples'] >= 2500:
                 if epoch == args['adjust_lr'][0]:
-                    args['ewm'] = args['ewm'] * 5
+                    args['ewm'] = args['ewm'] * 200
 
     '''model & configurations save'''        
     # weight name for saving
@@ -406,7 +406,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''elbo part weight'''
-    ew = weight_schedule(epoch, args['aew'], args['ewm']) + 1.
+    ew = weight_schedule(epoch, args['aew'], args['ewm'])
     '''mix-up parameters'''
     beta_z = weight_schedule(epoch, args['akb'], args['kbmc'])
     pwm = weight_schedule(epoch, args['apw'], args['pwm'])
