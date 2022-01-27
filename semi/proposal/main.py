@@ -12,9 +12,9 @@
 import argparse
 import os
 
-# os.chdir(r'D:\semi\semi\unconditional') # main directory (repository)
+os.chdir(r'D:\semi\semi\proposal') # main directory (repository)
 # os.chdir('/home1/prof/jeon/an/semi/semi/unconditional') # main directory (repository)
-os.chdir('/Users/anseunghwan/Documents/GitHub/semi/semi/proposal') # main directory (repository)
+# os.chdir('/Users/anseunghwan/Documents/GitHub/semi/semi/proposal') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -28,7 +28,7 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model2 import VAE
+from model import VAE
 from criterion import ELBO_criterion
 from mixup import augment, label_smoothing, non_smooth_mixup, weight_decay_decoupled
 #%%
@@ -60,7 +60,7 @@ def get_args():
                         help='number labeled examples (default: 4000')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
-    parser.add_argument('--augment', action='store_true', 
+    parser.add_argument('--no_augment', action='store_false', 
                         help="apply augmentation to image")
 
     '''Deep VAE Model Parameters'''
