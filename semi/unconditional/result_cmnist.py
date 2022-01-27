@@ -232,10 +232,10 @@ plt.savefig('{}/style_transfer.png'.format(model_path),
 plt.close()
 #%%
 '''interpolation: smooth'''
-z_epsilon1, _ = model.prior.zNF(latent.numpy()[[11], :])
-z_epsilon2, _ = model.prior.zNF(latent.numpy()[[38], :])
+z_epsilon1, _ = model.prior.zNF(latent.numpy()[[60], :])
+z_epsilon2, _ = model.prior.zNF(latent.numpy()[[58], :])
 
-interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 20))
+interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 10))
 z_interpolation = model.prior.zflow(interpolation)
 # out = model.prior.zNF.affine_layers[-1].reverse(interpolation)
 # for i in range(model.prior.zNF.n_blocks - 1):
@@ -247,36 +247,36 @@ label = np.zeros((z_interpolation.shape[0], num_classes))
 label[:, 3] = 1
 xhat_ = model.ae.decode(z_interpolation, label, training=False)
 
-fig, axes = plt.subplots(1, 20, figsize=(20, 6))
+fig, axes = plt.subplots(1, 10, figsize=(10, 6))
 for i in range(len(z_interpolation)):
     axes.flatten()[i].imshow(xhat_[i])
     axes.flatten()[i].axis('off')
 plt.tight_layout()
 plt.savefig('{}/style_interpolation_smooth.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
+plt.show()
 plt.close()
 #%%
 '''interpolation: non-smooth'''
-z_interpolation = np.squeeze(np.linspace(latent.numpy()[[11], :], 
-                                         latent.numpy()[[38], :], 20))
+z_interpolation = np.squeeze(np.linspace(latent.numpy()[[60], :], 
+                                         latent.numpy()[[58], :], 10))
 
 label = np.zeros((z_interpolation.shape[0], num_classes))
 label[:, 3] = 1
 xhat_ = model.ae.decode(z_interpolation, label, training=False)
 
-fig, axes = plt.subplots(1, 20, figsize=(20, 6))
+fig, axes = plt.subplots(1, 10, figsize=(10, 6))
 for i in range(len(z_interpolation)):
     axes.flatten()[i].imshow(xhat_[i])
     axes.flatten()[i].axis('off')
 plt.tight_layout()
 plt.savefig('{}/style_interpolation_nonsmooth.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
+plt.show()
 plt.close()
 #%%
 '''manipulation'''
-idx = [2, 7, 21, 31, 38, 40, 55, 69, 82, 94]
+idx = [1, 2, 6, 14, 38, 41, 42, 44, 56, 76]
 plt.figure(figsize=(15, 20))
 for j in range(len(idx)):
     z = model.ae.z_encode(tf.cast(x.numpy()[[idx[j]]], tf.float32), training=False)
@@ -296,7 +296,7 @@ for j in range(len(idx)):
         plt.axis('off')
 plt.savefig('{}/manipulation.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
+plt.show()
 plt.close()
 #%%
 '''style latent random sampling of c'''
@@ -319,7 +319,7 @@ for i in range(100):
 plt.tight_layout()
 plt.savefig('{}/inverse_flow_c.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
+plt.show()
 plt.close()
 #%%
 '''style latent random sampling of z'''
@@ -342,7 +342,7 @@ for i in range(100):
 plt.tight_layout()
 plt.savefig('{}/inverse_flow_z.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
+plt.show()
 plt.close()
 #%%
 # np.mean(latent.numpy(), axis=0) # why sparse?
