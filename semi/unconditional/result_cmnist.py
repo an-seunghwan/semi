@@ -33,7 +33,7 @@ def arg_as_list(s):
 def get_args():
     parser = argparse.ArgumentParser('parameters')
 
-    # parser.add_argument('-bp', '--base_path', default=".")
+# parser.add_argument('-bp', '--base_path', default=".")
     parser.add_argument('--dataset', type=str, default='cifar10',
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra, cmnist)')
     parser.add_argument('--seed', type=int, default=1, 
@@ -48,9 +48,9 @@ def get_args():
     '''SSL VAE Train PreProcess Parameter'''
     parser.add_argument('--epochs', default=300, type=int, 
                         metavar='N', help='number of total epochs to run')
-    parser.add_argument('--start-epoch', default=0, type=int, 
+    parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    parser.add_argument('--reconstruct-freq', '-rf', default=10, type=int,
+    parser.add_argument('--reconstruct_freq', '-rf', default=10, type=int,
                         metavar='N', help='reconstruct frequency (default: 10)')
     parser.add_argument('--labeled_examples', type=int, default=100, 
                         help='number labeled examples (default: 100')
@@ -67,11 +67,11 @@ def get_args():
                         help='widen factor for WideResnet (default: 2)')
     parser.add_argument('--slope', type=float, default=0.1, 
                         help='slope parameter for LeakyReLU (default: 0.1)')
-    parser.add_argument('-dr', '--drop-rate', default=0, type=float, 
+    parser.add_argument('-dr', '--drop_rate', default=0, type=float, 
                         help='drop rate for the network')
-    parser.add_argument("--br", "--bce-reconstruction", action='store_true', 
+    parser.add_argument("--br", "--bce_reconstruction", action='store_true', 
                         help='Do BCE Reconstruction')
-    parser.add_argument("-s", "--x-sigma", default=1, type=float,
+    parser.add_argument("-s", "--x_sigma", default=1, type=float,
                         help="The standard variance for reconstructed images, work as regularization")
 
     '''VAE parameters'''
@@ -102,14 +102,14 @@ def get_args():
     #                     help="adjust posterior weight")
 
     '''Optimizer Parameters'''
-    parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
+    parser.add_argument('--lr', '--learning_rate', default=0.001, type=float,
                         metavar='LR', help='initial learning rate')
     parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
                         help='beta1 for adam as well as momentum for SGD')
-    # parser.add_argument('-ad', "--adjust-lr", default=[400, 500, 550], type=arg_as_list,
+    # parser.add_argument('-ad', "--adjust-lr", default=[200, 250], type=arg_as_list,
     #                     help="The milestone list for adjust learning rate")
     # parser.add_argument('--lr_gamma', default=0.1, type=float)
-    # parser.add_argument('--wd', '--weight-decay', default=5e-4, type=float)
+    parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
     # parser.add_argument('--z_mask', default='checkerboard', type=str,
@@ -122,16 +122,16 @@ def get_args():
                         help='embedding dimension of discrete latent for coupling layer')
     parser.add_argument('--z_n_blocks', default=3, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
-    parser.add_argument('--c_n_blocks', default=3, type=int,
+    parser.add_argument('--c_n_blocks', default=4, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
     # parser.add_argument('--coupling_MLP_num', default=4, type=int,
     #                     help='number of dense layers in single coupling layer')
 
     '''Normalizing Flow Optimizer Parameters'''
-    parser.add_argument('--lr_nf', '--learning-rate-nf', default=1e-3, type=float,
+    parser.add_argument('--lr_nf', '--learning_rate_nf', default=1e-3, type=float,
                         metavar='LR', help='initial learning rate for normalizing flow')
-    parser.add_argument('--lr_gamma_nf', default=0.5, type=float)
-    parser.add_argument('--wd_nf', '--weight-decay-nf', default=2e-5, type=float,
+    parser.add_argument('--lr_gamma_nf', default=0.1, type=float)
+    parser.add_argument('--wd_nf', '--weight_decay_nf', default=2e-5, type=float,
                         help='L2 regularization parameter for dense layers in Real NVP')
     parser.add_argument('-b1_nf', '--beta1_nf', default=0.9, type=float, metavar='Beta1 In ADAM',
                         help='beta1 for adam')
@@ -178,7 +178,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220123-180745'
+model_path = log_path + '/20220124-123548'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 model.build(input_shape=(None, 32, 32, 3))
