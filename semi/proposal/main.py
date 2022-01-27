@@ -394,7 +394,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             imageU, _ = next(iteratorU)
             
         '''augmentation'''
-        if args['augment']:
+        if not args['no_augment']:
             imageL = augment(imageL)
             imageU = augment(imageU)
         
