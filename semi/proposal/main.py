@@ -7,13 +7,15 @@
     - c(10), hidden dim = 128, n_blocks = 4
 - AE and NF: warm-up
 - NF: training after 200 epochs
+
+220202 reconstruction: reduce_sum -> reduce_mean
 '''
 #%%
 import argparse
 import os
 
-os.chdir(r'D:\semi\semi\proposal') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/semi/unconditional') # main directory (repository)
+# os.chdir(r'D:\semi\semi\proposal') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/semi/proposal') # main directory (repository)
 # os.chdir('/Users/anseunghwan/Documents/GitHub/semi/semi/proposal') # main directory (repository)
 
 import numpy as np
@@ -394,7 +396,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             imageU, _ = next(iteratorU)
             
         '''augmentation'''
-        if not args['no_augment']:
+        if args['no_augment']:
             imageL = augment(imageL)
             imageU = augment(imageU)
         
