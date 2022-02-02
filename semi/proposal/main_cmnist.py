@@ -9,6 +9,7 @@
 - NF: training after 200 epochs
 
 220202 reconstruction: reduce_sum -> reduce_mean
+220202 lambda: 5 -> 1
 '''
 #%%
 import argparse
@@ -62,7 +63,7 @@ def get_args():
                         help='number labeled examples (default: 100')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
-    parser.add_argument('--no_augment', action='store_false', 
+    parser.add_argument('--augment', action='store_true', 
                         help="apply augmentation to image")
 
     '''Deep VAE Model Parameters'''
@@ -88,11 +89,11 @@ def get_args():
     '''VAE Loss Function Parameters'''
     parser.add_argument('--mixup_max_z', default=1, type=float, 
                         help='the epoch to linear adjust mixup')
-    parser.add_argument('--mixup_epoch_z',default=200, type=int, 
+    parser.add_argument('--mixup_epoch_z',default=100, type=int, 
                         help='the max epoch to adjust mixup')
     parser.add_argument('--mixup_max_y', default=1, type=float, 
                         help='the epoch to linear adjust mixup')
-    parser.add_argument('--mixup_epoch_y',default=200, type=int, 
+    parser.add_argument('--mixup_epoch_y',default=100, type=int, 
                         help='the max epoch to adjust mixup')
     
     '''Optimizer Parameters'''
@@ -385,7 +386,6 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
-        '''augmentation'''
         try:
             imageL, labelL = next(iteratorL)
         except:
@@ -398,7 +398,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             imageU, _ = next(iteratorU)
             
         '''augmentation'''
-        if args['no_augment']:
+        if args['augment']:
             imageL = augment(imageL)
             imageU = augment(imageU)
         
@@ -426,7 +426,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             
             elbo_lossL = recon_lossL + mixup_lambda_z * (mixup_zL + mixup_xhatL) 
-            loss_supervised = elbo_lossL + mixup_yL + (10. * cls_lossL) + (10. * infoL)
+            loss_supervised = elbo_lossL + mixup_yL + cls_lossL + infoL
 
         '''AutoEncoder'''
         grads = tape.gradient(loss_supervised, model.ae.trainable_variables) 
@@ -463,7 +463,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             mixup_yU += 0.5 * tf.reduce_sum(smoothed_probU * (tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)) - tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0))), axis=1)
             
             elbo_lossU = recon_lossU + mixup_lambda_z * (mixup_zU + mixup_xhatU) 
-            loss_unsupervised = elbo_lossU + (mixup_lambda_y * mixup_yU) + (10. * infoU)
+            loss_unsupervised = elbo_lossU + (mixup_lambda_y * mixup_yU) + infoU
 
         '''AutoEncoder'''
         grads = tape.gradient(loss_unsupervised, model.ae.trainable_variables) 

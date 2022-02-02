@@ -383,7 +383,6 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
-        '''augmentation'''
         try:
             imageL, labelL = next(iteratorL)
         except:
