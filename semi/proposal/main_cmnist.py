@@ -88,11 +88,11 @@ def get_args():
                         help='feature dimension in latent space for continuous variable')
 
     '''VAE Loss Function Parameters'''
-    parser.add_argument('--mixup_max_z', default=10, type=float, 
+    parser.add_argument('--mixup_max_z', default=0.1, type=float, 
                         help='the epoch to linear adjust mixup')
     parser.add_argument('--mixup_epoch_z',default=150, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--mixup_max_y', default=10, type=float, 
+    parser.add_argument('--mixup_max_y', default=0.1, type=float, 
                         help='the epoch to linear adjust mixup')
     parser.add_argument('--mixup_epoch_y',default=150, type=int, 
                         help='the max epoch to adjust mixup')
