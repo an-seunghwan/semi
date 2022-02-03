@@ -4,10 +4,10 @@ import tensorflow as tf
 def ELBO_criterion(args, x, xhat, prob, prob_recon, nf_args, label=None):
         '''reconstruction'''
         if args['br']:
-            recon_loss = tf.reduce_mean(- tf.reduce_mean(x * tf.math.log(tf.clip_by_value(xhat, 1e-10, 1.0)) + 
+            recon_loss = tf.reduce_mean(- tf.reduce_sum(x * tf.math.log(tf.clip_by_value(xhat, 1e-10, 1.0)) + 
                                                         (1. - x) * tf.math.log(tf.clip_by_value(1. - xhat, 1e-10, 1.0)), axis=[1, 2, 3]))
         else:
-            recon_loss = tf.reduce_mean(tf.reduce_mean(tf.math.square(xhat - x) / (2. * (args['x_sigma'] ** 2)), axis=[1, 2, 3]))
+            recon_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(xhat - x) / (2. * (args['x_sigma'] ** 2)), axis=[1, 2, 3]))
         
         if label is not None:
             '''classification'''

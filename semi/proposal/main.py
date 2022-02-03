@@ -9,6 +9,8 @@
 - NF: training after 200 epochs
 
 220202 reconstruction: reduce_sum -> reduce_mean
+220203 loss weight setting -> similar to EXoN
+220203 mutual information loss -> with tape.stop_recording():
 '''
 #%%
 import argparse
@@ -86,17 +88,19 @@ def get_args():
                         help='feature dimension in latent space for continuous variable')
 
     '''VAE Loss Function Parameters'''
-    parser.add_argument('--mixup_max_z', default=1, type=float, 
+    parser.add_argument('--mixup_max_z', default=10000, type=float, 
                         help='the epoch to linear adjust mixup')
     parser.add_argument('--mixup_epoch_z',default=200, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--mixup_max_y', default=1, type=float, 
+    parser.add_argument('--mixup_max_y', default=10000, type=float, 
                         help='the epoch to linear adjust mixup')
     parser.add_argument('--mixup_epoch_y',default=200, type=int, 
                         help='the max epoch to adjust mixup')
+    parser.add_argument('--lambda',default=10000, type=int, 
+                        help='the weight of classification and mutual information')
     
     '''Optimizer Parameters'''
-    parser.add_argument('--lr', '--learning_rate', default=1e-3, type=float,
+    parser.add_argument('--lr', '--learning_rate', default=0.001, type=float,
                         metavar='LR', help='initial learning rate')
     # parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
     #                     help='beta1 for adam as well as momentum for SGD')
@@ -406,7 +410,8 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         '''1. labeled'''
         with tf.GradientTape(persistent=True) as tape:
             [[z, c, probL, xhatL], nf_args] = model(imageL)
-            prob_reconL = tf.nn.softmax(model.ae.c_encode(imageL), axis=-1)
+            with tape.stop_recording():
+                prob_reconL = tf.nn.softmax(model.ae.c_encode(imageL), axis=-1)
             
             recon_lossL, cls_lossL, infoL, nf_lossL = ELBO_criterion(args, imageL, xhatL, probL, prob_reconL, nf_args, label=labelL)
             
@@ -418,12 +423,12 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             smoothed_xhatL = model.ae.decode(z_mixL, label_mixL) # use true label instead of prob
             
             mixup_zL = tf.reduce_mean(tf.math.square(smoothed_zL - z_mixL))
-            mixup_xhatL = tf.reduce_mean(tf.math.square(smoothed_xhatL - image_mixL))
+            mixup_xhatL = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatL - image_mixL), axis=[1, 2, 3]))
             mixup_yL = - tf.reduce_mean(mix_weight[0] * tf.reduce_sum(label_shuffleL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             
-            elbo_lossL = recon_lossL + mixup_lambda_z * (mixup_zL + mixup_xhatL) 
-            loss_supervised = elbo_lossL + mixup_yL + (10. * cls_lossL) + (10. * infoL)
+            elbo_lossL = recon_lossL + (mixup_lambda_z * (mixup_zL + mixup_xhatL))
+            loss_supervised = elbo_lossL + mixup_yL + (args['lambda'] * (cls_lossL + infoL))
 
         '''AutoEncoder'''
         grads = tape.gradient(loss_supervised, model.ae.trainable_variables) 
@@ -442,7 +447,8 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         '''2. unlabeled'''
         with tf.GradientTape(persistent=True) as tape:
             [[z, c, probU, xhatU], nf_args] = model(imageU, training=True)
-            prob_reconU = tf.nn.softmax(model.ae.c_encode(imageU, training=True), axis=-1)
+            with tape.stop_recording():
+                prob_reconU = tf.nn.softmax(model.ae.c_encode(imageU, training=True), axis=-1)
             
             recon_lossU, _, infoU, nf_lossU = ELBO_criterion(args, imageU, xhatU, probU, prob_reconU, nf_args)
             
@@ -454,13 +460,13 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             smoothed_xhatU = model.ae.decode(z_mixU, prob_mixU)
             
             mixup_zU = tf.reduce_mean(tf.math.square(smoothed_zU - z_mixU))
-            mixup_xhatU = tf.reduce_mean(tf.math.square(smoothed_xhatU - image_mixU))
+            mixup_xhatU = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatU - image_mixU), axis=[1, 2, 3]))
             # mixup_yU = - tf.reduce_mean(tf.reduce_sum(prob_mixU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
             mixup_yU = 0.5 * tf.reduce_sum(prob_mixU * (tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0)) - tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0))), axis=1)
             mixup_yU += 0.5 * tf.reduce_sum(smoothed_probU * (tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)) - tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0))), axis=1)
             
-            elbo_lossU = recon_lossU + mixup_lambda_z * (mixup_zU + mixup_xhatU) 
-            loss_unsupervised = elbo_lossU + (mixup_lambda_y * mixup_yU) + (10. * infoU)
+            elbo_lossU = recon_lossU + (mixup_lambda_z * (mixup_zU + mixup_xhatU))
+            loss_unsupervised = elbo_lossU + (mixup_lambda_y * mixup_yU) + (args['lambda'] * infoU)
 
         '''AutoEncoder'''
         grads = tape.gradient(loss_unsupervised, model.ae.trainable_variables) 

@@ -1,2 +1,2 @@
 dataset: "cmnist"
-reconstruct_freq: 5
+reconstruct_freq: 3
