@@ -32,7 +32,7 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model import VAE
+from model2_cmnist import VAE
 from criterion import ELBO_criterion
 from mixup import augment, label_smoothing, non_smooth_mixup, weight_decay_decoupled
 #%%
@@ -46,8 +46,7 @@ def arg_as_list(s):
 def get_args():
     parser = argparse.ArgumentParser('parameters')
 
-    parser.add_argument('--dataset', type=str, default='cifar10',
-                        help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra, cmnist)')
+    parser.add_argument('--dataset', type=str, default='cmnist')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results (ex. generating color MNIST)')
     parser.add_argument('-b', '--batch-size', default=128, type=int,
@@ -69,17 +68,17 @@ def get_args():
 
     '''Deep VAE Model Parameters'''
     # parser.add_argument('--net-name', default="wideresnet-28-2", type=str, help="the name for network to use")
-    parser.add_argument('--depth', type=int, default=28, 
-                        help='depth for WideResnet (default: 28)')
-    parser.add_argument('--width', type=int, default=2, 
-                        help='widen factor for WideResnet (default: 2)')
-    parser.add_argument('--slope', type=float, default=0.1, 
-                        help='slope parameter for LeakyReLU (default: 0.1)')
-    parser.add_argument('-dr', '--drop_rate', default=0, type=float, 
-                        help='drop rate for the network')
-    parser.add_argument("--br", "--bce_reconstruction", action='store_true', 
-                        help='Do BCE Reconstruction')
-    parser.add_argument("-s", "--x_sigma", default=0.5, type=float,
+    # parser.add_argument('--depth', type=int, default=28, 
+    #                     help='depth for WideResnet (default: 28)')
+    # parser.add_argument('--width', type=int, default=2, 
+    #                     help='widen factor for WideResnet (default: 2)')
+    # parser.add_argument('--slope', type=float, default=0.1, 
+    #                     help='slope parameter for LeakyReLU (default: 0.1)')
+    # parser.add_argument('-dr', '--drop_rate', default=0, type=float, 
+    #                     help='drop rate for the network')
+    # parser.add_argument("--br", "--bce_reconstruction", action='store_true', 
+    #                     help='Do BCE Reconstruction')
+    parser.add_argument("-s", "--x_sigma", default=1, type=float,
                         help="The standard variance for reconstructed images, work as regularization")
 
     '''VAE parameters'''
@@ -88,15 +87,15 @@ def get_args():
                         help='feature dimension in latent space for continuous variable')
 
     '''VAE Loss Function Parameters'''
-    parser.add_argument('--mixup_max_z', default=0.1, type=float, 
+    parser.add_argument('--mixup_max_z', default=1, type=float, 
                         help='the epoch to linear adjust mixup')
-    parser.add_argument('--mixup_epoch_z',default=150, type=int, 
+    parser.add_argument('--mixup_epoch_z',default=100, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--mixup_max_y', default=0.1, type=float, 
+    parser.add_argument('--mixup_max_y', default=1, type=float, 
                         help='the epoch to linear adjust mixup')
-    parser.add_argument('--mixup_epoch_y',default=150, type=int, 
+    parser.add_argument('--mixup_epoch_y',default=100, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--lambda',default=10, type=float, 
+    parser.add_argument('--lambda',default=5000, type=float, 
                         help='the weight of classification and mutual information')
     
     '''Optimizer Parameters'''
@@ -107,7 +106,7 @@ def get_args():
     # parser.add_argument('-ad', "--adjust_lr", default=[400, 500, 550], type=arg_as_list,
     #                     help="The milestone list for adjust learning rate")
     # parser.add_argument('--lr_gamma', default=0.5, type=float)
-    parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
+    parser.add_argument('--wd', '--weight_decay', default=1e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
     parser.add_argument('--z_hidden_dim', default=64, type=int,
@@ -413,7 +412,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         with tf.GradientTape(persistent=True) as tape:
             [[z, c, probL, xhatL], nf_args] = model(imageL)
             with tape.stop_recording():
-                prob_reconL = tf.nn.softmax(model.ae.c_encode(imageL), axis=-1)
+                prob_reconL = tf.nn.softmax(model.ae.c_encode(xhatL), axis=-1)
             
             recon_lossL, cls_lossL, infoL, nf_lossL = ELBO_criterion(args, imageL, xhatL, probL, prob_reconL, nf_args, label=labelL)
             
@@ -450,7 +449,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         with tf.GradientTape(persistent=True) as tape:
             [[z, c, probU, xhatU], nf_args] = model(imageU, training=True)
             with tape.stop_recording():
-                prob_reconU = tf.nn.softmax(model.ae.c_encode(imageU, training=True), axis=-1)
+                prob_reconU = tf.nn.softmax(model.ae.c_encode(xhatU, training=True), axis=-1)
             
             recon_lossU, _, infoU, nf_lossU = ELBO_criterion(args, imageU, xhatU, probU, prob_reconU, nf_args)
             
