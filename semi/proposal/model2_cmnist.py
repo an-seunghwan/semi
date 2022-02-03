@@ -9,8 +9,8 @@ from tensorflow.keras import layers
 import numpy as np
 #%%
 class ConvLayer(K.layers.Layer):
-    def __init__(self, filter_size, kernel_size, strides, name="ConvLayer", **kwargs):
-        super(ConvLayer, self).__init__(name=name, **kwargs)
+    def __init__(self, filter_size, kernel_size, strides, **kwargs):
+        super(ConvLayer, self).__init__(**kwargs)
         self.conv2d = layers.Conv2D(filters=filter_size, kernel_size=kernel_size, strides=strides, padding='same')
         self.norm = layers.BatchNormalization()
 
