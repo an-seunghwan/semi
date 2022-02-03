@@ -90,11 +90,11 @@ def get_args():
     '''VAE Loss Function Parameters'''
     parser.add_argument('--mixup_max_z', default=10, type=float, 
                         help='the epoch to linear adjust mixup')
-    parser.add_argument('--mixup_epoch_z',default=100, type=int, 
+    parser.add_argument('--mixup_epoch_z',default=150, type=int, 
                         help='the max epoch to adjust mixup')
     parser.add_argument('--mixup_max_y', default=10, type=float, 
                         help='the epoch to linear adjust mixup')
-    parser.add_argument('--mixup_epoch_y',default=100, type=int, 
+    parser.add_argument('--mixup_epoch_y',default=150, type=int, 
                         help='the max epoch to adjust mixup')
     parser.add_argument('--lambda',default=10, type=int, 
                         help='the weight of classification and mutual information')
@@ -120,7 +120,7 @@ def get_args():
                         help='number of coupling layers in Real NVP (discrete latent)')
 
     '''Normalizing Flow Optimizer Parameters'''
-    parser.add_argument('--lr_nf', '--learning-rate-nf', default=1e-3, type=float,
+    parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.001, type=float,
                         metavar='LR', help='initial learning rate for normalizing flow')
     parser.add_argument('--lr_gamma_nf', default=0.1, type=float)
     parser.add_argument('--wd_nf', '--weight-decay-nf', default=2e-5, type=float,
