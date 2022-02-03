@@ -78,7 +78,7 @@ def get_args():
     #                     help='drop rate for the network')
     parser.add_argument("--br", "--bce_reconstruction", action='store_true', 
                         help='Do BCE Reconstruction')
-    parser.add_argument("-s", "--x_sigma", default=1, type=float,
+    parser.add_argument("-s", "--x_sigma", default=0.5, type=float,
                         help="The standard variance for reconstructed images, work as regularization")
 
     '''VAE parameters'''
@@ -87,15 +87,15 @@ def get_args():
                         help='feature dimension in latent space for continuous variable')
 
     '''VAE Loss Function Parameters'''
-    parser.add_argument('--mixup_max_z', default=1, type=float, 
+    parser.add_argument('--mixup_max_z', default=100, type=float, 
                         help='the epoch to linear adjust mixup')
-    parser.add_argument('--mixup_epoch_z',default=100, type=int, 
+    parser.add_argument('--mixup_epoch_z',default=150, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--mixup_max_y', default=1, type=float, 
+    parser.add_argument('--mixup_max_y', default=100, type=float, 
                         help='the epoch to linear adjust mixup')
-    parser.add_argument('--mixup_epoch_y',default=100, type=int, 
+    parser.add_argument('--mixup_epoch_y',default=150, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--lambda',default=10000, type=float, 
+    parser.add_argument('--lambda',default=100, type=float, 
                         help='the weight of classification and mutual information')
     
     '''Optimizer Parameters'''
@@ -165,7 +165,7 @@ def generate_and_save_images1(model, image, num_classes):
     buf = io.BytesIO()
     figure = plt.figure(figsize=(10, 2))
     plt.subplot(1, num_classes+1, 1)
-    plt.imshow((image[0] + 1) / 2)
+    plt.imshow(image[0])
     plt.title('original')
     plt.axis('off')
     for i in range(num_classes):
@@ -173,7 +173,7 @@ def generate_and_save_images1(model, image, num_classes):
         label[:, i] = 1
         xhat = model.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
-        plt.imshow((xhat[0] + 1) / 2)
+        plt.imshow(xhat[0])
         plt.title('{}'.format(i))
         plt.axis('off')
     plt.savefig(buf, format='png')
@@ -192,7 +192,7 @@ def generate_and_save_images2(model, image, num_classes, step, save_dir):
     
     plt.figure(figsize=(10, 2))
     plt.subplot(1, num_classes+1, 1)
-    plt.imshow((image[0] + 1) / 2)
+    plt.imshow(image[0])
     plt.title('original')
     plt.axis('off')
     for i in range(num_classes):
@@ -200,7 +200,7 @@ def generate_and_save_images2(model, image, num_classes, step, save_dir):
         label[:, i] = 1
         xhat = model.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
-        plt.imshow((xhat[0] + 1) / 2)
+        plt.imshow(xhat[0])
         plt.title('{}'.format(i))
         plt.axis('off')
     plt.savefig('{}/image_at_epoch_{}.png'.format(save_dir, step))
@@ -226,7 +226,7 @@ def main():
     model = AutoEncoder(num_classes=num_classes,
                         latent_dim=args['latent_dim'], 
                         output_channel=3, 
-                        activation='tanh',
+                        activation='sigmoid',
                         input_shape=(None, 32, 32, 3))
     model.build(input_shape=(None, 32, 32, 3))
     # model.summary()
@@ -235,7 +235,7 @@ def main():
     buffer_model = AutoEncoder(num_classes=num_classes,
                             latent_dim=args['latent_dim'], 
                             output_channel=3, 
-                            activation='tanh',
+                            activation='sigmoid',
                             input_shape=(None, 32, 32, 3))
     buffer_model.build(input_shape=(None, 32, 32, 3))
     buffer_model.set_weights(model.get_weights()) # weight initialization

@@ -123,7 +123,7 @@ class AutoEncoder(K.models.Model):
                  num_classes=10,
                  latent_dim=128, 
                  output_channel=3, 
-                 activation='tanh',
+                 activation='sigmoid',
                  input_shape=(None, 32, 32, 3), 
                  name='AutoEncoder', **kwargs):
         super(AutoEncoder, self).__init__(name=name, **kwargs)
