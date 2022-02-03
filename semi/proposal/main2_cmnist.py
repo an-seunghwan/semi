@@ -95,7 +95,7 @@ def get_args():
                         help='the epoch to linear adjust mixup')
     parser.add_argument('--mixup_epoch_y',default=100, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--lambda',default=5000, type=float, 
+    parser.add_argument('--lambda',default=10000, type=float, 
                         help='the weight of classification and mutual information')
     
     '''Optimizer Parameters'''
@@ -436,11 +436,11 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
             smoothed_xhatL = model.decode(z_mixL, label_mixL) # use true label instead of prob
             
             mixup_zL = tf.reduce_mean(tf.math.square(smoothed_zL - z_mixL))
-            mixup_xhatL = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatL - image_mixL), axis=[1, 2, 3]))
+            mixup_xhatL = tf.reduce_mean(tf.math.square(smoothed_xhatL - image_mixL))
             mixup_yL = - tf.reduce_mean(mix_weight[0] * tf.reduce_sum(label_shuffleL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             
-            elbo_lossL = recon_lossL + (mixup_lambda_z * (mixup_zL + mixup_xhatL))
+            elbo_lossL = recon_lossL + (mixup_lambda_z * (mixup_zL + mixup_xhatL)) 
             loss_supervised = elbo_lossL + mixup_yL + (tf.convert_to_tensor(args['lambda'], dtype=tf.float32) * (cls_lossL + infoL))
 
         '''AutoEncoder'''
@@ -475,10 +475,12 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
             smoothed_xhatU = model.decode(z_mixU, prob_mixU)
             
             mixup_zU = tf.reduce_mean(tf.math.square(smoothed_zU - z_mixU))
-            mixup_xhatU = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatU - image_mixU), axis=[1, 2, 3]))
+            mixup_xhatU = tf.reduce_mean(tf.math.square(smoothed_xhatU - image_mixU))
             # mixup_yU = - tf.reduce_mean(tf.reduce_sum(prob_mixU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
-            mixup_yU = 0.5 * tf.reduce_sum(prob_mixU * (tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0)) - tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0))), axis=1)
-            mixup_yU += 0.5 * tf.reduce_sum(smoothed_probU * (tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)) - tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0))), axis=1)
+            mixup_yU = 0.5 * tf.reduce_mean(tf.reduce_sum(prob_mixU * (tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0)) - 
+                                                                       tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0))), axis=1))
+            mixup_yU += 0.5 * tf.reduce_mean(tf.reduce_sum(smoothed_probU * (tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)) - 
+                                                                             tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0))), axis=1))
             
             elbo_lossU = recon_lossU + (mixup_lambda_z * (mixup_zU + mixup_xhatU))
             loss_unsupervised = elbo_lossU + (mixup_lambda_y * mixup_yU) + (tf.convert_to_tensor(args['lambda'], dtype=tf.float32) * infoU)
