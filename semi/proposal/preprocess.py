@@ -49,7 +49,7 @@ def colored_mnist(image, args):
         color = np.random.uniform(0., 1., 3)
         color = color / np.linalg.norm(color)
         image = image * color[tf.newaxis, tf.newaxis, :]
-        return image
+        return image * 2. - 1.
     else:
         # edge detection
         image = cv2.Canny(image.numpy(), 10., 255.)
@@ -62,7 +62,7 @@ def colored_mnist(image, args):
         # width
         kernel = np.ones((1, 1))
         image = cv2.dilate(image, kernel)
-        return image
+        return image * 2. - 1.
 #%%
 def _list_to_tf_dataset(dataset, args):
     def _dataset_gen():
