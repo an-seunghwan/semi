@@ -27,7 +27,7 @@ class FeatureExtractor(K.models.Model):
                  **kwargs):
         super(FeatureExtractor, self).__init__(input_shape, name=name, **kwargs)
         
-        self.layers = K.Sequential(
+        self.units = K.Sequential(
             [
                 ConvLayer(16, 5, 2), # 16x16
                 ConvLayer(32, 5, 2), # 8x8
@@ -41,7 +41,7 @@ class FeatureExtractor(K.models.Model):
         
     @tf.function
     def call(self, x, training=True):
-        h = self.layers(x, training=training)
+        h = self.units(x, training=training)
         return h
 #%%
 class Decoder(K.models.Model):
@@ -131,19 +131,19 @@ class AutoEncoder(K.models.Model):
         self.feature_extractor = FeatureExtractor(input_shape)
         self.z_layer = layers.Dense(latent_dim) 
         self.c_layer = layers.Dense(num_classes) 
-        self.decoder = Decoder(output_channel, activation)
+        self.decoder = Decoder(latent_dim, output_channel, activation)
         
-    def z_encode(self, x, training=False):
+    def z_encode(self, x, training=True):
         h = self.feature_extractor(x, training=training)
         z = self.z_layer(h)
         return z
     
-    def c_encode(self, x, training=False):
+    def c_encode(self, x, training=True):
         h = self.feature_extractor(x, training=training)
         c = self.c_layer(h)
         return c
     
-    def decode(self, z, y, training=False):
+    def decode(self, z, y, training=True):
         return self.decoder(z, y, training=training) 
         
     @tf.function
