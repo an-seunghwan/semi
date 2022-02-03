@@ -43,46 +43,88 @@ y_test_onehot = to_categorical(y_test, num_classes=PARAMS['class_num'])
 # image = x_train[0]
 # plt.imshow(image)
 # plt.show()
-
+#%%
 np.random.seed(1)
+# def colored_mnist(image):
+#     image = tf.image.resize(image, [PARAMS['data_dim'], PARAMS['data_dim']], method='nearest')
+    
+#     if tf.random.uniform((1, 1)) > 0.5:
+#         # color
+#         image = tf.cast(image, tf.float32) / 255.
+#         color = np.random.uniform(0., 1., 3)
+#         color = color / np.linalg.norm(color)
+#         image = image * color[tf.newaxis, tf.newaxis, :]
+#         # np.unique(image.numpy())
+        
+#         assert image.shape == (PARAMS['data_dim'], PARAMS['data_dim'], PARAMS['channel'])
+#         return image.numpy() * 2. - 1.
+#     else:
+#         # edge detection
+#         image = cv2.Canny(image.numpy(), 10., 255.)
+#         image[np.where(image > 0)] = 1.
+#         image[np.where(image <= 0)] = 0.
+
+#         # color
+#         color = np.random.uniform(0., 1., 3)
+#         color = color / np.linalg.norm(color)
+#         image = image[..., tf.newaxis] * color[tf.newaxis, tf.newaxis, :]
+        
+#         # width
+#         kernel = np.ones((1, 1))
+#         image = cv2.dilate(image, kernel)
+
+#         assert image.shape == (PARAMS['data_dim'], PARAMS['data_dim'], PARAMS['channel'])
+#         return image * 2. - 1.
+
+color_list = [
+    (255, 0, 0), # red 
+    (255, 0, 128), # rose 
+    (255, 0, 255), # magenta 
+    (128, 0, 255), # violet
+    (0, 0, 255), # blue 
+    (0, 128, 255), # azure 
+    (0, 255, 255), # cyan 
+    (0, 255, 128), # spring green 
+    (0, 255, 0), # green
+    (128, 255, 0), # chartreuse 
+    (255, 255, 0), # yellow 
+    (255, 128, 0), # orange
+]
+
 def colored_mnist(image):
-    image = tf.image.resize(image, [PARAMS['data_dim'], PARAMS['data_dim']], method='nearest')
+    
+    image = tf.image.resize(image, [32, 32], method='nearest')
     
     if tf.random.uniform((1, 1)) > 0.5:
         # color
         image = tf.cast(image, tf.float32) / 255.
-        color = np.random.uniform(0., 1., 3)
-        color = color / np.linalg.norm(color)
+        # color = np.random.uniform(0., 1., 3)
+        # color = color / np.linalg.norm(color)
+        color = np.array(color_list[np.random.choice(range(len(color_list)), 1)[0]]) / 255.
         image = image * color[tf.newaxis, tf.newaxis, :]
-        # np.unique(image.numpy())
-        
-        assert image.shape == (PARAMS['data_dim'], PARAMS['data_dim'], PARAMS['channel'])
-        return image.numpy() * 2. - 1.
+        return image
     else:
         # edge detection
         image = cv2.Canny(image.numpy(), 10., 255.)
         image[np.where(image > 0)] = 1.
         image[np.where(image <= 0)] = 0.
-
         # color
-        color = np.random.uniform(0., 1., 3)
-        color = color / np.linalg.norm(color)
+        # color = np.random.uniform(0., 1., 3)
+        # color = color / np.linalg.norm(color)
+        color = np.array(color_list[np.random.choice(range(len(color_list)), 1)[0]]) / 255.
         image = image[..., tf.newaxis] * color[tf.newaxis, tf.newaxis, :]
-        
         # width
         kernel = np.ones((1, 1))
         image = cv2.dilate(image, kernel)
-
-        assert image.shape == (PARAMS['data_dim'], PARAMS['data_dim'], PARAMS['channel'])
-        return image * 2. - 1.
-
+        return image
+#%%
 cx_train = []
 for i in tqdm(range(len(x_train)), desc='generating train colored mnist'):
     cx_train.append(colored_mnist(x_train[i]))
 cx_train = np.array(cx_train)
 
-# plt.imshow(cx_train[10])
-# plt.show()
+plt.imshow(cx_train[3])
+plt.show()
 
 cx_test = []
 for i in tqdm(range(len(x_test)), desc='generating test colored mnist'):
