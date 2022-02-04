@@ -455,7 +455,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
                 image_mixU, z_mixU, c_mixU, prob_mixU = non_smooth_mixup(imageU, z, c, probU, mix_weight[1])
             smoothed_zU, smoothed_probU = model.ae.encode(image_mixU)
             smoothed_probU = tf.nn.softmax(smoothed_probU, axis=-1)
-            smoothed_xhatU = model.decode(z_mixU, prob_mixU)
+            smoothed_xhatU = model.ae.decode(z_mixU, prob_mixU)
             
             mixup_zU = tf.reduce_mean(tf.math.square(smoothed_zU - z_mixU))
             mixup_xhatU = tf.reduce_mean(tf.math.square(smoothed_xhatU - image_mixU))
@@ -489,7 +489,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         mixup_z_loss_avg(mixup_zU)
         mixup_xhat_loss_avg(mixup_xhatU)
         mixup_y_loss_avg(mixup_yU)
-        probL = tf.nn.softmax(model.c_encode(imageL, training=False), axis=-1)
+        probL = tf.nn.softmax(model.ae.c_encode(imageL, training=False), axis=-1)
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
 
         progress_bar.set_postfix({
