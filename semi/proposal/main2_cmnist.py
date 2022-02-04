@@ -104,9 +104,9 @@ def get_args():
                         metavar='LR', help='initial learning rate')
     # parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
     #                     help='beta1 for adam as well as momentum for SGD')
-    # parser.add_argument('-ad', "--adjust_lr", default=[400, 500, 550], type=arg_as_list,
-    #                     help="The milestone list for adjust learning rate")
-    # parser.add_argument('--lr_gamma', default=0.5, type=float)
+    parser.add_argument('-ad', "--adjust_lr", default=[200], type=arg_as_list,
+                        help="The milestone list for adjust learning rate")
+    parser.add_argument('--lr_gamma', default=0.1, type=float)
     parser.add_argument('--wd', '--weight_decay', default=1e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
@@ -270,14 +270,10 @@ def main():
         if epoch == 0:
             '''warm-up'''
             optimizer.lr = args['lr'] * 0.2
-        # elif epoch < args['adjust_lr'][0]:
-        #     optimizer.lr = args['lr']
-        # elif epoch < args['adjust_lr'][1]:
-        #     optimizer.lr = args['lr'] * args['lr_gamma']
-        # elif epoch < args['adjust_lr'][2]:
-        #     optimizer.lr = args['lr'] * (args['lr_gamma'] ** 2)
-        # else:
-        #     optimizer.lr = args['lr'] * (args['lr_gamma'] ** 3)
+        elif epoch < args['adjust_lr'][0]:
+            optimizer.lr = args['lr'] 
+        else:
+            optimizer.lr = args['lr'] * args['lr_gamma']
             
         # if epoch >= args['start_epoch_nf']: 
         #     if epoch == args['start_epoch_nf']: 
