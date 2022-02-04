@@ -11,6 +11,7 @@
 220202 reconstruction: reduce_sum -> reduce_mean
 220203 loss weight setting -> similar to EXoN
 220203 mutual information loss -> with tape.stop_recording():
+220204 no edge detection, only colored
 '''
 #%%
 import argparse
@@ -87,15 +88,15 @@ def get_args():
                         help='feature dimension in latent space for continuous variable')
 
     '''VAE Loss Function Parameters'''
-    parser.add_argument('--mixup_max_z', default=100, type=float, 
+    parser.add_argument('--mixup_max_z', default=10, type=float, 
                         help='the epoch to linear adjust mixup')
-    parser.add_argument('--mixup_epoch_z',default=150, type=int, 
+    parser.add_argument('--mixup_epoch_z',default=1, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--mixup_max_y', default=100, type=float, 
+    parser.add_argument('--mixup_max_y', default=10, type=float, 
                         help='the epoch to linear adjust mixup')
-    parser.add_argument('--mixup_epoch_y',default=150, type=int, 
+    parser.add_argument('--mixup_epoch_y',default=1, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--lambda',default=100, type=float, 
+    parser.add_argument('--lambda',default=10, type=float, 
                         help='the weight of classification and mutual information')
     
     '''Optimizer Parameters'''

@@ -63,28 +63,28 @@ def colored_mnist(image):
     
     image = tf.image.resize(image, [32, 32], method='nearest')
     
-    if tf.random.uniform((1, 1)) > 0.5:
-        # color
-        image = tf.cast(image, tf.float32) / 255.
-        # color = np.random.uniform(0., 1., 3)
-        # color = color / np.linalg.norm(color)
-        color = np.array(color_list[np.random.choice(range(len(color_list)), 1)[0]]) / 255.
-        image = image * color[tf.newaxis, tf.newaxis, :]
-        return image
-    else:
-        # edge detection
-        image = cv2.Canny(image.numpy(), 10., 255.)
-        image[np.where(image > 0)] = 1.
-        image[np.where(image <= 0)] = 0.
-        # color
-        # color = np.random.uniform(0., 1., 3)
-        # color = color / np.linalg.norm(color)
-        color = np.array(color_list[np.random.choice(range(len(color_list)), 1)[0]]) / 255.
-        image = image[..., tf.newaxis] * color[tf.newaxis, tf.newaxis, :]
-        # width
-        kernel = np.ones((1, 1))
-        image = cv2.dilate(image, kernel)
-        return image
+    # if tf.random.uniform((1, 1)) > 0.5:
+    # color
+    image = tf.cast(image, tf.float32) / 255.
+    # color = np.random.uniform(0., 1., 3)
+    # color = color / np.linalg.norm(color)
+    color = np.array(color_list[np.random.choice(range(len(color_list)), 1)[0]]) / 255.
+    image = image * color[tf.newaxis, tf.newaxis, :]
+    return image
+    # else:
+    #     # edge detection
+    #     image = cv2.Canny(image.numpy(), 10., 255.)
+    #     image[np.where(image > 0)] = 1.
+    #     image[np.where(image <= 0)] = 0.
+    #     # color
+    #     # color = np.random.uniform(0., 1., 3)
+    #     # color = color / np.linalg.norm(color)
+    #     color = np.array(color_list[np.random.choice(range(len(color_list)), 1)[0]]) / 255.
+    #     image = image[..., tf.newaxis] * color[tf.newaxis, tf.newaxis, :]
+    #     # width
+    #     kernel = np.ones((1, 1))
+    #     image = cv2.dilate(image, kernel)
+    #     return image
 #%%
 def _list_to_tf_dataset(dataset, args):
     def _dataset_gen():
@@ -103,6 +103,7 @@ def _list_to_tf_dataset(dataset, args):
 - unlabeled includes labeled
 '''
 def split_dataset(dataset, num_labeled, num_validations, num_classes, args):
+    np.random.seed(args['seed'])
     dataset = dataset.shuffle(buffer_size=10000, seed=args['seed'])
     counter = [0 for _ in range(num_classes)]
     labeled = []
