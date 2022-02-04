@@ -143,6 +143,12 @@ class AutoEncoder(K.models.Model):
         c = self.c_layer(h)
         return c
     
+    def encode(self, x, training=True):
+        h = self.FeatureExtractor(x, training=training)
+        z = self.z_layer(h)
+        c = self.c_layer(h)
+        return z, c
+    
     def decode(self, z, y, training=True):
         return self.decoder(z, y, training=training) 
         
@@ -299,7 +305,11 @@ class VAE(K.models.Model):
     def __init__(self, args, num_classes, name="VAE", **kwargs):
         super(VAE, self).__init__(name=name, **kwargs)
         self.args = args
-        self.ae = AutoEncoder(num_classes, args['depth'], args['width'], args['slope'], args['latent_dim'])
+        self.ae = AutoEncoder(num_classes=num_classes,
+                            latent_dim=args['latent_dim'], 
+                            output_channel=3, 
+                            activation='sigmoid',
+                            input_shape=(None, 32, 32, 3))
         self.prior = Prior(args, num_classes)
         # self.prior.build_graph()
     
