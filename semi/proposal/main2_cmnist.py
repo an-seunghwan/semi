@@ -407,7 +407,11 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         
         '''1. labeled'''
         with tf.GradientTape(persistent=True) as tape:
-            [[z, c, probL, xhatL], nf_args] = model(imageL)
+            # [[z, c, probL, xhatL], nf_args] = model(imageL)
+            z, c, probL, xhatL = model.ae(imageL)
+            z_ = tf.stop_gradient(z)
+            c_ = tf.stop_gradient(c)
+            nf_args = model.prior(z_, c_)
             with tape.stop_recording():
                 prob_reconL = tf.nn.softmax(model.ae.c_encode(xhatL), axis=-1)
             
@@ -444,7 +448,11 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         
         '''2. unlabeled'''
         with tf.GradientTape(persistent=True) as tape:
-            [[z, c, probU, xhatU], nf_args] = model(imageU)
+            # [[z, c, probU, xhatU], nf_args] = model(imageU)
+            z, c, probU, xhatU = model.ae(imageU)
+            z_ = tf.stop_gradient(z)
+            c_ = tf.stop_gradient(c)
+            nf_args = model.prior(z_, c_)
             with tape.stop_recording():
                 prob_reconU = tf.nn.softmax(model.ae.c_encode(xhatU), axis=-1)
             

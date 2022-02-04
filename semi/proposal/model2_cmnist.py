@@ -313,6 +313,7 @@ class VAE(K.models.Model):
         self.prior = Prior(args, num_classes)
         # self.prior.build_graph()
     
+    '''FIXME'''
     @tf.function
     def call(self, x, training=True):
         z, c, prob, xhat = self.ae(x, training=training)
