@@ -34,7 +34,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
 from model2_cmnist import AutoEncoder
-from criterion import ELBO_criterion
+from criterion_ae import ELBO_criterion
 from mixup import augment, label_smoothing, non_smooth_mixup, weight_decay_decoupled
 #%%
 import ast

@@ -33,7 +33,7 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model2_cmnist import AutoEncoder
+from model2_cmnist import VAE
 from criterion import ELBO_criterion
 from mixup import augment, label_smoothing, non_smooth_mixup, weight_decay_decoupled
 #%%
@@ -161,7 +161,7 @@ def load_config(args):
     return args
 #%%
 def generate_and_save_images1(model, image, num_classes):
-    z = model.z_encode(image, training=False)
+    z = model.ae.z_encode(image, training=False)
     
     buf = io.BytesIO()
     figure = plt.figure(figsize=(10, 2))
@@ -172,7 +172,7 @@ def generate_and_save_images1(model, image, num_classes):
     for i in range(num_classes):
         label = np.zeros((z.shape[0], num_classes))
         label[:, i] = 1
-        xhat = model.decode(z, label, training=False)
+        xhat = model.ae.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
         plt.imshow(xhat[0])
         plt.title('{}'.format(i))
@@ -189,7 +189,7 @@ def generate_and_save_images1(model, image, num_classes):
     return image
 
 def generate_and_save_images2(model, image, num_classes, step, save_dir):
-    z = model.z_encode(image, training=False)
+    z = model.ae.z_encode(image, training=False)
     
     plt.figure(figsize=(10, 2))
     plt.subplot(1, num_classes+1, 1)
@@ -199,7 +199,7 @@ def generate_and_save_images2(model, image, num_classes, step, save_dir):
     for i in range(num_classes):
         label = np.zeros((z.shape[0], num_classes))
         label[:, i] = 1
-        xhat = model.decode(z, label, training=False)
+        xhat = model.ae.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
         plt.imshow(xhat[0])
         plt.title('{}'.format(i))
@@ -223,21 +223,11 @@ def main():
     datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     total_length = sum(1 for _ in datasetU)
     
-    # model = VAE(args, num_classes)
-    model = AutoEncoder(num_classes=num_classes,
-                        latent_dim=args['latent_dim'], 
-                        output_channel=3, 
-                        activation='sigmoid',
-                        input_shape=(None, 32, 32, 3))
+    model = VAE(args, num_classes)
     model.build(input_shape=(None, 32, 32, 3))
     # model.summary()
     
-    # buffer_model = VAE(args, num_classes)
-    buffer_model = AutoEncoder(num_classes=num_classes,
-                            latent_dim=args['latent_dim'], 
-                            output_channel=3, 
-                            activation='sigmoid',
-                            input_shape=(None, 32, 32, 3))
+    buffer_model = VAE(args, num_classes)
     buffer_model.build(input_shape=(None, 32, 32, 3))
     buffer_model.set_weights(model.get_weights()) # weight initialization
     
@@ -257,8 +247,8 @@ def main():
     
     '''optimizer'''
     optimizer = K.optimizers.Adam(learning_rate=args['lr'])
-    # optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
-    #                                  beta_1=args['beta1_nf'], beta_2=args['beta2_nf'])
+    optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
+                                     beta_1=args['beta1_nf'], beta_2=args['beta2_nf'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -275,23 +265,23 @@ def main():
         else:
             optimizer.lr = args['lr'] * args['lr_gamma']
             
-        # if epoch >= args['start_epoch_nf']: 
-        #     if epoch == args['start_epoch_nf']: 
-        #         '''warm-up'''
-        #         optimizer_nf.lr = args['lr_nf'] * 0.2
-        #     elif epoch < args['start_epoch_nf'] + int((args['epochs'] - args['start_epoch_nf']) * args['adjust_lr_nf'][0]):
-        #         optimizer_nf.lr = args['lr_nf']
-        #     elif epoch < args['start_epoch_nf'] + int((args['epochs'] - args['start_epoch_nf']) * args['adjust_lr_nf'][1]):
-        #         optimizer_nf.lr = args['lr_nf'] * args['lr_gamma_nf']
-        #     elif epoch < args['start_epoch_nf'] + int((args['epochs'] - args['start_epoch_nf']) * args['adjust_lr_nf'][2]):
-        #         optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma_nf'] ** 2)
-        #     else:
-        #         optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma_nf'] ** 3)
+        if epoch >= args['start_epoch_nf']: 
+            if epoch == args['start_epoch_nf']: 
+                '''warm-up'''
+                optimizer_nf.lr = args['lr_nf'] * 0.2
+            elif epoch < args['start_epoch_nf'] + int((args['epochs'] - args['start_epoch_nf']) * args['adjust_lr_nf'][0]):
+                optimizer_nf.lr = args['lr_nf']
+            elif epoch < args['start_epoch_nf'] + int((args['epochs'] - args['start_epoch_nf']) * args['adjust_lr_nf'][1]):
+                optimizer_nf.lr = args['lr_nf'] * args['lr_gamma_nf']
+            elif epoch < args['start_epoch_nf'] + int((args['epochs'] - args['start_epoch_nf']) * args['adjust_lr_nf'][2]):
+                optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma_nf'] ** 2)
+            else:
+                optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma_nf'] ** 3)
         
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, info_loss, nf_loss, mixup_z_loss, mixup_xhat_loss, mixup_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
+            loss, recon_loss, info_loss, nf_loss, mixup_z_loss, mixup_xhat_loss, mixup_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         else:
-            loss, recon_loss, info_loss, nf_loss, mixup_z_loss, mixup_xhat_loss, mixup_y_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
+            loss, recon_loss, info_loss, nf_loss, mixup_z_loss, mixup_xhat_loss, mixup_y_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         val_nf_loss, val_recon_loss, val_info_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_nf_loss, test_recon_loss, test_info_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
@@ -368,7 +358,7 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length):
+def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length):
     loss_avg = tf.keras.metrics.Mean()
     recon_loss_avg = tf.keras.metrics.Mean()
     info_loss_avg = tf.keras.metrics.Mean()
@@ -417,20 +407,18 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
         
         '''1. labeled'''
         with tf.GradientTape(persistent=True) as tape:
-            # [[z, c, probL, xhatL], nf_args] = model(imageL)
-            [z, c, probL, xhatL] = model(imageL)
+            [[z, c, probL, xhatL], nf_args] = model(imageL)
             with tape.stop_recording():
-                prob_reconL = tf.nn.softmax(model.c_encode(xhatL), axis=-1)
+                prob_reconL = tf.nn.softmax(model.ae.c_encode(xhatL), axis=-1)
             
-            # recon_lossL, cls_lossL, infoL, nf_lossL = ELBO_criterion(args, imageL, xhatL, probL, prob_reconL, nf_args, label=labelL)
-            recon_lossL, cls_lossL, infoL = ELBO_criterion(args, imageL, xhatL, probL, prob_reconL, label=labelL)
+            recon_lossL, cls_lossL, infoL, nf_lossL = ELBO_criterion(args, imageL, xhatL, probL, prob_reconL, nf_args, label=labelL)
             
             '''mix-up'''
             with tape.stop_recording():
                 image_mixL, z_mixL, c_mixL, label_mixL, label_shuffleL = label_smoothing(imageL, z, c, labelL, mix_weight[0])
-            smoothed_zL = model.z_encode(image_mixL)
-            smoothed_probL = tf.nn.softmax(model.c_encode(image_mixL), axis=-1)
-            smoothed_xhatL = model.decode(z_mixL, label_mixL) # use true label instead of prob
+            smoothed_zL, smoothed_probL = model.ae.encode(image_mixL)
+            smoothed_probL = tf.nn.softmax(smoothed_probL, axis=-1)
+            smoothed_xhatL = model.ae.decode(z_mixL, label_mixL) # use true label instead of prob
             
             mixup_zL = tf.reduce_mean(tf.math.square(smoothed_zL - z_mixL))
             mixup_xhatL = tf.reduce_mean(tf.math.square(smoothed_xhatL - image_mixL))
@@ -441,34 +429,32 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
             loss_supervised = elbo_lossL + mixup_yL + (tf.convert_to_tensor(args['lambda'], dtype=tf.float32) * (cls_lossL + infoL))
 
         '''AutoEncoder'''
-        grads = tape.gradient(loss_supervised, model.trainable_variables) 
+        grads = tape.gradient(loss_supervised, model.ae.trainable_variables) 
         '''SGD + momentum''' 
-        optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
+        optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) 
         '''decoupled weight decay'''
-        weight_decay_decoupled(model, buffer_model, decay_rate=args['wd'] * optimizer.lr)
+        weight_decay_decoupled(model.ae, buffer_model.ae, decay_rate=args['wd'] * optimizer.lr)
         
-        # if epoch >= args['start_epoch_nf']:
-        #     '''Normalizing Flow'''
-        #     grad = tape.gradient(nf_lossL, model.prior.trainable_weights)
-        #     optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
-        #     '''decoupled weight decay'''
-        #     weight_decay_decoupled(model.prior, buffer_model.prior, decay_rate=args['wd_nf'] * optimizer_nf.lr)
+        if epoch >= args['start_epoch_nf']:
+            '''Normalizing Flow'''
+            grad = tape.gradient(nf_lossL, model.prior.trainable_weights)
+            optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
+            '''decoupled weight decay'''
+            weight_decay_decoupled(model.prior, buffer_model.prior, decay_rate=args['wd_nf'] * optimizer_nf.lr)
         
         '''2. unlabeled'''
         with tf.GradientTape(persistent=True) as tape:
-            # [[z, c, probU, xhatU], nf_args] = model(imageU)
-            [z, c, probU, xhatU] = model(imageU)
+            [[z, c, probU, xhatU], nf_args] = model(imageU)
             with tape.stop_recording():
-                prob_reconU = tf.nn.softmax(model.c_encode(xhatU), axis=-1)
+                prob_reconU = tf.nn.softmax(model.ae.c_encode(xhatU), axis=-1)
             
-            # recon_lossU, _, infoU, nf_lossU = ELBO_criterion(args, imageU, xhatU, probU, prob_reconU, nf_args)
-            recon_lossU, _, infoU = ELBO_criterion(args, imageU, xhatU, probU, prob_reconU)
+            recon_lossU, _, infoU, nf_lossU = ELBO_criterion(args, imageU, xhatU, probU, prob_reconU, nf_args)
             
             '''mix-up'''
             with tape.stop_recording():
                 image_mixU, z_mixU, c_mixU, prob_mixU = non_smooth_mixup(imageU, z, c, probU, mix_weight[1])
-            smoothed_zU = model.z_encode(image_mixU)
-            smoothed_probU = tf.nn.softmax(model.c_encode(image_mixU), axis=-1)
+            smoothed_zU, smoothed_probU = model.ae.encode(image_mixU)
+            smoothed_probU = tf.nn.softmax(smoothed_probU, axis=-1)
             smoothed_xhatU = model.decode(z_mixU, prob_mixU)
             
             mixup_zU = tf.reduce_mean(tf.math.square(smoothed_zU - z_mixU))
@@ -483,23 +469,23 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
             loss_unsupervised = elbo_lossU + (mixup_lambda_y * mixup_yU) + (tf.convert_to_tensor(args['lambda'], dtype=tf.float32) * infoU)
 
         '''AutoEncoder'''
-        grads = tape.gradient(loss_unsupervised, model.trainable_variables) 
+        grads = tape.gradient(loss_unsupervised, model.ae.trainable_variables) 
         '''SGD + momentum''' 
-        optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
+        optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) 
         '''decoupled weight decay'''
-        weight_decay_decoupled(model, buffer_model, decay_rate=args['wd'] * optimizer.lr)
+        weight_decay_decoupled(model.ae, buffer_model.ae, decay_rate=args['wd'] * optimizer.lr)
         
-        # if epoch >= args['start_epoch_nf']:
-        #     '''Normalizing Flow'''
-        #     grad = tape.gradient(nf_lossU, model.prior.trainable_weights)
-        #     optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
-        #     '''decoupled weight decay'''
-        #     weight_decay_decoupled(model.prior, buffer_model.prior, decay_rate=args['wd_nf'] * optimizer_nf.lr)
+        if epoch >= args['start_epoch_nf']:
+            '''Normalizing Flow'''
+            grad = tape.gradient(nf_lossU, model.prior.trainable_weights)
+            optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
+            '''decoupled weight decay'''
+            weight_decay_decoupled(model.prior, buffer_model.prior, decay_rate=args['wd_nf'] * optimizer_nf.lr)
         
         loss_avg(loss_unsupervised)
         recon_loss_avg(recon_lossU)
         info_loss_avg(infoU)
-        # nf_loss_avg(nf_lossU)
+        nf_loss_avg(nf_lossU)
         mixup_z_loss_avg(mixup_zU)
         mixup_xhat_loss_avg(mixup_xhatU)
         mixup_y_loss_avg(mixup_yU)
@@ -534,15 +520,12 @@ def validate(dataset, model, epoch, args, split):
 
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
-        # [[z, c, prob, xhat], nf_args] = model(image, training=False)
-        [z, c, prob, xhat] = model(image, training=False)
-        # recon_loss, cls_loss, info, nf_loss = ELBO_criterion(args, image, xhat, label, prob, nf_args)
-        recon_loss, cls_loss, info = ELBO_criterion(args, image, xhat, label, prob)
-        # nf_loss_avg(nf_loss)
+        [[z, c, prob, xhat], nf_args] = model(image, training=False)
+        recon_loss, cls_loss, info, nf_loss = ELBO_criterion(args, image, xhat, label, prob, nf_args)
+        nf_loss_avg(nf_loss)
         recon_loss_avg(recon_loss)
         info_loss_avg(info)
-        # elbo_loss_avg(recon_loss + nf_loss + cls_loss)
-        elbo_loss_avg(recon_loss + cls_loss)
+        elbo_loss_avg(recon_loss + nf_loss + cls_loss)
         accuracy(tf.argmax(prob, axis=1, output_type=tf.int32), 
                  tf.argmax(label, axis=1, output_type=tf.int32))
     print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, RECON: {recon_loss_avg.result():.4f}, Info: {info_loss_avg.result():.4f}, NF: {nf_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
