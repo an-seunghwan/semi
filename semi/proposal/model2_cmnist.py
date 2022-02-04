@@ -144,7 +144,7 @@ class AutoEncoder(K.models.Model):
         return c
     
     def encode(self, x, training=True):
-        h = self.FeatureExtractor(x, training=training)
+        h = self.feature_extractor(x, training=training)
         z = self.z_layer(h)
         c = self.c_layer(h)
         return z, c
