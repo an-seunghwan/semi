@@ -12,7 +12,6 @@
 220203 loss weight setting -> similar to EXoN
 220203 mutual information loss -> with tape.stop_recording():
 220203 no edge detection, only fixed colored 
-220204 match digits with colors
 '''
 #%%
 import argparse
