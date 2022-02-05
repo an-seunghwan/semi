@@ -42,7 +42,7 @@ def get_args():
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    parser.add_argument('--iterations', default=400, type=int, 
+    parser.add_argument('--iteration', default=400, type=int, 
                         metavar='N', help='the number of updates per epoch')
     parser.add_argument('--labeled_examples', type=int, default=4000, 
                         help='number labeled examples (default: 4000')
