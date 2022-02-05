@@ -19,7 +19,7 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model2_cmnist import AutoEncoder
+from model2_cmnist import VAE
 # from criterion import ELBO_criterion
 from mixup import augment
 #%%
@@ -90,9 +90,9 @@ def get_args():
                         metavar='LR', help='initial learning rate')
     # parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
     #                     help='beta1 for adam as well as momentum for SGD')
-    # parser.add_argument('-ad', "--adjust_lr", default=[400, 500, 550], type=arg_as_list,
-    #                     help="The milestone list for adjust learning rate")
-    # parser.add_argument('--lr_gamma', default=0.5, type=float)
+    parser.add_argument('-ad', "--adjust_lr", default=[200], type=arg_as_list,
+                        help="The milestone list for adjust learning rate")
+    parser.add_argument('--lr_gamma', default=0.1, type=float)
     parser.add_argument('--wd', '--weight_decay', default=1e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
@@ -156,14 +156,14 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220204-104003'
+model_path = log_path + '/20220204-213612'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
-# model = VAE(args, num_classes)
-model = AutoEncoder(num_classes=num_classes,
-                        latent_dim=args['latent_dim'], 
-                        output_channel=3, 
-                        activation='sigmoid',
-                        input_shape=(None, 32, 32, 3))
+model = VAE(args, num_classes)
+# model = AutoEncoder(num_classes=num_classes,
+#                         latent_dim=args['latent_dim'], 
+#                         output_channel=3, 
+#                         activation='sigmoid',
+#                         input_shape=(None, 32, 32, 3))
 model.build(input_shape=(None, 32, 32, 3))
 model.load_weights(model_path + '/' + model_name)
 model.summary()
@@ -177,7 +177,7 @@ for example in datasetU:
     if len(x) == 100: break
 x = tf.cast(np.array(x), tf.float32)
 y = tf.cast(np.array(y), tf.float32)
-latent = model.z_encode(x, training=False)
+latent = model.ae.z_encode(x, training=False)
 #%%
 for idx in tqdm.tqdm(range(100)):
     plt.figure(figsize=(20, 10))
@@ -189,7 +189,7 @@ for idx in tqdm.tqdm(range(100)):
     for i in range(num_classes):
         label = np.zeros((1, num_classes))
         label[:, i] = 1
-        xhat = model.decode(latent.numpy()[[idx]], label, training=False)
+        xhat = model.ae.decode(latent.numpy()[[idx]], label, training=False)
 
         plt.subplot(1, num_classes+1, i+2)
         plt.imshow(xhat[0])
