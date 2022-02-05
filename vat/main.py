@@ -246,7 +246,7 @@ def validate(dataset, model, epoch, args, split):
         v_loss_avg(v_loss)
         accuracy(tf.argmax(pred, axis=1, output_type=tf.int32), 
                  tf.argmax(label, axis=1, output_type=tf.int32))
-    print(f'Epoch {epoch:04d}: {split}, CE: {ce_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
+    print(f'Epoch {epoch:04d}: {split}, Loss: {loss_avg.result():.4f}, CE: {ce_loss_avg.result():.4f}, V: {v_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
     return loss_avg, ce_loss_avg, v_loss_avg, accuracy
 #%%
