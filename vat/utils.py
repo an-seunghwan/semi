@@ -15,7 +15,7 @@ def _l2_normalize(d):
     d /= (tf.math.sqrt(tf.reduce_sum(tf.pow(d, 2.0), axis=[1, 2, 3], keepdims=True)) + 1e-6)
     return d
 #%%
-def generate_virtual_adversarial_perturbation(model, x, y, xi=1e-6, eps=2.5, num_iters=1):
+def generate_virtual_adversarial_perturbation(model, x, y, xi=1e-6, eps=8.0, num_iters=1):
     d = _l2_normalize(tf.random.normal(shape=(tf.shape(x)))) # unit vector
     for i in range(num_iters):
         with tf.GradientTape() as tape:
