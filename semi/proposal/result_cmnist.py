@@ -156,7 +156,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220204-213612'
+model_path = log_path + '/20220204-213645'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 # model = AutoEncoder(num_classes=num_classes,
@@ -201,7 +201,7 @@ for idx in tqdm.tqdm(range(100)):
     plt.close()
 #%%
 style = []
-for idx in [1, 17, 21, 31, 32, 48, 58, 68, 81, 84]:
+for idx in [1, 2, 7, 12, 22, 27, 41, 45, 74, 87]:
     style.append(Image.open('{}/img{}.png'.format(model_path, idx)))
     
 fig, axes = plt.subplots(10, 1, figsize=(10, 6))
@@ -215,10 +215,10 @@ plt.savefig('{}/style_transfer.png'.format(model_path),
 plt.close()
 #%%
 '''interpolation: smooth'''
-z_epsilon1, _ = model.prior.zNF(latent.numpy()[[60], :])
-z_epsilon2, _ = model.prior.zNF(latent.numpy()[[58], :])
+z_epsilon1, _ = model.prior.zNF(latent.numpy()[[10], :])
+z_epsilon2, _ = model.prior.zNF(latent.numpy()[[61], :])
 
-interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 10))
+interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 15))
 z_interpolation = model.prior.zflow(interpolation)
 # out = model.prior.zNF.affine_layers[-1].reverse(interpolation)
 # for i in range(model.prior.zNF.n_blocks - 1):
@@ -227,10 +227,10 @@ z_interpolation = model.prior.zflow(interpolation)
 # z_interpolation = out
 
 label = np.zeros((z_interpolation.shape[0], num_classes))
-label[:, 3] = 1
+label[:, 6] = 1
 xhat_ = model.ae.decode(z_interpolation, label, training=False)
 
-fig, axes = plt.subplots(1, 10, figsize=(10, 6))
+fig, axes = plt.subplots(1, 15, figsize=(15, 6))
 for i in range(len(z_interpolation)):
     axes.flatten()[i].imshow(xhat_[i])
     axes.flatten()[i].axis('off')
@@ -241,14 +241,14 @@ plt.show()
 plt.close()
 #%%
 '''interpolation: non-smooth'''
-z_interpolation = np.squeeze(np.linspace(latent.numpy()[[60], :], 
-                                         latent.numpy()[[58], :], 10))
+z_interpolation = np.squeeze(np.linspace(latent.numpy()[[10], :], 
+                                         latent.numpy()[[61], :], 15))
 
 label = np.zeros((z_interpolation.shape[0], num_classes))
-label[:, 3] = 1
-xhat_ = model.decode(z_interpolation, label, training=False)
+label[:, 6] = 1
+xhat_ = model.ae.decode(z_interpolation, label, training=False)
 
-fig, axes = plt.subplots(1, 10, figsize=(10, 6))
+fig, axes = plt.subplots(1, 15, figsize=(15, 6))
 for i in range(len(z_interpolation)):
     axes.flatten()[i].imshow(xhat_[i])
     axes.flatten()[i].axis('off')
@@ -259,10 +259,10 @@ plt.show()
 plt.close()
 #%%
 '''manipulation'''
-idx = [1, 2, 6, 14, 38, 41, 42, 44, 56, 76]
+idx = [1, 2, 7, 12, 22, 27, 41, 45, 74, 87]
 plt.figure(figsize=(15, 20))
 for j in range(len(idx)):
-    z = model.z_encode(tf.cast(x.numpy()[[idx[j]]], tf.float32), training=False)
+    z = model.ae.z_encode(tf.cast(x.numpy()[[idx[j]]], tf.float32), training=False)
     p = np.linspace(1, 0, 11)
     num1 = 4
     num2 = 9
@@ -271,7 +271,7 @@ for j in range(len(idx)):
         attr = np.zeros((1, num_classes))
         attr[:, num1] = p[i]
         attr[:, num2] = 1 - p[i]
-        xhat = model.decode(z, attr, training=False)
+        xhat = model.ae.decode(z, attr, training=False)
 
         plt.subplot(len(idx), len(p), len(p) * j + i + 1)
         plt.imshow(xhat[0])
