@@ -1,12 +1,8 @@
 #%%
 '''
-- mutual information loss
-- AE and NF: warm-up
-
 220202 reconstruction: reduce_sum -> reduce_mean
 220203 loss weight setting -> similar to EXoN
 220203 mutual information loss -> with tape.stop_recording():
-220203 no edge detection, only fixed colored 
 '''
 #%%
 import argparse
@@ -28,9 +24,9 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model2_cmnist import VAE
-from criterion import ELBO_criterion
-from mixup import augment, label_smoothing, non_smooth_mixup, weight_decay_decoupled
+from model3 import VAE
+from criterion3 import ELBO_criterion
+from mixup3 import augment, label_smoothing, non_smooth_mixup, weight_decay_decoupled
 #%%
 import ast
 def arg_as_list(s):
@@ -42,56 +38,57 @@ def arg_as_list(s):
 def get_args():
     parser = argparse.ArgumentParser('parameters')
 
-    parser.add_argument('--dataset', type=str, default='cmnist')
+    parser.add_argument('--dataset', type=str, default='cifar10',
+                        help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
     parser.add_argument('--seed', type=int, default=1, 
-                        help='seed for repeatable results (ex. generating color MNIST)')
+                        help='seed for repeatable results')
     parser.add_argument('-b', '--batch-size', default=128, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
 
     '''SSL VAE Train PreProcess Parameter'''
-    parser.add_argument('--epochs', default=300, type=int, 
+    parser.add_argument('--epochs', default=600, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
     parser.add_argument('--reconstruct_freq', '-rf', default=50, type=int,
                         metavar='N', help='reconstruct frequency (default: 50)')
-    parser.add_argument('--labeled_examples', type=int, default=100, 
-                        help='number labeled examples (default: 100')
+    parser.add_argument('--labeled_examples', type=int, default=4000, 
+                        help='number labeled examples (default: 4000')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
-    parser.add_argument('--augment', action='store_true', 
-                        help="apply augmentation to image")
+    # parser.add_argument('--augment', action='store_true', 
+    #                     help="apply augmentation to image")
 
     '''Deep VAE Model Parameters'''
     # parser.add_argument('--net-name', default="wideresnet-28-2", type=str, help="the name for network to use")
-    # parser.add_argument('--depth', type=int, default=28, 
-    #                     help='depth for WideResnet (default: 28)')
-    # parser.add_argument('--width', type=int, default=2, 
-    #                     help='widen factor for WideResnet (default: 2)')
-    # parser.add_argument('--slope', type=float, default=0.1, 
-    #                     help='slope parameter for LeakyReLU (default: 0.1)')
-    # parser.add_argument('-dr', '--drop_rate', default=0, type=float, 
-    #                     help='drop rate for the network')
+    parser.add_argument('--depth', type=int, default=28, 
+                        help='depth for WideResnet (default: 28)')
+    parser.add_argument('--width', type=int, default=2, 
+                        help='widen factor for WideResnet (default: 2)')
+    parser.add_argument('--slope', type=float, default=0.1, 
+                        help='slope parameter for LeakyReLU (default: 0.1)')
+    parser.add_argument('-dr', '--drop_rate', default=0, type=float, 
+                        help='drop rate for the network')
     parser.add_argument("--br", "--bce_reconstruction", action='store_true', 
                         help='Do BCE Reconstruction')
-    parser.add_argument("-s", "--x_sigma", default=0.5, type=float,
+    parser.add_argument("-s", "--x_sigma", default=0.1, type=float,
                         help="The standard variance for reconstructed images, work as regularization")
 
     '''VAE parameters'''
-    parser.add_argument('--latent_dim', "--latent_dim_continuous", default=6, type=int,
+    parser.add_argument('--latent_dim', "--latent_dim_continuous", default=128, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
 
     '''VAE Loss Function Parameters'''
-    parser.add_argument('--mixup_max_z', default=10, type=float, 
+    parser.add_argument('--mixup_max_z', default=1, type=float, 
                         help='the epoch to linear adjust mixup')
-    parser.add_argument('--mixup_epoch_z',default=1, type=int, 
+    parser.add_argument('--mixup_epoch_z',default=200, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--mixup_max_y', default=10, type=float, 
+    parser.add_argument('--mixup_max_y', default=1, type=float, 
                         help='the epoch to linear adjust mixup')
-    parser.add_argument('--mixup_epoch_y',default=1, type=int, 
+    parser.add_argument('--mixup_epoch_y',default=200, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--lambda',default=10, type=float, 
+    parser.add_argument('--lambda',default=1000, type=int, 
                         help='the weight of classification and mutual information')
     
     '''Optimizer Parameters'''
@@ -99,17 +96,17 @@ def get_args():
                         metavar='LR', help='initial learning rate')
     # parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
     #                     help='beta1 for adam as well as momentum for SGD')
-    parser.add_argument('-ad', "--adjust_lr", default=[200], type=arg_as_list,
+    parser.add_argument('-ad', "--adjust_lr", default=[400, 500, 550], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
-    parser.add_argument('--lr_gamma', default=0.1, type=float)
+    parser.add_argument('--lr_gamma', default=0.5, type=float)
     parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
-    parser.add_argument('--z_hidden_dim', default=64, type=int,
+    parser.add_argument('--z_hidden_dim', default=256, type=int,
                         help='embedding dimension of continuous latent for coupling layer')
-    parser.add_argument('--c_hidden_dim', default=64, type=int,
+    parser.add_argument('--c_hidden_dim', default=128, type=int,
                         help='embedding dimension of discrete latent for coupling layer')
-    parser.add_argument('--z_n_blocks', default=3, type=int,
+    parser.add_argument('--z_n_blocks', default=6, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
     parser.add_argument('--c_n_blocks', default=4, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
@@ -126,7 +123,7 @@ def get_args():
                         help='beta2 for adam')
     parser.add_argument('-ad_nf', "--adjust_lr_nf", default=[0.25, 0.5, 0.75], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
-    parser.add_argument('--start_epoch_nf', default=0, type=int,
+    parser.add_argument('--start_epoch_nf', default=200, type=int,
                         help="NF training start epoch")
     # parser.add_argument('--decay_steps', default=1, type=int,
     #                     help='decay steps for exponential decay schedule')
@@ -161,7 +158,7 @@ def generate_and_save_images1(model, image, num_classes):
     buf = io.BytesIO()
     figure = plt.figure(figsize=(10, 2))
     plt.subplot(1, num_classes+1, 1)
-    plt.imshow(image[0])
+    plt.imshow((image[0] + 1) / 2)
     plt.title('original')
     plt.axis('off')
     for i in range(num_classes):
@@ -169,7 +166,7 @@ def generate_and_save_images1(model, image, num_classes):
         label[:, i] = 1
         xhat = model.ae.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
-        plt.imshow(xhat[0])
+        plt.imshow((xhat[0] + 1) / 2)
         plt.title('{}'.format(i))
         plt.axis('off')
     plt.savefig(buf, format='png')
@@ -188,7 +185,7 @@ def generate_and_save_images2(model, image, num_classes, step, save_dir):
     
     plt.figure(figsize=(10, 2))
     plt.subplot(1, num_classes+1, 1)
-    plt.imshow(image[0])
+    plt.imshow((image[0] + 1) / 2)
     plt.title('original')
     plt.axis('off')
     for i in range(num_classes):
@@ -196,7 +193,7 @@ def generate_and_save_images2(model, image, num_classes, step, save_dir):
         label[:, i] = 1
         xhat = model.ae.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
-        plt.imshow(xhat[0])
+        plt.imshow((xhat[0] + 1) / 2)
         plt.title('{}'.format(i))
         plt.axis('off')
     plt.savefig('{}/image_at_epoch_{}.png'.format(save_dir, step))
@@ -226,20 +223,6 @@ def main():
     buffer_model.build(input_shape=(None, 32, 32, 3))
     buffer_model.set_weights(model.get_weights()) # weight initialization
     
-    '''
-    <SGD + momentum + weight_decay>
-    lambda: weight_decay parameter
-    beta_1: momemtum
-    lr: learning rate
-    
-    v(0) = 0
-    for t in range(0, epochs):
-        grad(t+1) = grad(t+1) + lambda * weight(t)
-        v(t+1) = beta_1 * v(t) + grad(t+1)
-        weight(t+1) = weight(t) - lr * v(t+1)
-                    = weight(t) - lr * (beta_1 * v(t) + grad(t+1))
-    '''
-    
     '''optimizer'''
     optimizer = K.optimizers.Adam(learning_rate=args['lr'])
     optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
@@ -256,9 +239,13 @@ def main():
             '''warm-up'''
             optimizer.lr = args['lr'] * 0.2
         elif epoch < args['adjust_lr'][0]:
-            optimizer.lr = args['lr'] 
-        else:
+            optimizer.lr = args['lr']
+        elif epoch < args['adjust_lr'][1]:
             optimizer.lr = args['lr'] * args['lr_gamma']
+        elif epoch < args['adjust_lr'][2]:
+            optimizer.lr = args['lr'] * (args['lr_gamma'] ** 2)
+        else:
+            optimizer.lr = args['lr'] * (args['lr_gamma'] ** 3)
             
         if epoch >= args['start_epoch_nf']: 
             if epoch == args['start_epoch_nf']: 
@@ -327,7 +314,7 @@ def main():
         
         if epoch == 0:
             optimizer.lr = args['lr']
-            optimizer_nf.lr = args['lr_nf'] 
+            optimizer_nf.lr = args['lr_nf']
             
         # if args['dataset'] == 'cifar10':
         #     if args['labeled_examples'] >= 2500:
@@ -368,10 +355,9 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
     '''unsupervised classification weight'''
     mixup_lambda_y = weight_schedule(epoch, args['mixup_epoch_y'], args['mixup_max_y'])
 
-    shuffle_and_batch2 = lambda dataset: dataset.shuffle(buffer_size=int(1000)).batch(batch_size=32, drop_remainder=False)
     shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
 
-    iteratorL = iter(shuffle_and_batch2(datasetL))
+    iteratorL = iter(shuffle_and_batch(datasetL))
     iteratorU = iter(shuffle_and_batch(datasetU))
         
     # iteration = (50000 - args['validation_examples']) // args['batch_size'] 
@@ -383,7 +369,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         try:
             imageL, labelL = next(iteratorL)
         except:
-            iteratorL = iter(shuffle_and_batch2(datasetL))
+            iteratorL = iter(shuffle_and_batch(datasetL))
             imageL, labelL = next(iteratorL)
         try:
             imageU, _ = next(iteratorU)
@@ -391,69 +377,25 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             iteratorU = iter(shuffle_and_batch(datasetU))
             imageU, _ = next(iteratorU)
             
-        '''augmentation'''
-        if args['augment']:
-            imageL = augment(imageL)
-            imageU = augment(imageU)
+        # imageL = augment(imageL)
+        # imageU = augment(imageU)
         
         '''mix-up weight'''
         mix_weight = [tf.constant(np.random.beta(args['epsilon'], args['epsilon'])), # labeled
                       tf.constant(np.random.beta(2.0, 2.0))] # unlabeled
         lambda_ = tf.convert_to_tensor(args['lambda'], dtype=tf.float32)
         
-        '''1. labeled'''
         with tf.GradientTape(persistent=True) as tape:
-            # [[z, c, probL, xhatL], nf_args] = model(imageL)
-            z, c, probL, xhatL = model.ae(imageL)
-            z_ = tf.stop_gradient(z)
-            c_ = tf.stop_gradient(c)
-            nf_args = model.prior(z_, c_)
-            # with tape.stop_recording():
-            prob_reconL = tf.nn.softmax(model.ae.c_encode(xhatL), axis=-1)
-            
-            recon_lossL, cls_lossL, infoL, nf_lossL = ELBO_criterion(args, imageL, xhatL, probL, prob_reconL, nf_args, label=labelL)
-            
-            '''mix-up'''
-            with tape.stop_recording():
-                image_mixL, z_mixL, c_mixL, label_mixL, label_shuffleL = label_smoothing(imageL, z, c, labelL, mix_weight[0])
-            smoothed_zL, smoothed_probL = model.ae.encode(image_mixL)
-            smoothed_probL = tf.nn.softmax(smoothed_probL, axis=-1)
-            smoothed_xhatL = model.ae.decode(z_mixL, label_mixL) # use true label instead of prob
-            
-            mixup_zL = tf.reduce_mean(tf.math.square(smoothed_zL - z_mixL))
-            mixup_xhatL = 1000. * tf.reduce_mean(tf.math.square(smoothed_xhatL - image_mixL))
-            # mixup_xhatL = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatL - image_mixL), axis=[1, 2, 3]))
-            mixup_yL = - tf.reduce_mean(mix_weight[0] * tf.reduce_sum(label_shuffleL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
-            mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
-            
-            elbo_lossL = recon_lossL + (mixup_lambda_z * (mixup_zL + mixup_xhatL)) 
-            loss_supervised = elbo_lossL + mixup_yL + (lambda_ * (cls_lossL + infoL))
-
-        '''AutoEncoder'''
-        grads = tape.gradient(loss_supervised, model.ae.trainable_variables) 
-        '''SGD + momentum''' 
-        optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) 
-        '''decoupled weight decay'''
-        weight_decay_decoupled(model.ae, buffer_model.ae, decay_rate=args['wd'] * optimizer.lr)
-        
-        if epoch >= args['start_epoch_nf']:
-            '''Normalizing Flow'''
-            grad = tape.gradient(nf_lossL, model.prior.trainable_weights)
-            optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
-            '''decoupled weight decay'''
-            weight_decay_decoupled(model.prior, buffer_model.prior, decay_rate=args['wd_nf'] * optimizer_nf.lr)
-        
-        '''2. unlabeled'''
-        with tf.GradientTape(persistent=True) as tape:
-            # [[z, c, probU, xhatU], nf_args] = model(imageU)
+            '''unlabeled'''
+            # [[z, c, probU, xhatU], nf_args] = model(imageU, training=True)
             z, c, probU, xhatU = model.ae(imageU)
             z_ = tf.stop_gradient(z)
             c_ = tf.stop_gradient(c)
             nf_args = model.prior(z_, c_)
             # with tape.stop_recording():
-            prob_reconU = tf.nn.softmax(model.ae.c_encode(xhatU), axis=-1)
+            prob_reconU = tf.nn.softmax(model.ae.c_encode(xhatU, training=True), axis=-1)
             
-            recon_lossU, _, infoU, nf_lossU = ELBO_criterion(args, imageU, xhatU, probU, prob_reconU, nf_args)
+            recon_lossU, infoU, nf_lossU = ELBO_criterion(args, imageU, xhatU, probU, prob_reconU, nf_args)
             
             '''mix-up'''
             with tape.stop_recording():
@@ -463,7 +405,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             smoothed_xhatU = model.ae.decode(z_mixU, prob_mixU)
             
             mixup_zU = tf.reduce_mean(tf.math.square(smoothed_zU - z_mixU))
-            mixup_xhatU = 1000. * tf.reduce_mean(tf.math.square(smoothed_xhatU - image_mixU))
+            mixup_xhatU = tf.reduce_mean(tf.math.square(smoothed_xhatU - image_mixU))
             # mixup_xhatU = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatU - image_mixU), axis=[1, 2, 3]))
             # mixup_yU = - tf.reduce_mean(tf.reduce_sum(prob_mixU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
             mixup_yU = 0.5 * tf.reduce_mean(tf.reduce_sum(prob_mixU * (tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0)) - 
@@ -471,11 +413,23 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             mixup_yU += 0.5 * tf.reduce_mean(tf.reduce_sum(smoothed_probU * (tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)) - 
                                                                              tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0))), axis=1))
             
+            '''labeled: classification'''
+            probL = tf.nn.softmax(model.ae.c_encode(imageL, training=True), axis=-1)
+            cls_lossL = tf.reduce_mean(- tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(probL, 1e-10, 1.0)), axis=-1))
+            
+            '''mix-up'''
+            with tape.stop_recording():
+                image_mixL, label_mixL, label_shuffleL = label_smoothing(imageL, labelL, mix_weight[0])
+            smoothed_probL = tf.nn.softmax(model.ae.c_encode(image_mixL, training=True), axis=-1)
+            
+            mixup_yL = - tf.reduce_mean(mix_weight[0] * tf.reduce_sum(label_shuffleL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
+            mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
+            
             elbo_lossU = recon_lossU + (mixup_lambda_z * (mixup_zU + mixup_xhatU))
-            loss_unsupervised = elbo_lossU + (mixup_lambda_y * mixup_yU) + (lambda_ * infoU)
+            loss = elbo_lossU + (mixup_lambda_y * mixup_yU) + (lambda_ * (mixup_yL + cls_lossL + infoU))
 
         '''AutoEncoder'''
-        grads = tape.gradient(loss_unsupervised, model.ae.trainable_variables) 
+        grads = tape.gradient(loss, model.ae.trainable_variables) 
         '''SGD + momentum''' 
         optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) 
         '''decoupled weight decay'''
@@ -488,7 +442,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             '''decoupled weight decay'''
             weight_decay_decoupled(model.prior, buffer_model.prior, decay_rate=args['wd_nf'] * optimizer_nf.lr)
         
-        loss_avg(loss_unsupervised)
+        loss_avg(loss)
         recon_loss_avg(recon_lossU)
         info_loss_avg(infoU)
         nf_loss_avg(nf_lossU)
@@ -527,7 +481,8 @@ def validate(dataset, model, epoch, args, split):
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
         [[z, c, prob, xhat], nf_args] = model(image, training=False)
-        recon_loss, cls_loss, info, nf_loss = ELBO_criterion(args, image, xhat, label, prob, nf_args)
+        recon_loss, info, nf_loss = ELBO_criterion(args, image, xhat, label, prob, nf_args)
+        cls_loss = tf.reduce_mean(- tf.reduce_sum(label * tf.math.log(tf.clip_by_value(prob, 1e-10, 1.0)), axis=-1))
         nf_loss_avg(nf_loss)
         recon_loss_avg(recon_loss)
         info_loss_avg(info)
