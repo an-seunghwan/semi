@@ -1,13 +1,13 @@
 #%%
 '''
-
+labeled batch size?
 '''
 #%%
 import argparse
 import os
 
-# os.chdir(r'D:\semi\semi\proposal') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/semi/proposal') # main directory (repository)
+os.chdir(r'D:\semi\semi\proposal') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/semi/proposal') # main directory (repository)
 # os.chdir('/Users/anseunghwan/Documents/GitHub/semi/semi/proposal') # main directory (repository)
 
 import numpy as np
@@ -162,6 +162,7 @@ def generate_and_save_images1(model, image, num_classes):
     for i in range(num_classes):
         label = np.zeros((z.shape[0], num_classes))
         label[:, i] = 1
+        label = tf.cast(label, tf.float32)
         xhat = model.ae.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
         plt.imshow((xhat[0] + 1) / 2)
@@ -189,6 +190,7 @@ def generate_and_save_images2(model, image, num_classes, step, save_dir):
     for i in range(num_classes):
         label = np.zeros((z.shape[0], num_classes))
         label[:, i] = 1
+        label = tf.cast(label, tf.float32)
         xhat = model.ae.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
         plt.imshow((xhat[0] + 1) / 2)
