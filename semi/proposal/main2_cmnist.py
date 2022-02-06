@@ -17,8 +17,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\semi\proposal') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/semi/proposal') # main directory (repository)
+# os.chdir(r'D:\semi\semi\proposal') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/semi/proposal') # main directory (repository)
 # os.chdir('/Users/anseunghwan/Documents/GitHub/semi/semi/proposal') # main directory (repository)
 
 import numpy as np
@@ -104,10 +104,10 @@ def get_args():
                         metavar='LR', help='initial learning rate')
     # parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
     #                     help='beta1 for adam as well as momentum for SGD')
-    parser.add_argument('-ad', "--adjust_lr", default=[200], type=arg_as_list,
+    parser.add_argument('-ad', "--adjust_lr", default=[100, 200], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
     parser.add_argument('--lr_gamma', default=0.1, type=float)
-    parser.add_argument('--wd', '--weight_decay', default=1e-4, type=float)
+    parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
     parser.add_argument('--z_hidden_dim', default=64, type=int,
@@ -262,8 +262,10 @@ def main():
             optimizer.lr = args['lr'] * 0.2
         elif epoch < args['adjust_lr'][0]:
             optimizer.lr = args['lr'] 
-        else:
+        elif epoch < args['adjust_lr'][1]:
             optimizer.lr = args['lr'] * args['lr_gamma']
+        else:
+            optimizer.lr = args['lr'] * (args['lr_gamma'] ** 2)
             
         if epoch >= args['start_epoch_nf']: 
             if epoch == args['start_epoch_nf']: 
@@ -425,7 +427,8 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             smoothed_xhatL = model.ae.decode(z_mixL, label_mixL) # use true label instead of prob
             
             mixup_zL = tf.reduce_mean(tf.math.square(smoothed_zL - z_mixL))
-            mixup_xhatL = tf.reduce_mean(tf.math.square(smoothed_xhatL - image_mixL))
+            # mixup_xhatL = tf.reduce_mean(tf.math.square(smoothed_xhatL - image_mixL))
+            mixup_xhatL = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatL - image_mixL), axis=[1, 2, 3]))
             mixup_yL = - tf.reduce_mean(mix_weight[0] * tf.reduce_sum(label_shuffleL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             
@@ -466,7 +469,8 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             smoothed_xhatU = model.ae.decode(z_mixU, prob_mixU)
             
             mixup_zU = tf.reduce_mean(tf.math.square(smoothed_zU - z_mixU))
-            mixup_xhatU = tf.reduce_mean(tf.math.square(smoothed_xhatU - image_mixU))
+            # mixup_xhatU = tf.reduce_mean(tf.math.square(smoothed_xhatU - image_mixU))
+            mixup_xhatU = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatU - image_mixU), axis=[1, 2, 3]))
             # mixup_yU = - tf.reduce_mean(tf.reduce_sum(prob_mixU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
             mixup_yU = 0.5 * tf.reduce_mean(tf.reduce_sum(prob_mixU * (tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0)) - 
                                                                        tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0))), axis=1))
