@@ -1,21 +1,24 @@
 #%%
 '''
 - mutual information loss
-- lambda = 10
-- x_sigma = 0.5
-- AE and NF: warm-up
-- AE: NO learning rate schedule
+- x_sigma = 0.1
 - NF model parameters
-    - z(6), hidden dim = 64, n_blocks = 3
-    - c(10), hidden dim = 64, n_blocks = 4
+    - z(128), hidden dim = 256, n_blocks = 6
+    - c(10), hidden dim = 128, n_blocks = 4
+- AE and NF: warm-up
+- NF: training after 200 epochs
+
+220202 reconstruction: reduce_sum -> reduce_mean
+220203 loss weight setting -> similar to EXoN
+220203 mutual information loss -> with tape.stop_recording():
 '''
 #%%
 import argparse
 import os
 
-# os.chdir(r'D:\semi\semi\unconditional') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/semi/unconditional') # main directory (repository)
-os.chdir('/Users/anseunghwan/Documents/GitHub/semi/semi/proposal') # main directory (repository)
+os.chdir(r'D:\semi\semi\proposal') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/semi/proposal') # main directory (repository)
+# os.chdir('/Users/anseunghwan/Documents/GitHub/semi/semi/proposal') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -29,7 +32,7 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model2_cmnist import VAE
+from model import VAE
 from criterion import ELBO_criterion
 from mixup import augment, label_smoothing, non_smooth_mixup, weight_decay_decoupled
 #%%
@@ -55,8 +58,8 @@ def get_args():
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    parser.add_argument('--reconstruct_freq', '-rf', default=10, type=int,
-                        metavar='N', help='reconstruct frequency (default: 10)')
+    parser.add_argument('--reconstruct_freq', '-rf', default=50, type=int,
+                        metavar='N', help='reconstruct frequency (default: 50)')
     parser.add_argument('--labeled_examples', type=int, default=100, 
                         help='number labeled examples (default: 100')
     parser.add_argument('--validation_examples', type=int, default=5000, 
@@ -84,43 +87,29 @@ def get_args():
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
 
-    # '''VAE Loss Function Parameters'''
-    # # parser.add_argument("-ei", "--evaluate-inference", action='store_true',
-    # #                     help='Calculate the inference accuracy for unlabeled dataset')
-    # parser.add_argument('--kbmc', '--kl-beta-max-continuous', default=1, type=float, 
-    #                     metavar='KL Beta', help='the epoch to linear adjust kl beta')
-    # # parser.add_argument('--kbmd', '--kl-beta-max-discrete', default=1e-3, type=float, 
-    # #                     metavar='KL Beta', help='the epoch to linear adjust kl beta')
-    # parser.add_argument('--akb', '--adjust-kl-beta-epoch', default=100, type=int, 
-    #                     metavar='KL Beta', help='the max epoch to adjust kl beta')
-    # # parser.add_argument('--ewm', '--elbo-weight-max', default=1e-3, type=float, 
-    # #                     metavar='weight for elbo loss part')
-    # # parser.add_argument('--aew', '--adjust-elbo-weight', default=400, type=int,
-    # #                     metavar="the epoch to adjust elbo weight to max")
-    # parser.add_argument('--wrd', default=1, type=float,
-    #                     help="the max weight for the optimal transport estimation of discrete variable c")
-    # parser.add_argument('--wmf', '--weight-modify-factor', default=0.4, type=float,
-    #                     help="weight will get wrz at amf * epochs")
-    # parser.add_argument('--pwm', '--posterior-weight-max', default=1, type=float,
-    #                     help="the max value for posterior weight")
-    # parser.add_argument('--apw', '--adjust-posterior-weight', default=100, type=float,
-    #                     help="adjust posterior weight")
-
+    '''VAE Loss Function Parameters'''
+    parser.add_argument('--mixup_max_z', default=0.1, type=float, 
+                        help='the epoch to linear adjust mixup')
+    parser.add_argument('--mixup_epoch_z',default=150, type=int, 
+                        help='the max epoch to adjust mixup')
+    parser.add_argument('--mixup_max_y', default=0.1, type=float, 
+                        help='the epoch to linear adjust mixup')
+    parser.add_argument('--mixup_epoch_y',default=150, type=int, 
+                        help='the max epoch to adjust mixup')
+    parser.add_argument('--lambda',default=10, type=float, 
+                        help='the weight of classification and mutual information')
+    
     '''Optimizer Parameters'''
     parser.add_argument('--lr', '--learning_rate', default=0.001, type=float,
                         metavar='LR', help='initial learning rate')
-    parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
-                        help='beta1 for adam as well as momentum for SGD')
-    # parser.add_argument('-ad', "--adjust-lr", default=[200, 250], type=arg_as_list,
+    # parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
+    #                     help='beta1 for adam as well as momentum for SGD')
+    # parser.add_argument('-ad', "--adjust_lr", default=[400, 500, 550], type=arg_as_list,
     #                     help="The milestone list for adjust learning rate")
-    # parser.add_argument('--lr_gamma', default=0.1, type=float)
+    # parser.add_argument('--lr_gamma', default=0.5, type=float)
     parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
-    # parser.add_argument('--z_mask', default='checkerboard', type=str,
-    #                     help='mask type of continuous latent for Real NVP (e.g. checkerboard or half)')
-    # parser.add_argument('--c_mask', default='half', type=str,
-    #                     help='mask type of discrete latent for Real NVP (e.g. checkerboard or half)')
     parser.add_argument('--z_hidden_dim', default=64, type=int,
                         help='embedding dimension of continuous latent for coupling layer')
     parser.add_argument('--c_hidden_dim', default=64, type=int,
@@ -129,14 +118,12 @@ def get_args():
                         help='number of coupling layers in Real NVP (continous latent)')
     parser.add_argument('--c_n_blocks', default=4, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
-    # parser.add_argument('--coupling_MLP_num', default=4, type=int,
-    #                     help='number of dense layers in single coupling layer')
 
     '''Normalizing Flow Optimizer Parameters'''
-    parser.add_argument('--lr_nf', '--learning_rate_nf', default=1e-3, type=float,
+    parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.001, type=float,
                         metavar='LR', help='initial learning rate for normalizing flow')
     parser.add_argument('--lr_gamma_nf', default=0.1, type=float)
-    parser.add_argument('--wd_nf', '--weight_decay_nf', default=2e-5, type=float,
+    parser.add_argument('--wd_nf', '--weight-decay-nf', default=2e-5, type=float,
                         help='L2 regularization parameter for dense layers in Real NVP')
     parser.add_argument('-b1_nf', '--beta1_nf', default=0.9, type=float, metavar='Beta1 In ADAM',
                         help='beta1 for adam')
@@ -259,17 +246,9 @@ def main():
     '''
     
     '''optimizer'''
-    optimizer = K.optimizers.Adam(learning_rate=args['lr'],
-                                beta_1=args['beta1'])
+    optimizer = K.optimizers.Adam(learning_rate=args['lr'])
     optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
-                                    beta_1=args['beta1_nf'], beta_2=args['beta2_nf'])
-    
-    # optimizer_nf = K.optimizers.Adam(args['lr_nf'], 
-    #                                  beta_1=args['beta1_nf'], beta_2=args['beta2_nf'],
-    #                                  clipvalue=args['gradclip']) 
-    # lr_schedule = tf.keras.optimizers.schedules.ExponentialDecay(initial_learning_rate=args['lr_nf'], 
-    #                                                             decay_steps=args['decay_steps'], 
-    #                                                             decay_rate=args['decay_rate'])
+                                     beta_1=args['beta1_nf'], beta_2=args['beta2_nf'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -285,8 +264,10 @@ def main():
         #     optimizer.lr = args['lr']
         # elif epoch < args['adjust_lr'][1]:
         #     optimizer.lr = args['lr'] * args['lr_gamma']
-        # else:
+        # elif epoch < args['adjust_lr'][2]:
         #     optimizer.lr = args['lr'] * (args['lr_gamma'] ** 2)
+        # else:
+        #     optimizer.lr = args['lr'] * (args['lr_gamma'] ** 3)
             
         if epoch >= args['start_epoch_nf']: 
             if epoch == args['start_epoch_nf']: 
@@ -302,9 +283,9 @@ def main():
                 optimizer_nf.lr = args['lr_nf'] * (args['lr_gamma_nf'] ** 3)
         
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, info_loss, nf_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
+            loss, recon_loss, info_loss, nf_loss, mixup_z_loss, mixup_xhat_loss, mixup_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         else:
-            loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
+            loss, recon_loss, info_loss, nf_loss, mixup_z_loss, mixup_xhat_loss, mixup_y_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         val_nf_loss, val_recon_loss, val_info_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_nf_loss, test_recon_loss, test_info_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
@@ -314,6 +295,9 @@ def main():
             tf.summary.scalar('recon_loss', recon_loss.result(), step=epoch)
             tf.summary.scalar('info_loss', info_loss.result(), step=epoch)
             tf.summary.scalar('nf_loss', nf_loss.result(), step=epoch)
+            tf.summary.scalar('mixup_z_loss', mixup_z_loss.result(), step=epoch)
+            tf.summary.scalar('mixup_xhat_loss', mixup_xhat_loss.result(), step=epoch)
+            tf.summary.scalar('mixup_y_loss', mixup_y_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
             if epoch % args['reconstruct_freq'] == 0:
                 tf.summary.image("train recon image", sample_recon, step=epoch)
@@ -335,6 +319,9 @@ def main():
         recon_loss.reset_states()
         info_loss.reset_states()
         nf_loss.reset_states()
+        mixup_z_loss.reset_states()
+        mixup_xhat_loss.reset_states()
+        mixup_y_loss.reset_states()
         accuracy.reset_states()
         val_nf_loss.reset_states()
         val_recon_loss.reset_states()
@@ -351,6 +338,11 @@ def main():
             optimizer.lr = args['lr']
             optimizer_nf.lr = args['lr_nf'] 
             
+        # if args['dataset'] == 'cifar10':
+        #     if args['labeled_examples'] >= 2500:
+        #         if epoch == args['adjust_lr'][0]:
+        #             args['ewm'] = args['ewm'] * 5
+
     '''model & configurations save'''        
     # weight name for saving
     for i, w in enumerate(model.variables):
@@ -375,25 +367,21 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
     recon_loss_avg = tf.keras.metrics.Mean()
     info_loss_avg = tf.keras.metrics.Mean()
     nf_loss_avg = tf.keras.metrics.Mean()
+    mixup_z_loss_avg = tf.keras.metrics.Mean()
+    mixup_xhat_loss_avg = tf.keras.metrics.Mean()
+    mixup_y_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
-    # '''elbo part weight'''
-    # ew = weight_schedule(epoch, args['aew'], args['ewm'])
-    # '''mix-up parameters'''
-    # beta_z = weight_schedule(epoch, args['akb'], args['kbmc'])
-    # pwm = weight_schedule(epoch, args['apw'], args['pwm'])
-    # '''un-supervised classification weight'''
-    # ucw = weight_schedule(epoch, round(args['wmf'] * args['epochs']), args['wrd'])
+    '''mix-up parameters'''
+    mixup_lambda_z = weight_schedule(epoch, args['mixup_epoch_z'], args['mixup_max_z'])
+    '''unsupervised classification weight'''
+    mixup_lambda_y = weight_schedule(epoch, args['mixup_epoch_y'], args['mixup_max_y'])
 
+    shuffle_and_batch2 = lambda dataset: dataset.shuffle(buffer_size=int(1000)).batch(batch_size=32, drop_remainder=False)
     shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
-    if args['dataset'] == 'cmnist':
-        shuffle_and_batch2 = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=32, drop_remainder=False)
 
-    iteratorL = iter(shuffle_and_batch(datasetL))
-    if args['dataset'] == 'cmnist':
-        iteratorU = iter(shuffle_and_batch2(datasetU))
-    else:
-        iteratorU = iter(shuffle_and_batch(datasetU))
+    iteratorL = iter(shuffle_and_batch2(datasetL))
+    iteratorU = iter(shuffle_and_batch(datasetU))
         
     # iteration = (50000 - args['validation_examples']) // args['batch_size'] 
     iteration = total_length // args['batch_size'] 
@@ -401,14 +389,10 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
-        '''augmentation'''
         try:
             imageL, labelL = next(iteratorL)
         except:
-            if args['dataset'] == 'cmnist':
-                iteratorL = iter(shuffle_and_batch2(datasetL))
-            else:
-                iteratorL = iter(shuffle_and_batch(datasetL))
+            iteratorL = iter(shuffle_and_batch2(datasetL))
             imageL, labelL = next(iteratorL)
         try:
             imageU, _ = next(iteratorU)
@@ -427,27 +411,26 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         
         '''1. labeled'''
         with tf.GradientTape(persistent=True) as tape:
-            [[z, c, probL, xhatL], nf_args] = model(imageL, training=True)
-            # z, c, probL, xhatL = model.ae(imageL, training=True) # unlabeled
-            # z_ = tf.stop_gradient(z)
-            # c_ = tf.stop_gradient(c)
-            # nf_args = model.prior(z_, c_)
-            prob_reconL = tf.nn.softmax(model.ae.c_encode(imageL, training=True), axis=-1)
+            [[z, c, probL, xhatL], nf_args] = model(imageL)
+            with tape.stop_recording():
+                prob_reconL = tf.nn.softmax(model.ae.c_encode(imageL), axis=-1)
             
             recon_lossL, cls_lossL, infoL, nf_lossL = ELBO_criterion(args, imageL, xhatL, probL, prob_reconL, nf_args, label=labelL)
             
             '''mix-up'''
             with tape.stop_recording():
-                image_mixL, z_mixL, c_mixL, label_shuffleL = label_smoothing(imageL, z, c, labelL, mix_weight[0])
-            smoothed_zL, smoothed_cL, smoothed_probL, _ = model.ae(image_mixL, training=True)
+                image_mixL, z_mixL, c_mixL, label_mixL, label_shuffleL = label_smoothing(imageL, z, c, labelL, mix_weight[0])
+            smoothed_zL, smoothed_probL = model.ae.encode(image_mixL)
+            smoothed_probL = tf.nn.softmax(smoothed_probL, axis=-1)
+            smoothed_xhatL = model.ae.decode(z_mixL, label_mixL) # use true label instead of prob
             
             mixup_zL = tf.reduce_mean(tf.math.square(smoothed_zL - z_mixL))
-            mixup_zL += tf.reduce_mean(tf.math.square(smoothed_cL - c_mixL))
+            mixup_xhatL = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatL - image_mixL), axis=[1, 2, 3]))
             mixup_yL = - tf.reduce_mean(mix_weight[0] * tf.reduce_sum(label_shuffleL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             
-            elbo_lossL = recon_lossL + mixup_zL
-            loss_supervised = elbo_lossL + mixup_yL + 10. * cls_lossL + 10. * infoL
+            elbo_lossL = recon_lossL + (mixup_lambda_z * (mixup_zL + mixup_xhatL))
+            loss_supervised = elbo_lossL + mixup_yL + (tf.convert_to_tensor(args['lambda'], dtype=tf.float32) * (cls_lossL + infoL))
 
         '''AutoEncoder'''
         grads = tape.gradient(loss_supervised, model.ae.trainable_variables) 
@@ -466,25 +449,26 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         '''2. unlabeled'''
         with tf.GradientTape(persistent=True) as tape:
             [[z, c, probU, xhatU], nf_args] = model(imageU, training=True)
-            # z, c, probU, xhatU = model.ae(imageU, training=True) # unlabeled
-            # z_ = tf.stop_gradient(z)
-            # c_ = tf.stop_gradient(c)
-            # nf_args = model.prior(z_, c_)
-            prob_reconU = tf.nn.softmax(model.ae.c_encode(imageU, training=True), axis=-1)
+            with tape.stop_recording():
+                prob_reconU = tf.nn.softmax(model.ae.c_encode(imageU, training=True), axis=-1)
             
             recon_lossU, _, infoU, nf_lossU = ELBO_criterion(args, imageU, xhatU, probU, prob_reconU, nf_args)
             
             '''mix-up'''
             with tape.stop_recording():
-                image_mixU, z_mixU, c_mixU, pseudo_labelU = non_smooth_mixup(imageU, z, c, probU, mix_weight[1])
-            smoothed_zU, smoothed_cU, smoothed_probU, _ = model.ae(image_mixU, training=True)
+                image_mixU, z_mixU, c_mixU, prob_mixU = non_smooth_mixup(imageU, z, c, probU, mix_weight[1])
+            smoothed_zU, smoothed_probU = model.ae.encode(image_mixU)
+            smoothed_probU = tf.nn.softmax(smoothed_probU, axis=-1)
+            smoothed_xhatU = model.ae.decode(z_mixU, prob_mixU)
             
             mixup_zU = tf.reduce_mean(tf.math.square(smoothed_zU - z_mixU))
-            mixup_zU += tf.reduce_mean(tf.math.square(smoothed_cU - c_mixU))
-            mixup_yU = - tf.reduce_mean(tf.reduce_sum(pseudo_labelU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
+            mixup_xhatU = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatU - image_mixU), axis=[1, 2, 3]))
+            # mixup_yU = - tf.reduce_mean(tf.reduce_sum(prob_mixU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
+            mixup_yU = 0.5 * tf.reduce_sum(prob_mixU * (tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0)) - tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0))), axis=1)
+            mixup_yU += 0.5 * tf.reduce_sum(smoothed_probU * (tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)) - tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0))), axis=1)
             
-            elbo_lossU = recon_lossU + mixup_zU
-            loss_unsupervised = elbo_lossU + mixup_yU + 10. * infoU
+            elbo_lossU = recon_lossU + (mixup_lambda_z * (mixup_zU + mixup_xhatU))
+            loss_unsupervised = elbo_lossU + (mixup_lambda_y * mixup_yU) + (tf.convert_to_tensor(args['lambda'], dtype=tf.float32) * infoU)
 
         '''AutoEncoder'''
         grads = tape.gradient(loss_unsupervised, model.ae.trainable_variables) 
@@ -504,6 +488,9 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
         recon_loss_avg(recon_lossU)
         info_loss_avg(infoU)
         nf_loss_avg(nf_lossU)
+        mixup_z_loss_avg(mixup_zU)
+        mixup_xhat_loss_avg(mixup_xhatU)
+        mixup_y_loss_avg(mixup_yU)
         probL = tf.nn.softmax(model.ae.c_encode(imageL, training=False), axis=-1)
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
 
@@ -513,16 +500,18 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             'Recon': f'{recon_loss_avg.result():.4f}',
             'Info': f'{info_loss_avg.result():.4f}',
             'NF': f'{nf_loss_avg.result():.4f}',
+            'MIXUP(z)': f'{mixup_z_loss_avg.result():.4f}',
+            'MIXUP(xhat)': f'{mixup_xhat_loss_avg.result():.4f}',
+            'MIXIUP(y)': f'{mixup_y_loss_avg.result():.4f}',
             'Accuracy': f'{accuracy.result():.3%}'
         })
         
     if epoch % args['reconstruct_freq'] == 0:
         sample_recon = generate_and_save_images1(model, imageU[0][tf.newaxis, ...], num_classes)
         generate_and_save_images2(model, imageU[0][tf.newaxis, ...], num_classes, epoch, f'logs/{args["dataset"]}_{args["labeled_examples"]}/{current_time}')
-        return loss_avg, recon_loss_avg, info_loss_avg, nf_loss_avg, accuracy, sample_recon
+        return loss_avg, recon_loss_avg, info_loss_avg, nf_loss_avg, mixup_z_loss_avg, mixup_xhat_loss_avg, mixup_y_loss_avg, accuracy, sample_recon
     else:
-        return loss_avg, recon_loss_avg, info_loss_avg, nf_loss_avg, accuracy
-    # return loss_avg, recon_loss_avg, info_loss_avg, nf_loss_avg, accuracy
+        return loss_avg, recon_loss_avg, info_loss_avg, nf_loss_avg, mixup_z_loss_avg, mixup_xhat_loss_avg, mixup_y_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, args, split):
     nf_loss_avg = tf.keras.metrics.Mean()

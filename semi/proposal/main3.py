@@ -1,8 +1,6 @@
 #%%
 '''
-220202 reconstruction: reduce_sum -> reduce_mean
-220203 loss weight setting -> similar to EXoN
-220203 mutual information loss -> with tape.stop_recording():
+
 '''
 #%%
 import argparse
@@ -397,9 +395,16 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             
             recon_lossU, infoU, nf_lossU = ELBO_criterion(args, imageU, xhatU, probU, prob_reconU, nf_args)
             
-            '''mix-up'''
+            '''labeled: classification'''
+            probL = tf.nn.softmax(model.ae.c_encode(imageL, training=True), axis=-1)
+            
+            cls_lossL = tf.reduce_mean(- tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(probL, 1e-10, 1.0)), axis=-1))
+            
             with tape.stop_recording():
                 image_mixU, z_mixU, c_mixU, prob_mixU = non_smooth_mixup(imageU, z, c, probU, mix_weight[1])
+                image_mixL, label_mixL, label_shuffleL = label_smoothing(imageL, labelL, mix_weight[0])
+            
+            '''mix-up: unlabeled'''
             smoothed_zU, smoothed_probU = model.ae.encode(image_mixU)
             smoothed_probU = tf.nn.softmax(smoothed_probU, axis=-1)
             smoothed_xhatU = model.ae.decode(z_mixU, prob_mixU)
@@ -413,13 +418,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             mixup_yU += 0.5 * tf.reduce_mean(tf.reduce_sum(smoothed_probU * (tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)) - 
                                                                              tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0))), axis=1))
             
-            '''labeled: classification'''
-            probL = tf.nn.softmax(model.ae.c_encode(imageL, training=True), axis=-1)
-            cls_lossL = tf.reduce_mean(- tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(probL, 1e-10, 1.0)), axis=-1))
-            
-            '''mix-up'''
-            with tape.stop_recording():
-                image_mixL, label_mixL, label_shuffleL = label_smoothing(imageL, labelL, mix_weight[0])
+            '''mix-up: labeled'''                
             smoothed_probL = tf.nn.softmax(model.ae.c_encode(image_mixL, training=True), axis=-1)
             
             mixup_yL = - tf.reduce_mean(mix_weight[0] * tf.reduce_sum(label_shuffleL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
