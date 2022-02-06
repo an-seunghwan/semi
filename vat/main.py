@@ -49,7 +49,7 @@ def get_args():
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
 
-    parser.add_argument('--epsilon', default=8.0, type=float,
+    parser.add_argument('--epsilon', default=2.5, type=float,
                         help="adversarial attack norm restriction")
     
     '''Optimizer Parameters'''
@@ -198,11 +198,11 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             predL = tf.nn.softmax(predL, axis=-1)
             ce_loss = - tf.reduce_mean(tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1))
             
-            predU = model(imageU)
+            predU = tf.stop_gradient(model(imageU, training=False))
             with tape.stop_recording():
                 r_vadv = generate_virtual_adversarial_perturbation(model, imageU, predU, eps=args['epsilon'])
             yhat = model(imageU + r_vadv)
-            v_loss = kl_with_logit(tf.stop_gradient(predU), yhat)
+            v_loss = kl_with_logit(predU, yhat)
             
             loss = ce_loss + v_loss
             
@@ -236,10 +236,10 @@ def validate(dataset, model, epoch, args, split):
         pred = model(image)
         pred = tf.nn.softmax(pred, axis=-1)
         ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))
-        pred = model(image)
+        pred = tf.stop_gradient(model(image, training=False))
         r_vadv = generate_virtual_adversarial_perturbation(model, image, pred, eps=args['epsilon'])
-        yhat = model(image + r_vadv)
-        v_loss = kl_with_logit(tf.stop_gradient(pred), yhat)
+        yhat = model(image + r_vadv, training=False)
+        v_loss = kl_with_logit(pred, yhat)
         loss = ce_loss + v_loss
         loss_avg(loss)
         ce_loss_avg(ce_loss)
