@@ -90,7 +90,7 @@ def get_args():
                         metavar='LR', help='initial learning rate')
     # parser.add_argument('-b1', '--beta1', default=0.9, type=float, metavar='Beta1 In ADAM and SGD',
     #                     help='beta1 for adam as well as momentum for SGD')
-    parser.add_argument('-ad', "--adjust_lr", default=[100, 200], type=arg_as_list,
+    parser.add_argument('-ad', "--adjust_lr", default=[200], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
     parser.add_argument('--lr_gamma', default=0.1, type=float)
     parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
@@ -156,7 +156,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220205-143742'
+model_path = log_path + '/20220206-141321'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 # model = AutoEncoder(num_classes=num_classes,

@@ -1,0 +1,14 @@
+dataset : cifar10
+seed : 1
+batch_size : 128
+epochs : 500
+start_epoch : 0
+iteration : 400
+labeled_examples : 4000
+validation_examples : 5000
+no_augment : True
+epsilon : 10.0
+lr : 0.001
+epoch_decay_start : 460
+top_bn : False
+config_path : configs/cifar10_4000.yaml

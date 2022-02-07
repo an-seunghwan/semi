@@ -6,8 +6,8 @@ labeled batch size?
 import argparse
 import os
 
-os.chdir(r'D:\semi\semi\proposal') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/semi/proposal') # main directory (repository)
+# os.chdir(r'D:\semi\semi\proposal') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/semi/proposal') # main directory (repository)
 # os.chdir('/Users/anseunghwan/Documents/GitHub/semi/semi/proposal') # main directory (repository)
 
 import numpy as np
@@ -79,11 +79,11 @@ def get_args():
 
     '''VAE Loss Function Parameters'''
     parser.add_argument('--mixup_max_z', default=1, type=float, 
-                        help='the epoch to linear adjust mixup')
+                        help='the max value for mixup(z) weight')
     parser.add_argument('--mixup_epoch_z',default=200, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--mixup_max_y', default=1, type=float, 
-                        help='the epoch to linear adjust mixup')
+    parser.add_argument('--mixup_max_y', default=1000, type=float, 
+                        help='the max value for mixup(y) weight')
     parser.add_argument('--mixup_epoch_y',default=200, type=int, 
                         help='the max epoch to adjust mixup')
     parser.add_argument('--lambda',default=1000, type=int, 
@@ -398,9 +398,8 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             recon_lossU, infoU, nf_lossU = ELBO_criterion(args, imageU, xhatU, probU, prob_reconU, nf_args)
             
             '''labeled: classification'''
-            probL = tf.nn.softmax(model.ae.c_encode(imageL, training=True), axis=-1)
-            
-            cls_lossL = tf.reduce_mean(- tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(probL, 1e-10, 1.0)), axis=-1))
+            # probL = tf.nn.softmax(model.ae.c_encode(imageL, training=True), axis=-1)
+            # cls_lossL = tf.reduce_mean(- tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(probL, 1e-10, 1.0)), axis=-1))
             
             with tape.stop_recording():
                 image_mixU, z_mixU, c_mixU, prob_mixU = non_smooth_mixup(imageU, z, c, probU, mix_weight[1])
@@ -412,8 +411,8 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             smoothed_xhatU = model.ae.decode(z_mixU, prob_mixU)
             
             mixup_zU = tf.reduce_mean(tf.math.square(smoothed_zU - z_mixU))
-            mixup_xhatU = tf.reduce_mean(tf.math.square(smoothed_xhatU - image_mixU))
-            # mixup_xhatU = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatU - image_mixU), axis=[1, 2, 3]))
+            # mixup_xhatU = tf.reduce_mean(tf.math.square(smoothed_xhatU - image_mixU))
+            mixup_xhatU = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatU - image_mixU), axis=[1, 2, 3]))
             # mixup_yU = - tf.reduce_mean(tf.reduce_sum(prob_mixU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
             mixup_yU = 0.5 * tf.reduce_mean(tf.reduce_sum(prob_mixU * (tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0)) - 
                                                                        tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0))), axis=1))
@@ -427,7 +426,8 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
             
             elbo_lossU = recon_lossU + (mixup_lambda_z * (mixup_zU + mixup_xhatU))
-            loss = elbo_lossU + (mixup_lambda_y * mixup_yU) + (lambda_ * (mixup_yL + cls_lossL + infoU))
+            loss = elbo_lossU + (mixup_lambda_y * mixup_yU) + (lambda_ * (mixup_yL + infoU))
+            # loss = elbo_lossU + (mixup_lambda_y * mixup_yU) + (lambda_ * (mixup_yL + cls_lossL + infoU))
 
         '''AutoEncoder'''
         grads = tape.gradient(loss, model.ae.trainable_variables) 
