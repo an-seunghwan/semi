@@ -81,8 +81,8 @@ def get_args():
     #                     metavar='EPOCHS', help='checkpoint frequency in epochs, 0 to turn checkpointing off (default: 1)')
     # parser.add_argument('--evaluation-epochs', default=1, type=int,
     #                     metavar='EPOCHS', help='evaluation frequency in epochs, 0 to turn evaluation off (default: 1)')
-    parser.add_argument('--print-freq', '-p', default=10, type=int,
-                        metavar='N', help='print frequency (default: 10)')
+    # parser.add_argument('--print-freq', '-p', default=10, type=int,
+    #                     metavar='N', help='print frequency (default: 10)')
     # parser.add_argument('--resume', default='', type=str, metavar=s'PATH',
     #                     help='path to latest checkpoint (default: nssssone)')
     # parser.add_argument('-e', '--evaluate', type=str2bool,
@@ -93,8 +93,8 @@ def get_args():
     #                     help='gpu id')
     parser.add_argument('--dfs-k', type=int, default=50,
                         help='diffusion k')
-    parser.add_argument('--fully-supervised', default=False, type=bool,
-                        help='is fully-supervised')
+    # parser.add_argument('--fully-supervised', default=False, type=bool,
+    #                     help='is fully-supervised')
     parser.add_argument('--isL2', default=True, type=bool,
                         help='is l2 normalized features')
     parser.add_argument('--num-labeled', type=int, default=4000,
