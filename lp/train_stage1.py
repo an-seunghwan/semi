@@ -14,11 +14,12 @@ import io
 import matplotlib.pyplot as plt
 
 import datetime
-current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+# current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+current_time = 'stage1'
 
 from preprocess import fetch_dataset
 from model import CNN
-from utils import weight_decay_decoupled, linear_rampup, cosine_rampdown
+from utils import weight_decay_decoupled, linear_rampup, cosine_rampdown, augment
 #%%
 import ast
 def arg_as_list(s):
@@ -241,6 +242,8 @@ def train(datasetL, model, buffer_model, optimizer, epoch, args, num_classes, to
         except:
             iteratorL = iter(shuffle_and_batch(datasetL))
             imageL, labelL = next(iteratorL)
+        
+        imageL = augment(imageL)
             
         with tf.GradientTape(persistent=True) as tape:
             predL, _ = model(imageL)
