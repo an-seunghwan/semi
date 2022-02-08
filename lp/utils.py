@@ -3,6 +3,10 @@ from multiprocessing import cpu_count
 
 import tensorflow as tf
 import numpy as np
+import faiss
+
+from sklearn.preprocessing import normalize
+import scipy
 #%%
 @tf.function
 def augment(x):
@@ -30,4 +34,106 @@ def linear_rampup(current, lampup_length):
 #%%
 def cosine_rampdown(current, rampdown_length):
     return float(0.5 * (np.cos(np.pi * current / rampdown_length) + 1))
+#%%
+def extract_features(datasetL, datasetU, model, args):
+    '''
+    first 4000 : labeled examples
+    '''
+    batch_iter = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=False)
+    iteratorL = iter(batch_iter(datasetL))
+    iteratorU = iter(batch_iter(datasetU))
+    
+    embeddings = []
+    labelsL = []
+    
+    while True:
+        try:
+            imageL, labelL = next(iteratorL)
+            _, feats = model(imageL, training=False)
+            embeddings.append(feats)
+            labelsL.append(labelL)
+        except:
+            break
+    
+    while True:
+        try:
+            imageU, _ = next(iteratorU)
+            _, feats = model(imageU, training=False)
+            embeddings.append(feats)
+        except:
+            break
+    
+    embeddings = tf.concat(embeddings, axis=0)
+    labelsL = tf.concat(labelsL, axis=0)
+    
+    return embeddings, labelsL
+#%%
+def update_plabels(embeddings, labelsL, num_classes, k=50, maxiter=20):
+    '''
+    first 4000 : labeled examples
+    '''
+    
+    alpha = 0.99
+    gamma = 3
+    
+    '''KNN search'''
+    embeddings = embeddings.numpy()
+    d = embeddings.shape[1]
+    index = faiss.IndexFlatL2(int(d))   
+    # print(index.is_trained)
+    embeddings = normalize(embeddings, axis=1, norm='l2')
+    index.add(embeddings)
+    
+    D, I = index.search(embeddings, k+1) 
+    # D: L2 distance
+    # I: topk index
+    
+    D = D[:, 1:] ** gamma
+    I = I[:, 1:]
+    
+    '''create graph'''
+    N = embeddings.shape[0]
+    row_idx = np.arange(N)
+    row_idx_rep = np.tile(row_idx, (k, 1)).T
+    W = scipy.sparse.csr_matrix((D.flatten('F'), (row_idx_rep.flatten('F'), I.flatten('F'))), shape=(N, N))
+    W = W + W.T
+    
+    '''normalize graph'''
+    W = W - scipy.sparse.diags(W.diagonal())
+    S = W.sum(axis=1)
+    S[S == 0] = 1
+    D = np.array(1. / np.sqrt(S))
+    D = scipy.sparse.diags(D.reshape(-1))
+    Wn = D * W * D
+    
+    '''initialize Y (normalize with the class size)'''
+    Z = np.zeros((N, num_classes))
+    I_alphaW = scipy.sparse.eye(Wn.shape[0]) - alpha * Wn
+    labelsL = np.argmax(labelsL.numpy(), axis=1)
+    for i in range(num_classes):
+        cur_idx = np.where(labelsL == i)[0]
+        y = np.zeros((N, ))
+        y[cur_idx] = 1. / len(cur_idx)
+        f, _ = scipy.sparse.linalg.cg(I_alphaW, y, tol=1e-6, maxiter=maxiter)
+        Z[:, i] = f
+    Z[Z < 0] = 0 # handle numerical errors
+    
+    '''compute weight based on entropy'''
+    probs_Z = Z / np.sum(Z, axis=1, keepdims=True)
+    probs_Z[probs_Z < 0] = 0
+    plabels = np.argmax(probs_Z, axis=1)
+    entropy = -np.sum(probs_Z * np.log(np.clip(probs_Z, 1e-10, 1.)), axis=1)
+    weights = 1. - entropy / np.log(num_classes)
+    weights = weights / np.max(weights)
+    
+    '''replace labeled examples with true values'''
+    plabels[:4000] = labelsL
+    weights[:4000] = 1.
+    
+    '''compute weight for each class'''
+    class_weights = np.zeros((1, num_classes))
+    for i in range(num_classes):
+        cur_idx = np.where(plabels == i)[0]
+        class_weights[0, i] = (N / num_classes) / len(cur_idx)
+    return plabels, weights, class_weights
 #%%

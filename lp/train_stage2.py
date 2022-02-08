@@ -18,7 +18,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
 from model import CNN
-from utils import weight_decay_decoupled, linear_rampup, cosine_rampdown, augment
+from utils import weight_decay_decoupled, linear_rampup, cosine_rampdown, augment, extract_features, update_plabels
 #%%
 import ast
 def arg_as_list(s):
@@ -125,7 +125,7 @@ def main():
     '''argparse to dictionary'''
     args = vars(get_args())
     # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/cmnist_100.yaml']))
+    # args = vars(parser.parse_args(args=[]))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -223,10 +223,22 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
     loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
-    shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
+    batch_iter = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=True)
 
-    iteratorL = iter(shuffle_and_batch(datasetL))
-    iteratorU = iter(shuffle_and_batch(datasetU))
+    iteratorL = iter(batch_iter(datasetL))
+    iteratorU = iter(batch_iter(datasetU))
+    
+    '''build pseudo-labels'''
+    embeddings, labelsL = extract_features(datasetL, datasetU, model, args)
+    plabels, weights, class_weights = update_plabels(embeddings, labelsL, num_classes, k=args['dfs_k'])
+    plabelsL = K.utils.to_categorical(plabels[:args['num_labeled']], num_classes=num_classes, dtype='float32')
+    plabelsU = K.utils.to_categorical(plabels[args['num_labeled']:], num_classes=num_classes, dtype='float32')
+    
+    pseudo_labelL = tf.data.Dataset.from_tensor_slices((plabelsL, tf.cast(weights[:args['num_labeled'], None], tf.float32)))
+    pseudo_labelU = tf.data.Dataset.from_tensor_slices((plabelsU, tf.cast(weights[args['num_labeled']:, None], tf.float32)))
+    
+    pseudo_label_iteratorL = iter(batch_iter(pseudo_labelL))
+    pseudo_label_iteratorU = iter(batch_iter(pseudo_labelU))
         
     # iteration = (50000 - args['validation_examples']) // args['batch_size'] 
     iteration = total_length // args['batch_size'] 
@@ -243,14 +255,20 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
         
         try:
             imageL, labelL = next(iteratorL)
+            plabels_batchL, weights_batchL = next(pseudo_label_iteratorL)
         except:
-            iteratorL = iter(shuffle_and_batch(datasetL))
+            iteratorL = iter(batch_iter(datasetL))
             imageL, labelL = next(iteratorL)
+            pseudo_label_iteratorL = iter(batch_iter(pseudo_labelL))
+            plabels_batchL, weights_batchL = next(pseudo_label_iteratorL)
         try:
             imageU, _ = next(iteratorU)
+            plabels_batchU, weights_batchU = next(pseudo_label_iteratorU)
         except:
-            iteratorU = iter(shuffle_and_batch(datasetU))
+            iteratorU = iter(batch_iter(datasetU))
             imageU, _ = next(iteratorU)
+            pseudo_label_iteratorU = iter(batch_iter(pseudo_labelU))
+            plabels_batchU, weights_batchU = next(pseudo_label_iteratorU)
         
         imageL = augment(imageL)
         imageU = augment(imageU)
@@ -258,17 +276,23 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
         with tf.GradientTape(persistent=True) as tape:
             predL, _ = model(imageL)
             predL = tf.nn.softmax(predL, axis=-1)
-            ce_loss = - tf.reduce_mean(tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1))
+            ce_lossL = tf.reduce_sum(class_weights * plabels_batchL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1)
+            ce_lossL = - tf.reduce_mean(tf.reshape(weights_batchL, (-1)) * ce_lossL)
             
-            '''pseudo-labels'''
+            predU, _ = model(imageU)
+            predU = tf.nn.softmax(predU, axis=-1)
+            ce_lossU = tf.reduce_sum(class_weights * plabels_batchU * tf.math.log(tf.clip_by_value(predU, 1e-10, 1.0)), axis=-1)
+            ce_lossU = - tf.reduce_mean(tf.reshape(weights_batchU, (-1)) * ce_lossU)
             
-        grads = tape.gradient(ce_loss, model.trainable_variables) 
+            loss = ce_lossL + ce_lossU
+            
+        grads = tape.gradient(loss, model.trainable_variables) 
         '''SGD + momentum''' 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
         '''decoupled weight decay'''
         weight_decay_decoupled(model, buffer_model, decay_rate=args['weight_decay'] * optimizer.lr)
         
-        loss_avg(ce_loss)
+        loss_avg(loss)
         probL, _ = model(imageL, training=False)
         probL = tf.nn.softmax(probL, axis=-1)
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
