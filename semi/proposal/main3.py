@@ -102,9 +102,9 @@ def get_args():
     '''Normalizing Flow Model Parameters'''
     parser.add_argument('--z_hidden_dim', default=256, type=int,
                         help='embedding dimension of continuous latent for coupling layer')
-    parser.add_argument('--c_hidden_dim', default=128, type=int,
+    parser.add_argument('--c_hidden_dim', default=64, type=int,
                         help='embedding dimension of discrete latent for coupling layer')
-    parser.add_argument('--z_n_blocks', default=6, type=int,
+    parser.add_argument('--z_n_blocks', default=4, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
     parser.add_argument('--c_n_blocks', default=4, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
@@ -112,8 +112,8 @@ def get_args():
     '''Normalizing Flow Optimizer Parameters'''
     parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.001, type=float,
                         metavar='LR', help='initial learning rate for normalizing flow')
-    parser.add_argument('--lr_gamma_nf', default=0.1, type=float)
-    parser.add_argument('--wd_nf', '--weight-decay-nf', default=2e-5, type=float,
+    parser.add_argument('--lr_gamma_nf', default=0.5, type=float)
+    parser.add_argument('--wd_nf', '--weight-decay-nf', default=4e-5, type=float,
                         help='L2 regularization parameter for dense layers in Real NVP')
     parser.add_argument('-b1_nf', '--beta1_nf', default=0.9, type=float, metavar='Beta1 In ADAM',
                         help='beta1 for adam')
@@ -121,7 +121,7 @@ def get_args():
                         help='beta2 for adam')
     parser.add_argument('-ad_nf', "--adjust_lr_nf", default=[0.25, 0.5, 0.75], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
-    parser.add_argument('--start_epoch_nf', default=200, type=int,
+    parser.add_argument('--start_epoch_nf', default=0, type=int,
                         help="NF training start epoch")
     # parser.add_argument('--decay_steps', default=1, type=int,
     #                     help='decay steps for exponential decay schedule')
@@ -156,7 +156,7 @@ def generate_and_save_images1(model, image, num_classes):
     buf = io.BytesIO()
     figure = plt.figure(figsize=(10, 2))
     plt.subplot(1, num_classes+1, 1)
-    plt.imshow((image[0] + 1) / 2)
+    plt.imshow(image[0])
     plt.title('original')
     plt.axis('off')
     for i in range(num_classes):
@@ -165,7 +165,7 @@ def generate_and_save_images1(model, image, num_classes):
         label = tf.cast(label, tf.float32)
         xhat = model.ae.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
-        plt.imshow((xhat[0] + 1) / 2)
+        plt.imshow(xhat[0])
         plt.title('{}'.format(i))
         plt.axis('off')
     plt.savefig(buf, format='png')
@@ -184,7 +184,7 @@ def generate_and_save_images2(model, image, num_classes, step, save_dir):
     
     plt.figure(figsize=(10, 2))
     plt.subplot(1, num_classes+1, 1)
-    plt.imshow((image[0] + 1) / 2)
+    plt.imshow(image[0])
     plt.title('original')
     plt.axis('off')
     for i in range(num_classes):
@@ -193,7 +193,7 @@ def generate_and_save_images2(model, image, num_classes, step, save_dir):
         label = tf.cast(label, tf.float32)
         xhat = model.ae.decode(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
-        plt.imshow((xhat[0] + 1) / 2)
+        plt.imshow(xhat[0])
         plt.title('{}'.format(i))
         plt.axis('off')
     plt.savefig('{}/image_at_epoch_{}.png'.format(save_dir, step))
@@ -356,8 +356,10 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
     mixup_lambda_y = weight_schedule(epoch, args['mixup_epoch_y'], args['mixup_max_y'])
 
     shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
+    # shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e5)).batch(batch_size=32, drop_remainder=True)
 
     iteratorL = iter(shuffle_and_batch(datasetL))
+    # iteratorL = iter(shuffle_and_batchL(datasetL))
     iteratorU = iter(shuffle_and_batch(datasetU))
         
     # iteration = (50000 - args['validation_examples']) // args['batch_size'] 
@@ -370,6 +372,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             imageL, labelL = next(iteratorL)
         except:
             iteratorL = iter(shuffle_and_batch(datasetL))
+            # iteratorL = iter(shuffle_and_batchL(datasetL))
             imageL, labelL = next(iteratorL)
         try:
             imageU, _ = next(iteratorU)
@@ -385,27 +388,68 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
                       tf.constant(np.random.beta(2.0, 2.0))] # unlabeled
         lambda_ = tf.convert_to_tensor(args['lambda'], dtype=tf.float32)
         
+        '''labeled'''
         with tf.GradientTape(persistent=True) as tape:
-            '''unlabeled'''
-            # [[z, c, probU, xhatU], nf_args] = model(imageU, training=True)
+            # [[z, c, probL, xhatL], nf_args] = model(imageL)
+            z, c, probL, xhatL = model.ae(imageL)
+            z_ = tf.stop_gradient(z)
+            c_ = tf.stop_gradient(c)
+            nf_args = model.prior(z_, c_)
+            # with tape.stop_recording():
+            prob_reconL = tf.nn.softmax(model.ae.c_encode(xhatL), axis=-1)
+            
+            recon_lossL, infoL, nf_lossL = ELBO_criterion(args, imageL, xhatL, probL, prob_reconL, nf_args)
+            
+            '''classification'''
+            cls_lossL = tf.reduce_mean(- tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(probL, 1e-10, 1.0)), axis=-1))
+            
+            with tape.stop_recording():
+                image_mixL, z_mixL, c_mixL, label_mixL, label_shuffleL = label_smoothing(imageL, z, c, labelL, mix_weight[0])
+            
+            '''mix-up'''
+            smoothed_zL, smoothed_probL = model.ae.encode(image_mixL)
+            smoothed_probL = tf.nn.softmax(smoothed_probL, axis=-1)
+            smoothed_xhatL = model.ae.decode(z_mixL, label_mixL)
+            
+            mixup_zL = tf.reduce_mean(tf.math.square(smoothed_zL - z_mixL))
+            # mixup_xhatL = tf.reduce_mean(tf.math.square(smoothed_xhatL - image_mixL))
+            mixup_xhatL = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatL - image_mixL), axis=[1, 2, 3]))
+            mixup_yL = - tf.reduce_mean(mix_weight[0] * tf.reduce_sum(label_shuffleL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
+            mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
+            
+            elbo_lossL = recon_lossL + (mixup_lambda_z * (mixup_zL + mixup_xhatL))
+            loss_supervised = elbo_lossL + (lambda_ * (mixup_yL + cls_lossL + infoL))
+
+        '''AutoEncoder'''
+        grads = tape.gradient(loss_supervised, model.ae.trainable_variables) 
+        '''SGD + momentum''' 
+        optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) 
+        '''decoupled weight decay'''
+        weight_decay_decoupled(model.ae, buffer_model.ae, decay_rate=args['wd'] * optimizer.lr)
+        
+        if epoch >= args['start_epoch_nf']:
+            '''Normalizing Flow'''
+            grad = tape.gradient(nf_lossL, model.prior.trainable_weights)
+            optimizer_nf.apply_gradients(zip(grad, model.prior.trainable_weights))
+            '''decoupled weight decay'''
+            weight_decay_decoupled(model.prior, buffer_model.prior, decay_rate=args['wd_nf'] * optimizer_nf.lr)
+        
+        '''unlabeled'''
+        with tf.GradientTape(persistent=True) as tape:
+            # [[z, c, probU, xhatU], nf_args] = model(imageU)
             z, c, probU, xhatU = model.ae(imageU)
             z_ = tf.stop_gradient(z)
             c_ = tf.stop_gradient(c)
             nf_args = model.prior(z_, c_)
             # with tape.stop_recording():
-            prob_reconU = tf.nn.softmax(model.ae.c_encode(xhatU, training=True), axis=-1)
+            prob_reconU = tf.nn.softmax(model.ae.c_encode(xhatU), axis=-1)
             
             recon_lossU, infoU, nf_lossU = ELBO_criterion(args, imageU, xhatU, probU, prob_reconU, nf_args)
             
-            '''labeled: classification'''
-            # probL = tf.nn.softmax(model.ae.c_encode(imageL, training=True), axis=-1)
-            # cls_lossL = tf.reduce_mean(- tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(probL, 1e-10, 1.0)), axis=-1))
-            
             with tape.stop_recording():
                 image_mixU, z_mixU, c_mixU, prob_mixU = non_smooth_mixup(imageU, z, c, probU, mix_weight[1])
-                image_mixL, label_mixL, label_shuffleL = label_smoothing(imageL, labelL, mix_weight[0])
             
-            '''mix-up: unlabeled'''
+            '''mix-up'''
             smoothed_zU, smoothed_probU = model.ae.encode(image_mixU)
             smoothed_probU = tf.nn.softmax(smoothed_probU, axis=-1)
             smoothed_xhatU = model.ae.decode(z_mixU, prob_mixU)
@@ -413,24 +457,19 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             mixup_zU = tf.reduce_mean(tf.math.square(smoothed_zU - z_mixU))
             # mixup_xhatU = tf.reduce_mean(tf.math.square(smoothed_xhatU - image_mixU))
             mixup_xhatU = tf.reduce_mean(tf.reduce_sum(tf.math.square(smoothed_xhatU - image_mixU), axis=[1, 2, 3]))
-            # mixup_yU = - tf.reduce_mean(tf.reduce_sum(prob_mixU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
-            mixup_yU = 0.5 * tf.reduce_mean(tf.reduce_sum(prob_mixU * (tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0)) - 
-                                                                       tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0))), axis=1))
-            mixup_yU += 0.5 * tf.reduce_mean(tf.reduce_sum(smoothed_probU * (tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)) - 
-                                                                             tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0))), axis=1))
-            
-            '''mix-up: labeled'''                
-            smoothed_probL = tf.nn.softmax(model.ae.c_encode(image_mixL, training=True), axis=-1)
-            
-            mixup_yL = - tf.reduce_mean(mix_weight[0] * tf.reduce_sum(label_shuffleL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
-            mixup_yL += - tf.reduce_mean((1. - mix_weight[0]) * tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(smoothed_probL, 1e-10, 1.0)), axis=-1))
+            # CE
+            mixup_yU = - tf.reduce_mean(tf.reduce_sum(prob_mixU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
+            # JSD
+            # mixup_yU = 0.5 * tf.reduce_mean(tf.reduce_sum(prob_mixU * (tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0)) - 
+            #                                                            tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0))), axis=1))
+            # mixup_yU += 0.5 * tf.reduce_mean(tf.reduce_sum(smoothed_probU * (tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)) - 
+            #                                                                  tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0))), axis=1))
             
             elbo_lossU = recon_lossU + (mixup_lambda_z * (mixup_zU + mixup_xhatU))
-            loss = elbo_lossU + (mixup_lambda_y * mixup_yU) + (lambda_ * (mixup_yL + infoU))
-            # loss = elbo_lossU + (mixup_lambda_y * mixup_yU) + (lambda_ * (mixup_yL + cls_lossL + infoU))
+            loss_unsupervised = elbo_lossU + (mixup_lambda_y * mixup_yU) + (lambda_ * infoU)
 
         '''AutoEncoder'''
-        grads = tape.gradient(loss, model.ae.trainable_variables) 
+        grads = tape.gradient(loss_unsupervised, model.ae.trainable_variables) 
         '''SGD + momentum''' 
         optimizer.apply_gradients(zip(grads, model.ae.trainable_variables)) 
         '''decoupled weight decay'''
@@ -443,7 +482,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             '''decoupled weight decay'''
             weight_decay_decoupled(model.prior, buffer_model.prior, decay_rate=args['wd_nf'] * optimizer_nf.lr)
         
-        loss_avg(loss)
+        loss_avg(loss_unsupervised)
         recon_loss_avg(recon_lossU)
         info_loss_avg(infoU)
         nf_loss_avg(nf_lossU)

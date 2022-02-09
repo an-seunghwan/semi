@@ -98,9 +98,9 @@ def get_args():
     '''Normalizing Flow Model Parameters'''
     parser.add_argument('--z_hidden_dim', default=256, type=int,
                         help='embedding dimension of continuous latent for coupling layer')
-    parser.add_argument('--c_hidden_dim', default=128, type=int,
+    parser.add_argument('--c_hidden_dim', default=64, type=int,
                         help='embedding dimension of discrete latent for coupling layer')
-    parser.add_argument('--z_n_blocks', default=6, type=int,
+    parser.add_argument('--z_n_blocks', default=4, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
     parser.add_argument('--c_n_blocks', default=4, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
@@ -108,8 +108,8 @@ def get_args():
     '''Normalizing Flow Optimizer Parameters'''
     parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.001, type=float,
                         metavar='LR', help='initial learning rate for normalizing flow')
-    parser.add_argument('--lr_gamma_nf', default=0.1, type=float)
-    parser.add_argument('--wd_nf', '--weight-decay-nf', default=2e-5, type=float,
+    parser.add_argument('--lr_gamma_nf', default=0.5, type=float)
+    parser.add_argument('--wd_nf', '--weight-decay-nf', default=4e-5, type=float,
                         help='L2 regularization parameter for dense layers in Real NVP')
     parser.add_argument('-b1_nf', '--beta1_nf', default=0.9, type=float, metavar='Beta1 In ADAM',
                         help='beta1 for adam')
@@ -117,7 +117,7 @@ def get_args():
                         help='beta2 for adam')
     parser.add_argument('-ad_nf', "--adjust_lr_nf", default=[0.25, 0.5, 0.75], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
-    parser.add_argument('--start_epoch_nf', default=200, type=int,
+    parser.add_argument('--start_epoch_nf', default=0, type=int,
                         help="NF training start epoch")
     # parser.add_argument('--decay_steps', default=1, type=int,
     #                     help='decay steps for exponential decay schedule')
@@ -156,7 +156,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220206-191455'
+model_path = log_path + '/20220207-185548'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 model.build(input_shape=(None, 32, 32, 3))
