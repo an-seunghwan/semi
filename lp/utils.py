@@ -35,16 +35,16 @@ def linear_rampup(current, lampup_length):
 def cosine_rampdown(current, rampdown_length):
     return float(0.5 * (np.cos(np.pi * current / rampdown_length) + 1))
 #%%
-def extract_features(datasetL, datasetU, model, args):
-    '''
-    first 4000 : labeled examples
-    '''
+def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
+                       k=50, maxiter=20):
+    '''extract features'''
     batch_iter = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=False)
     iteratorL = iter(batch_iter(datasetL))
     iteratorU = iter(batch_iter(datasetU))
     
     embeddings = []
     labelsL = []
+    images = []
     
     while True:
         try:
@@ -52,6 +52,7 @@ def extract_features(datasetL, datasetU, model, args):
             _, feats = model(imageL, training=False)
             embeddings.append(feats)
             labelsL.append(labelL)
+            images.append(imageL)
         except:
             break
     
@@ -60,19 +61,20 @@ def extract_features(datasetL, datasetU, model, args):
             imageU, _ = next(iteratorU)
             _, feats = model(imageU, training=False)
             embeddings.append(feats)
+            images.append(imageU)
         except:
             break
     
     embeddings = tf.concat(embeddings, axis=0)
     labelsL = tf.concat(labelsL, axis=0)
+    images = tf.concat(images, axis=0)
     
-    return embeddings, labelsL
-#%%
-def update_plabels(embeddings, labelsL, num_classes, k=50, maxiter=20):
-    '''
-    first 4000 : labeled examples
-    '''
+    # shuffled_indices = tf.random.shuffle(tf.range(start=0, limit=len(embeddings), dtype=tf.int32))
+    # embeddings = tf.gather(embeddings, shuffled_indices)
+    # labels = tf.gather(labels, shuffled_indices)
+    # tf.where(tf.less(shuffled_indices, tf.shape(labelsL)[0]), tf.cast(shuffled_indices, tf.float32), -1.0)
     
+    '''update pseudo-labels'''
     alpha = 0.99
     gamma = 3
     
@@ -135,5 +137,9 @@ def update_plabels(embeddings, labelsL, num_classes, k=50, maxiter=20):
     for i in range(num_classes):
         cur_idx = np.where(plabels == i)[0]
         class_weights[0, i] = (N / num_classes) / len(cur_idx)
-    return plabels, weights, class_weights
+    
+    '''build pseudo-label dataset'''
+    plabels = tf.one_hot(plabels, depth=num_classes)
+    pseudo_dataset = tf.data.Dataset.from_tensor_slices((images, plabels, tf.cast(weights[:, None], tf.float32)))
+    return pseudo_dataset, class_weights
 #%%

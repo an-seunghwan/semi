@@ -18,7 +18,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
 from model import CNN
-from utils import weight_decay_decoupled, linear_rampup, cosine_rampdown, augment, extract_features, update_plabels
+from utils import weight_decay_decoupled, linear_rampup, cosine_rampdown, augment, build_pseudo_label
 #%%
 import ast
 def arg_as_list(s):
@@ -92,8 +92,8 @@ def get_args():
     #                     help='gpu id')
     parser.add_argument('--dfs-k', type=int, default=50,
                         help='diffusion k')
-    parser.add_argument('--fully-supervised', default=False, type=bool,
-                        help='is fully-supervised')
+    # parser.add_argument('--fully-supervised', default=False, type=bool,
+    #                     help='is fully-supervised')
     parser.add_argument('--isL2', default=True, type=bool,
                         help='is l2 normalized features')
     parser.add_argument('--num-labeled', type=int, default=4000,
@@ -134,7 +134,7 @@ def main():
     log_path = f'logs/{args["dataset"]}_{args["num_labeled"]}'
 
     datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
-    total_length = sum(1 for _ in datasetL)
+    total_length = sum(1 for _ in datasetU)
     
     '''load model from stage1'''
     model_path = log_path + '/stage1'
@@ -171,6 +171,7 @@ def main():
     optimizer = K.optimizers.SGD(learning_rate=args['lr'],
                                 momentum=args['momentum'],
                                 nesterov=args['nesterov'])
+    # optimizer = K.optimizers.Adam(learning_rate=args['lr'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -223,25 +224,30 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
     loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
-    batch_iter = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=True)
+    # batch_iter = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=True)
 
-    iteratorL = iter(batch_iter(datasetL))
-    iteratorU = iter(batch_iter(datasetU))
+    # iteratorL = iter(batch_iter(datasetL))
+    # iteratorU = iter(batch_iter(datasetU))
     
-    '''build pseudo-labels'''
-    embeddings, labelsL = extract_features(datasetL, datasetU, model, args)
-    plabels, weights, class_weights = update_plabels(embeddings, labelsL, num_classes, k=args['dfs_k'])
-    plabelsL = K.utils.to_categorical(plabels[:args['num_labeled']], num_classes=num_classes, dtype='float32')
-    plabelsU = K.utils.to_categorical(plabels[args['num_labeled']:], num_classes=num_classes, dtype='float32')
+    # '''build pseudo-labels'''
+    # embeddings, labelsL = extract_features(datasetL, datasetU, model, args)
+    # plabels, weights, class_weights = update_plabels(embeddings, labelsL, num_classes, k=args['dfs_k'])
+    # plabelsL = K.utils.to_categorical(plabels[:args['num_labeled']], num_classes=num_classes, dtype='float32')
+    # plabelsU = K.utils.to_categorical(plabels[args['num_labeled']:], num_classes=num_classes, dtype='float32')
     
-    pseudo_labelL = tf.data.Dataset.from_tensor_slices((plabelsL, tf.cast(weights[:args['num_labeled'], None], tf.float32)))
-    pseudo_labelU = tf.data.Dataset.from_tensor_slices((plabelsU, tf.cast(weights[args['num_labeled']:, None], tf.float32)))
+    # pseudo_labelL = tf.data.Dataset.from_tensor_slices((plabelsL, tf.cast(weights[:args['num_labeled'], None], tf.float32)))
+    # pseudo_labelU = tf.data.Dataset.from_tensor_slices((plabelsU, tf.cast(weights[args['num_labeled']:, None], tf.float32)))
     
-    pseudo_label_iteratorL = iter(batch_iter(pseudo_labelL))
-    pseudo_label_iteratorU = iter(batch_iter(pseudo_labelU))
+    # pseudo_label_iteratorL = iter(batch_iter(pseudo_labelL))
+    # pseudo_label_iteratorU = iter(batch_iter(pseudo_labelU))
+    
+    pseudo_dataset, class_weights = build_pseudo_label(datasetL, datasetU, model, num_classes, args, k=args['dfs_k'])
+    shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
+    pseudo_iterator = iter(shuffle_and_batch(pseudo_dataset))
         
     # iteration = (50000 - args['validation_examples']) // args['batch_size'] 
-    iteration = total_length // args['batch_size'] 
+    # iteration = total_length // args['batch_size'] 
+    iteration = 50000 // args['batch_size'] 
     
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
@@ -254,48 +260,29 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
         optimizer.lr = lr
         
         try:
-            imageL, labelL = next(iteratorL)
-            plabels_batchL, weights_batchL = next(pseudo_label_iteratorL)
+            image, label, weight = next(pseudo_iterator)
         except:
-            iteratorL = iter(batch_iter(datasetL))
-            imageL, labelL = next(iteratorL)
-            pseudo_label_iteratorL = iter(batch_iter(pseudo_labelL))
-            plabels_batchL, weights_batchL = next(pseudo_label_iteratorL)
-        try:
-            imageU, _ = next(iteratorU)
-            plabels_batchU, weights_batchU = next(pseudo_label_iteratorU)
-        except:
-            iteratorU = iter(batch_iter(datasetU))
-            imageU, _ = next(iteratorU)
-            pseudo_label_iteratorU = iter(batch_iter(pseudo_labelU))
-            plabels_batchU, weights_batchU = next(pseudo_label_iteratorU)
+            pseudo_iterator = iter(shuffle_and_batch(pseudo_iterator))
+            image, label, weight = next(pseudo_iterator)
         
-        imageL = augment(imageL)
-        imageU = augment(imageU)
+        image = augment(image)
         
         with tf.GradientTape(persistent=True) as tape:
-            predL, _ = model(imageL)
-            predL = tf.nn.softmax(predL, axis=-1)
-            ce_lossL = tf.reduce_sum(class_weights * plabels_batchL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1)
-            ce_lossL = - tf.reduce_mean(tf.reshape(weights_batchL, (-1)) * ce_lossL)
+            pred, _ = model(image)
+            pred = tf.nn.softmax(pred, axis=-1)
+            ce_loss = tf.reduce_sum(class_weights * label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1)
+            ce_loss = - tf.reduce_mean(weight * ce_loss)
             
-            predU, _ = model(imageU)
-            predU = tf.nn.softmax(predU, axis=-1)
-            ce_lossU = tf.reduce_sum(class_weights * plabels_batchU * tf.math.log(tf.clip_by_value(predU, 1e-10, 1.0)), axis=-1)
-            ce_lossU = - tf.reduce_mean(tf.reshape(weights_batchU, (-1)) * ce_lossU)
-            
-            loss = ce_lossL + ce_lossU
-            
-        grads = tape.gradient(loss, model.trainable_variables) 
+        grads = tape.gradient(ce_loss, model.trainable_variables) 
         '''SGD + momentum''' 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
         '''decoupled weight decay'''
         weight_decay_decoupled(model, buffer_model, decay_rate=args['weight_decay'] * optimizer.lr)
         
-        loss_avg(loss)
-        probL, _ = model(imageL, training=False)
+        loss_avg(ce_loss)
+        probL, _ = model(image, training=False)
         probL = tf.nn.softmax(probL, axis=-1)
-        accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
+        accuracy(tf.argmax(label, axis=1, output_type=tf.int32), probL)
 
         progress_bar.set_postfix({
             'EPOCH': f'{epoch:04d}',
