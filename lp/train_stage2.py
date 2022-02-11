@@ -241,8 +241,9 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
     # pseudo_label_iteratorL = iter(batch_iter(pseudo_labelL))
     # pseudo_label_iteratorU = iter(batch_iter(pseudo_labelU))
     
+    autotune = tf.data.AUTOTUNE
     pseudo_dataset, class_weights = build_pseudo_label(datasetL, datasetU, model, num_classes, args, k=args['dfs_k'])
-    shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
+    shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True).prefetch(autotune)
     pseudo_iterator = iter(shuffle_and_batch(pseudo_dataset))
         
     # iteration = (50000 - args['validation_examples']) // args['batch_size'] 
