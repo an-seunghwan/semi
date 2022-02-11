@@ -10,6 +10,7 @@ lr_rampdown_epochs : 210
 momentum : 0.9
 nesterov : True
 weight_decay : 0.0002
+print_freq : 10
 dfs_k : 50
 isL2 : True
 num_labeled : 4000

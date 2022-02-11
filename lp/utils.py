@@ -81,9 +81,9 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     '''KNN search'''
     embeddings = embeddings.numpy()
     d = embeddings.shape[1]
-    index = faiss.IndexFlatL2(int(d))   
+    index = faiss.IndexFlatIP(int(d))   
     # print(index.is_trained)
-    embeddings = normalize(embeddings, axis=1, norm='l2')
+    # embeddings = normalize(embeddings, axis=1, norm='l2') # originally, normalize_L2 from faiss
     index.add(embeddings)
     
     D, I = index.search(embeddings, k+1) 
@@ -129,8 +129,8 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     weights = weights / np.max(weights)
     
     '''replace labeled examples with true values'''
-    plabels[:4000] = labelsL
-    weights[:4000] = 1.
+    plabels[:tf.shape(labelsL)[0]] = labelsL
+    weights[:tf.shape(labelsL)[0]] = 1.
     
     '''compute weight for each class'''
     class_weights = np.zeros((1, num_classes))
@@ -139,7 +139,9 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
         class_weights[0, i] = (N / num_classes) / len(cur_idx)
     
     '''build pseudo-label dataset'''
-    plabels = tf.one_hot(plabels, depth=num_classes)
-    pseudo_dataset = tf.data.Dataset.from_tensor_slices((images, plabels, tf.cast(weights[:, None], tf.float32)))
-    return pseudo_dataset, class_weights
+    plabels = tf.one_hot(plabels[tf.shape(labelsL)[0]:], depth=num_classes)
+    pseudo_datasetU = tf.data.Dataset.from_tensor_slices((images.numpy()[tf.shape(labelsL)[0]:], 
+                                                          plabels, 
+                                                          tf.cast(weights[tf.shape(labelsL)[0]:, None], tf.float32)))
+    return pseudo_datasetU, class_weights
 #%%

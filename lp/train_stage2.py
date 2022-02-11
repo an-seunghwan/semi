@@ -241,13 +241,17 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
     # pseudo_label_iteratorL = iter(batch_iter(pseudo_labelL))
     # pseudo_label_iteratorU = iter(batch_iter(pseudo_labelU))
     
-    pseudo_dataset, class_weights = build_pseudo_label(datasetL, datasetU, model, num_classes, args, k=args['dfs_k'])
-    shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
-    pseudo_iterator = iter(shuffle_and_batch(pseudo_dataset))
+    autotune = tf.data.AUTOTUNE
+    shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e5)).batch(batch_size=50, drop_remainder=True).prefetch(autotune)
+    shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True).prefetch(autotune)
+    
+    pseudo_datasetU, class_weights = build_pseudo_label(datasetL, datasetU, model, num_classes, args, k=args['dfs_k'])
+    iteratorL = iter(shuffle_and_batchL(datasetL))
+    iteratorU = iter(shuffle_and_batch(pseudo_datasetU))
         
-    # iteration = (50000 - args['validation_examples']) // args['batch_size'] 
+    iteration = (50000 - args['num_labeled']) // args['batch_size'] 
     # iteration = total_length // args['batch_size'] 
-    iteration = 50000 // args['batch_size'] 
+    # iteration = 50000 // args['batch_size'] 
     
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
@@ -260,29 +264,43 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
         optimizer.lr = lr
         
         try:
-            image, label, weight = next(pseudo_iterator)
+            imageL, labelL = next(iteratorL)
         except:
-            pseudo_iterator = iter(shuffle_and_batch(pseudo_iterator))
-            image, label, weight = next(pseudo_iterator)
+            iteratorL = iter(shuffle_and_batchL(datasetL))
+            imageL, labelL = next(iteratorL)
+        try:
+            imageU, labelU, weightU = next(iteratorU)
+        except:
+            iteratorU = iter(shuffle_and_batch(pseudo_datasetU))
+            imageU, labelU, weightU = next(iteratorU)
         
-        image = augment(image)
+        imageL = augment(imageL)
+        imageU = augment(imageU)
         
         with tf.GradientTape(persistent=True) as tape:
-            pred, _ = model(image)
-            pred = tf.nn.softmax(pred, axis=-1)
-            ce_loss = tf.reduce_sum(class_weights * label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1)
-            ce_loss = - tf.reduce_mean(weight * ce_loss)
+            '''labeled'''
+            predL, _ = model(imageL)
+            predL = tf.nn.softmax(predL, axis=-1)
+            ce_lossL = tf.reduce_sum(class_weights * labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1)
+            ce_lossL = - tf.reduce_mean(ce_lossL)
             
-        grads = tape.gradient(ce_loss, model.trainable_variables) 
+            predU, _ = model(imageU)
+            predU = tf.nn.softmax(predU, axis=-1)
+            ce_lossU = tf.reduce_sum(class_weights * labelU * tf.math.log(tf.clip_by_value(predU, 1e-10, 1.0)), axis=-1)
+            ce_lossU = - tf.reduce_mean(weightU * ce_lossU)
+            
+            loss = ce_lossL + ce_lossU
+            
+        grads = tape.gradient(loss, model.trainable_variables) 
         '''SGD + momentum''' 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
         '''decoupled weight decay'''
         weight_decay_decoupled(model, buffer_model, decay_rate=args['weight_decay'] * optimizer.lr)
         
-        loss_avg(ce_loss)
-        probL, _ = model(image, training=False)
+        loss_avg(loss)
+        probL, _ = model(imageL, training=False)
         probL = tf.nn.softmax(probL, axis=-1)
-        accuracy(tf.argmax(label, axis=1, output_type=tf.int32), probL)
+        accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
 
         progress_bar.set_postfix({
             'EPOCH': f'{epoch:04d}',
