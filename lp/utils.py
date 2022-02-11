@@ -139,7 +139,9 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
         class_weights[0, i] = (N / num_classes) / len(cur_idx)
     
     '''build pseudo-label dataset'''
-    plabels = tf.one_hot(plabels, depth=num_classes)
-    pseudo_dataset = tf.data.Dataset.from_tensor_slices((images, plabels, tf.cast(weights[:, None], tf.float32)))
-    return pseudo_dataset, class_weights
+    plabels = tf.one_hot(plabels[tf.shape(labelsL)[0]:], depth=num_classes)
+    pseudo_datasetU = tf.data.Dataset.from_tensor_slices((images.numpy()[tf.shape(labelsL)[0]:], 
+                                                          plabels, 
+                                                          tf.cast(weights[tf.shape(labelsL)[0]:, None], tf.float32)))
+    return pseudo_datasetU, class_weights
 #%%
