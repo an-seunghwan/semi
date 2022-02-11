@@ -267,7 +267,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
             imageL, labelL = next(iteratorL)
         except:
             iteratorL = iter(shuffle_and_batchL(datasetL))
-            imageL, labelL = next(datasetL)
+            imageL, labelL = next(iteratorL)
         try:
             imageU, labelU, weightU = next(iteratorU)
         except:
