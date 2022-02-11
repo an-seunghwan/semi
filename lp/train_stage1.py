@@ -283,6 +283,12 @@ def validate(dataset, model, epoch, args, split):
 
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
+        '''normalization'''
+        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
+                            std=tf.reshape(tf.cast(np.array([0.2470,  0.2435,  0.2616]), tf.float32), (1, 1, 1, 3)))
+        image -= channel_stats['mean']
+        image /= channel_stats['std']
+        
         pred, _ = model(image, training=False)
         pred = tf.nn.softmax(pred, axis=-1)
         ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))
