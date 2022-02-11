@@ -121,7 +121,7 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     Z[Z < 0] = 0 # handle numerical errors
     
     '''compute weight based on entropy'''
-    probs_Z = Z / np.sum(Z, axis=1, keepdims=True)
+    probs_Z = Z / np.sum(np.abs(Z), axis=1, keepdims=True)
     probs_Z[probs_Z < 0] = 0
     plabels = np.argmax(probs_Z, axis=1)
     entropy = -np.sum(probs_Z * np.log(np.clip(probs_Z, 1e-10, 1.)), axis=1)

@@ -16,54 +16,45 @@ class CNN(K.models.Model):
         self.isL2 = isL2
         self.units = K.Sequential(
             [
-                layers.Conv2D(filters=128, kernel_size=3, strides=1, 
-                                padding='same', use_bias=False),
+                layers.Conv2D(filters=128, kernel_size=3, strides=1, padding='same'),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
-                layers.Conv2D(filters=128, kernel_size=3, strides=1, 
-                                padding='same', use_bias=False),
+                layers.Conv2D(filters=128, kernel_size=3, strides=1, padding='same'),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
-                layers.Conv2D(filters=128, kernel_size=3, strides=1, 
-                                padding='same', use_bias=False),
-                layers.BatchNormalization(),
-                layers.LeakyReLU(alpha=0.1),
-                
-                layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
-                layers.SpatialDropout2D(rate=0.5),
-                
-                layers.Conv2D(filters=256, kernel_size=3, strides=1, 
-                                padding='same', use_bias=False),
-                layers.BatchNormalization(),
-                layers.LeakyReLU(alpha=0.1),
-                
-                layers.Conv2D(filters=256, kernel_size=3, strides=1, 
-                                padding='same', use_bias=False),
-                layers.BatchNormalization(),
-                layers.LeakyReLU(alpha=0.1),
-                
-                layers.Conv2D(filters=256, kernel_size=3, strides=1, 
-                                padding='same', use_bias=False),
+                layers.Conv2D(filters=128, kernel_size=3, strides=1, padding='same'),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
                 layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
                 layers.SpatialDropout2D(rate=0.5),
                 
-                layers.Conv2D(filters=512, kernel_size=3, strides=1, 
-                                padding='same', use_bias=False),
+                layers.Conv2D(filters=256, kernel_size=3, strides=1, padding='same'),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
-                layers.Conv2D(filters=256, kernel_size=3, strides=1, 
-                                padding='same', use_bias=False),
+                layers.Conv2D(filters=256, kernel_size=3, strides=1, padding='same'),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
-                layers.Conv2D(filters=128, kernel_size=3, strides=1, 
-                                padding='same', use_bias=False),
+                layers.Conv2D(filters=256, kernel_size=3, strides=1, padding='same'),
+                layers.BatchNormalization(),
+                layers.LeakyReLU(alpha=0.1),
+                
+                layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
+                layers.SpatialDropout2D(rate=0.5),
+                
+                layers.Conv2D(filters=512, kernel_size=3, strides=1, padding='valid'),
+                layers.BatchNormalization(),
+                layers.LeakyReLU(alpha=0.1),
+                
+                layers.Conv2D(filters=256, kernel_size=1, strides=1, padding='valid'),
+                layers.BatchNormalization(),
+                layers.LeakyReLU(alpha=0.1),
+                
+                layers.Conv2D(filters=128, kernel_size=1, strides=1, padding='valid'),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
