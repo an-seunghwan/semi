@@ -249,7 +249,7 @@ def train(datasetL, model, buffer_model, optimizer, epoch, args, num_classes, to
         
         '''normalization'''
         channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
-                            std=tf.reshape(tf.cast(np.array([0.2470,  0.2435,  0.2616]), tf.float32), (1, 1, 1, 3)))
+                            std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         imageL -= channel_stats['mean']
         imageL /= channel_stats['std']
             
@@ -285,7 +285,7 @@ def validate(dataset, model, epoch, args, split):
     for image, label in dataset:
         '''normalization'''
         channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
-                            std=tf.reshape(tf.cast(np.array([0.2470,  0.2435,  0.2616]), tf.float32), (1, 1, 1, 3)))
+                            std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         image -= channel_stats['mean']
         image /= channel_stats['std']
         
