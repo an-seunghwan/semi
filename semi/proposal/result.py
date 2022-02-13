@@ -20,7 +20,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
 from model3 import VAE
-from mixup import augment
+from mixup3 import augment
 #%%
 import ast
 def arg_as_list(s):
@@ -78,11 +78,15 @@ def get_args():
                         help='the max value for mixup(z) weight')
     parser.add_argument('--mixup_epoch_z',default=200, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--mixup_max_y', default=1000, type=float, 
+    parser.add_argument('--mixup_max_y', default=10000, type=float, 
                         help='the max value for mixup(y) weight')
     parser.add_argument('--mixup_epoch_y',default=200, type=int, 
                         help='the max epoch to adjust mixup')
-    parser.add_argument('--lambda',default=1000, type=int, 
+    parser.add_argument('--recon_max', default=1, type=float, 
+                        help='the max value for reconstruction error')
+    parser.add_argument('--recon_max_epoch',default=200, type=int, 
+                        help='the max epoch to adjust reconstruction error')
+    parser.add_argument('--lambda',default=10000, type=int, 
                         help='the weight of classification and mutual information')
     
     '''Optimizer Parameters'''
@@ -92,13 +96,13 @@ def get_args():
     #                     help='beta1 for adam as well as momentum for SGD')
     parser.add_argument('-ad', "--adjust_lr", default=[400, 500, 550], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
-    parser.add_argument('--lr_gamma', default=0.5, type=float)
+    parser.add_argument('--lr_gamma', default=0.1, type=float)
     parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
-    parser.add_argument('--z_hidden_dim', default=256, type=int,
+    parser.add_argument('--z_hidden_dim', default=128, type=int,
                         help='embedding dimension of continuous latent for coupling layer')
-    parser.add_argument('--c_hidden_dim', default=64, type=int,
+    parser.add_argument('--c_hidden_dim', default=128, type=int,
                         help='embedding dimension of discrete latent for coupling layer')
     parser.add_argument('--z_n_blocks', default=4, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
@@ -106,10 +110,10 @@ def get_args():
                         help='number of coupling layers in Real NVP (discrete latent)')
 
     '''Normalizing Flow Optimizer Parameters'''
-    parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.001, type=float,
+    parser.add_argument('--lr_nf', '--learning-rate-nf', default=0.0001, type=float,
                         metavar='LR', help='initial learning rate for normalizing flow')
     parser.add_argument('--lr_gamma_nf', default=0.5, type=float)
-    parser.add_argument('--wd_nf', '--weight-decay-nf', default=4e-5, type=float,
+    parser.add_argument('--wd_nf', '--weight-decay-nf', default=2e-5, type=float,
                         help='L2 regularization parameter for dense layers in Real NVP')
     parser.add_argument('-b1_nf', '--beta1_nf', default=0.9, type=float, metavar='Beta1 In ADAM',
                         help='beta1 for adam')
@@ -156,7 +160,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220208-195433'
+model_path = log_path + '/20220211-220455'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 model.build(input_shape=(None, 32, 32, 3))

@@ -1,6 +1,6 @@
 dataset: "cifar10"
 reconstruct_freq: 10
-start_epoch_nf: 0
+# recon_max_epoch: 1
 # mixup_max_z: 10
-# mixup_max_y: 10000
-# lambda: 10000
+# latent_dim: 64
+# start_epoch_nf: 400
