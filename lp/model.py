@@ -6,6 +6,8 @@ same with VAT model
 import tensorflow as tf
 import tensorflow.keras as K
 from tensorflow.keras import layers
+
+import tensorflow_addons as tfa
 #%%
 class CNN(K.models.Model):
     def __init__(self, 
@@ -16,52 +18,52 @@ class CNN(K.models.Model):
         self.isL2 = isL2
         self.units = K.Sequential(
             [
-                layers.Conv2D(filters=128, kernel_size=3, strides=1, padding='same'),
+                tfa.layers.WeightNormalization(layers.Conv2D(filters=128, kernel_size=3, strides=1, padding='same')),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
-                layers.Conv2D(filters=128, kernel_size=3, strides=1, padding='same'),
+                tfa.layers.WeightNormalization(layers.Conv2D(filters=128, kernel_size=3, strides=1, padding='same')),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
-                layers.Conv2D(filters=128, kernel_size=3, strides=1, padding='same'),
-                layers.BatchNormalization(),
-                layers.LeakyReLU(alpha=0.1),
-                
-                layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
-                layers.SpatialDropout2D(rate=0.5),
-                
-                layers.Conv2D(filters=256, kernel_size=3, strides=1, padding='same'),
-                layers.BatchNormalization(),
-                layers.LeakyReLU(alpha=0.1),
-                
-                layers.Conv2D(filters=256, kernel_size=3, strides=1, padding='same'),
-                layers.BatchNormalization(),
-                layers.LeakyReLU(alpha=0.1),
-                
-                layers.Conv2D(filters=256, kernel_size=3, strides=1, padding='same'),
+                tfa.layers.WeightNormalization(layers.Conv2D(filters=128, kernel_size=3, strides=1, padding='same')),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
                 layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
                 layers.SpatialDropout2D(rate=0.5),
                 
-                layers.Conv2D(filters=512, kernel_size=3, strides=1, padding='valid'),
+                tfa.layers.WeightNormalization(layers.Conv2D(filters=256, kernel_size=3, strides=1, padding='same')),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
-                layers.Conv2D(filters=256, kernel_size=1, strides=1, padding='valid'),
+                tfa.layers.WeightNormalization(layers.Conv2D(filters=256, kernel_size=3, strides=1, padding='same')),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
-                layers.Conv2D(filters=128, kernel_size=1, strides=1, padding='valid'),
+                tfa.layers.WeightNormalization(layers.Conv2D(filters=256, kernel_size=3, strides=1, padding='same')),
+                layers.BatchNormalization(),
+                layers.LeakyReLU(alpha=0.1),
+                
+                layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
+                layers.SpatialDropout2D(rate=0.5),
+                
+                tfa.layers.WeightNormalization(layers.Conv2D(filters=512, kernel_size=3, strides=1, padding='valid')),
+                layers.BatchNormalization(),
+                layers.LeakyReLU(alpha=0.1),
+                
+                tfa.layers.WeightNormalization(layers.Conv2D(filters=256, kernel_size=1, strides=1, padding='valid')),
+                layers.BatchNormalization(),
+                layers.LeakyReLU(alpha=0.1),
+                
+                tfa.layers.WeightNormalization(layers.Conv2D(filters=128, kernel_size=1, strides=1, padding='valid')),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
                 layers.GlobalAveragePooling2D(),
             ]
         )
-        self.fc = layers.Dense(num_classes)
+        self.fc = tfa.layers.WeightNormalization(layers.Dense(num_classes))
     
     @tf.function
     def call(self, x, training=True):

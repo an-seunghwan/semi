@@ -20,10 +20,10 @@ def augment(x):
 #%%
 def weight_decay_decoupled(model, buffer_model, decay_rate):
     # weight decay
-    for var, buffer_var in zip(model.variables, buffer_model.variables):
+    for var, buffer_var in zip(model.trainable_variables, buffer_model.trainable_variables):
         var.assign(var - decay_rate * buffer_var)
     # update buffer model
-    for var, buffer_var in zip(model.variables, buffer_model.variables):
+    for var, buffer_var in zip(model.trainable_variables, buffer_model.trainable_variables):
         buffer_var.assign(var)
 #%%
 def linear_rampup(current, lampup_length):

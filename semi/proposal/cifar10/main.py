@@ -75,7 +75,7 @@ def get_args():
                         help='drop rate for the network')
     parser.add_argument("--br", "--bce_reconstruction", action='store_true', 
                         help='Do BCE Reconstruction')
-    parser.add_argument("-s", "--x_sigma", default=0.1, type=float,
+    parser.add_argument("-s", "--x_sigma", default=0.5, type=float,
                         help="The standard variance for reconstructed images, work as regularization")
 
     '''VAE parameters'''
@@ -365,7 +365,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
     
     '''mix-up parameters'''
     mixup_lambda_z = weight_schedule(epoch, args['mixup_epoch_z'], args['mixup_max_z'])
-    '''unsupervised classification weight'''
+    '''un-supervised classification weight'''
     mixup_lambda_y = weight_schedule(epoch, args['mixup_epoch_y'], args['mixup_max_y'])
     '''reconstruction error weight'''
     recon_lambda = weight_schedule(epoch, args['recon_max_epoch'], args['recon_max'])
