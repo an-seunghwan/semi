@@ -109,45 +109,76 @@ class WideResNet(K.models.Model):
 #%%
 class Decoder(K.models.Model):
     def __init__(self, 
+                 latent_dim,
                  output_channel, 
                  activation, 
                  name="Decoder", **kwargs):
         super(Decoder, self).__init__(name=name, **kwargs)
         self.num_feature = 32
-        dims = [self.num_feature * d for d in [8, 4, 2, 1]]
-        self.units = K.Sequential(
-                        [
-                            layers.Dense(4 * 4 * 512),
-                            layers.BatchNormalization(),
-                            layers.ReLU(),
-                            layers.Reshape((4, 4, 512)),
-                            
-                            layers.Conv2DTranspose(filters = dims[0], kernel_size = 5, strides = 2, 
-                                                    padding = 'same', use_bias=False),
-                            layers.BatchNormalization(),
-                            layers.ReLU(),
-                            layers.Conv2DTranspose(filters = dims[1], kernel_size = 5, strides = 2, 
-                                                    padding = 'same', use_bias=False),
-                            layers.BatchNormalization(),
-                            layers.ReLU(),
-                            layers.Conv2DTranspose(filters = dims[2], kernel_size = 5, strides = 2, 
-                                                    padding = 'same', use_bias=False),
-                            layers.BatchNormalization(),
-                            layers.ReLU(),
-                            layers.Conv2DTranspose(filters = dims[3], kernel_size = 5, strides = 1, 
-                                                    padding = 'same', use_bias=False),
-                            layers.BatchNormalization(),
-                            layers.ReLU(),
-                            
-                            layers.Conv2D(filters=output_channel, kernel_size=4, strides=1, 
-                                            padding='same', activation=activation)
-                        ]
-                    )
+        
+        self.latent_dim = latent_dim
+        if self.latent_dim < 16:
+            self.dense1 = layers.Dense(16, use_bias=False)
+            self.reshape1 = layers.Reshape((4, 4, 1))
+        else:
+            self.reshape1 = layers.Reshape((4, 4, latent_dim // 16))
+        self.dense2 = layers.Dense(16, use_bias=False)
+        self.reshape2 = layers.Reshape((4, 4, 1))
+        self.norm = layers.BatchNormalization()
+        self.relu = layers.ReLU()
+        self.units_skip, self.units = self._build_unit()
+        self.conv = layers.Conv2DTranspose(filters = output_channel, kernel_size = 1, strides = 1, 
+                                            activation=activation,
+                                            padding = 'same', use_bias=False)
+    
+    def _build_unit(self):
+        dims = [self.num_feature * d for d in [4, 2, 1]]
+        units_skip = []
+        for i in range(len(dims)):
+            units_skip.append(
+                K.Sequential(
+                    [
+                        layers.Conv2DTranspose(filters = dims[i], kernel_size = 5, strides = 2, 
+                                                padding = 'same', use_bias=False),
+                        layers.BatchNormalization(),
+                        layers.ReLU()
+                    ]
+                )
+            )
+        units = []
+        for i in range(len(dims)):
+            units.append(
+                K.Sequential(
+                    [
+                        layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
+                                                padding = 'same', use_bias=False),
+                        layers.BatchNormalization(),
+                        layers.ReLU(),
+                        layers.Conv2DTranspose(filters = dims[i], kernel_size = 3, strides = 1, 
+                                                padding = 'same', use_bias=False),
+                        layers.BatchNormalization(),
+                        layers.ReLU(),
+                    ]
+                )
+            )
+        return units_skip, units
     
     @tf.function
     def call(self, z, prob, training=True):
-        h = tf.concat([z, prob], axis=-1)
-        h = self.units(h, training=training)
+        if self.latent_dim < 16:
+            h1 = self.reshape1(self.dense1(z))
+        else:
+            h1 = self.reshape1(z)
+        h2 = self.reshape2(self.dense2(prob))
+        h = tf.concat([h1, h2], axis=-1)
+        h = self.relu(self.norm(h))
+        
+        skip = h
+        for i in range(len(self.units_skip)):
+            skip = self.units_skip[i](skip, training=training)    
+            h = self.units[i](skip, training=training)
+            skip += h
+        h = self.conv(skip)
         return h
 #%%
 class AutoEncoder(K.models.Model):
@@ -166,7 +197,7 @@ class AutoEncoder(K.models.Model):
         self.FeatureExtractor = WideResNet(num_classes, depth, width, slope, input_shape)
         self.z_layer = layers.Dense(latent_dim) 
         self.c_layer = layers.Dense(num_classes) 
-        self.decoder = Decoder(output_channel, activation)
+        self.decoder = Decoder(latent_dim, output_channel, activation)
         
     def z_encode(self, x, training=True):
         h = self.FeatureExtractor(x, training=training)
