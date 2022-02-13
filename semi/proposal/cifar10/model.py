@@ -127,12 +127,12 @@ class Decoder(K.models.Model):
         self.norm = layers.BatchNormalization()
         self.relu = layers.ReLU()
         self.units_skip, self.units = self._build_unit()
-        self.conv = layers.Conv2DTranspose(filters = output_channel, kernel_size = 1, strides = 1, 
-                                            activation=activation,
-                                            padding = 'same', use_bias=False)
+        self.conv = layers.Conv2D(filters = output_channel, kernel_size = 1, strides = 1, 
+                                    activation=activation,
+                                    padding = 'same', use_bias=False)
     
     def _build_unit(self):
-        dims = [self.num_feature * d for d in [4, 2, 1]]
+        dims = [self.num_feature * d for d in [8, 4, 2, 1]]
         units_skip = []
         for i in range(len(dims)):
             units_skip.append(

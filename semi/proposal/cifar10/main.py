@@ -12,8 +12,8 @@ reconstruction error weight ramp-up?
 import argparse
 import os
 
-# os.chdir(r'D:\semi\semi\proposal') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/semi/proposal') # main directory (repository)
+os.chdir(r'D:\semi\semi\proposal') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/semi/proposal') # main directory (repository)
 # os.chdir('/Users/anseunghwan/Documents/GitHub/semi/semi/proposal') # main directory (repository)
 
 import numpy as np
