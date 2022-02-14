@@ -7,7 +7,6 @@ import faiss
 
 from sklearn.preprocessing import normalize
 import scipy
-
 #%%
 @tf.function
 def augment(x):
@@ -106,7 +105,7 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     index.add(embeddings)
     
     D, I = index.search(embeddings, k+1) 
-    # D: L2 distance
+    # D: cosine-similarity
     # I: topk index
     
     D = D[:, 1:] ** gamma
@@ -134,7 +133,10 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     for i in range(num_classes):
         cur_idx = np.where(labelsL == i)[0]
         y = np.zeros((N, ))
-        y[cur_idx] = 1. / len(cur_idx)
+        # '''implementation'''
+        # y[cur_idx] = 1. / len(cur_idx)
+        '''paper'''
+        y[cur_idx] = 1. 
         f, _ = scipy.sparse.linalg.cg(I_alphaW, y, tol=1e-6, maxiter=maxiter)
         Z[:, i] = f
     Z[Z < 0] = 0 # handle numerical errors
@@ -149,18 +151,24 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     
     '''replace labeled examples with true values'''
     plabels[:tf.shape(labelsL)[0]] = labelsL
+    accL = len(np.where((plabels[:tf.shape(labelsL)[0]] - labelsL) == 0)[0]) / len(labelsL)
     weights[:tf.shape(labelsL)[0]] = 1.
     
     '''compute weight for each class'''
     class_weights = np.zeros((1, num_classes))
     for i in range(num_classes):
         cur_idx = np.where(plabels == i)[0]
-        class_weights[0, i] = (N / num_classes) / len(cur_idx)
+        # '''implementation'''
+        # class_weights[0, i] = (N / num_classes) / len(cur_idx)
+        '''paper'''
+        class_weights[0, i] = 1. / len(cur_idx)
+    '''paper'''
+    class_weights *= 1. / np.mean(class_weights)
     
     '''build pseudo-label dataset'''
     plabels = tf.one_hot(plabels[tf.shape(labelsL)[0]:], depth=num_classes)
     pseudo_datasetU = tf.data.Dataset.from_tensor_slices((images.numpy()[tf.shape(labelsL)[0]:], 
                                                           plabels, 
-                                                          tf.cast(weights[tf.shape(labelsL)[0]:, None], tf.float32)))
-    return pseudo_datasetU, class_weights
+                                                          tf.cast(weights[tf.shape(labelsL)[0]:], tf.float32)))
+    return pseudo_datasetU, class_weights, accL
 #%%

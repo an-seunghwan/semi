@@ -245,7 +245,9 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
     shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e5)).batch(batch_size=50, drop_remainder=True).prefetch(autotune)
     shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'] - 50, drop_remainder=True).prefetch(autotune)
     
-    pseudo_datasetU, class_weights = build_pseudo_label(datasetL, datasetU, model, num_classes, args, k=args['dfs_k'])
+    pseudo_datasetU, class_weights, accL = build_pseudo_label(datasetL, datasetU, model, num_classes, args, k=args['dfs_k'])
+    class_weights = tf.cast(class_weights, tf.float32)
+    
     iteratorL = iter(shuffle_and_batchL(datasetL))
     iteratorU = iter(shuffle_and_batch(pseudo_datasetU))
         
@@ -288,15 +290,15 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
             predL, _ = model(imageL)
             predL = tf.nn.softmax(predL, axis=-1)
             ce_lossL = tf.reduce_sum(class_weights * labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1)
-            ce_lossL = - tf.reduce_mean(ce_lossL)
+            ce_lossL = - tf.reduce_sum(ce_lossL)
             
             '''unlabeled'''
             predU, _ = model(imageU)
             predU = tf.nn.softmax(predU, axis=-1)
             ce_lossU = tf.reduce_sum(class_weights * labelU * tf.math.log(tf.clip_by_value(predU, 1e-10, 1.0)), axis=-1)
-            ce_lossU = - tf.reduce_mean(weightU * ce_lossU)
+            ce_lossU = - tf.reduce_sum(weightU * ce_lossU)
             
-            loss = ce_lossL + ce_lossU
+            loss = (ce_lossL + ce_lossU) / args['batch_size']
             
         grads = tape.gradient(loss, model.trainable_variables) 
         '''SGD + momentum''' 
