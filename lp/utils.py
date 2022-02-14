@@ -8,7 +8,6 @@ import faiss
 from sklearn.preprocessing import normalize
 import scipy
 
-from utils import augment
 #%%
 @tf.function
 def augment(x):
