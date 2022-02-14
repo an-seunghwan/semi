@@ -19,7 +19,7 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model2_cmnist import VAE
+from model import VAE
 # from criterion import ELBO_criterion
 from mixup import augment
 #%%
@@ -156,7 +156,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220206-141321'
+model_path = log_path + '/20220213-194610'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 # model = AutoEncoder(num_classes=num_classes,

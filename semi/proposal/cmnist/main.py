@@ -306,6 +306,8 @@ def main():
             tf.summary.scalar('info_loss', test_info_loss.result(), step=epoch)
             tf.summary.scalar('elbo_loss', test_elbo_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', test_accuracy.result(), step=epoch)
+            
+        test_accuracy_print = test_accuracy.result()
 
         # Reset metrics every epoch
         loss.reset_states()
