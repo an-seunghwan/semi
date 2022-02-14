@@ -156,7 +156,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220213-194610'
+model_path = log_path + '/20220206-141321'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 # model = AutoEncoder(num_classes=num_classes,
@@ -333,7 +333,7 @@ plt.close()
 #%%
 '''style latent random sampling of c'''
 tf.random.set_seed(1)
-z = model.ae.z_encode(tf.cast(x.numpy()[[idx[1]]], tf.float32), training=False)
+z = model.ae.z_encode(tf.cast(x.numpy()[[2]], tf.float32), training=False)
 c_epsilon = tf.random.normal(shape=(100, num_classes))
 c = model.prior.cflow(c_epsilon)
 # out = model.prior.cNF.affine_layers[-1].reverse(c_epsilon)
