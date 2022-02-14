@@ -138,6 +138,7 @@ def main():
     
     '''load model from stage1'''
     model_path = log_path + '/stage1'
+    # model_path = log_path + '/20220214-201956'
     model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
     model = CNN(num_classes, args['isL2'])
     model.build(input_shape=(None, 32, 32, 3))
@@ -179,12 +180,14 @@ def main():
 
     for epoch in range(args['start_epoch'], args['epochs']):
         
-        loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
+        loss, label_loss, unlabel_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
         val_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
+            tf.summary.scalar('label_loss', label_loss.result(), step=epoch)
+            tf.summary.scalar('unlabel_loss', unlabel_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
         with val_writer.as_default():
             tf.summary.scalar('loss', val_loss.result(), step=epoch)
@@ -195,6 +198,8 @@ def main():
 
         # Reset metrics every epoch
         loss.reset_states()
+        label_loss.reset_states()
+        unlabel_loss.reset_states()
         accuracy.reset_states()
         val_loss.reset_states()
         val_accuracy.reset_states()
@@ -222,6 +227,8 @@ def main():
 #%%
 def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length):
     loss_avg = tf.keras.metrics.Mean()
+    label_loss_avg = tf.keras.metrics.Mean()
+    unlabel_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     # batch_iter = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=True)
@@ -278,12 +285,15 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
         
         '''augmentation'''
         imageL = augment(imageL)
+        imageU = augment(imageU)
         
         '''normalization'''
         channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
-                            std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+                             std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         imageL -= channel_stats['mean']
         imageL /= channel_stats['std']
+        imageU -= channel_stats['mean']
+        imageU /= channel_stats['std']
         
         with tf.GradientTape(persistent=True) as tape:
             '''labeled'''
@@ -307,17 +317,22 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
         weight_decay_decoupled(model, buffer_model, decay_rate=args['weight_decay'] * optimizer.lr)
         
         loss_avg(loss)
+        label_loss_avg(ce_lossL / 50)
+        unlabel_loss_avg(ce_lossU / (args['batch_size'] - 50))
         probL, _ = model(imageL, training=False)
         probL = tf.nn.softmax(probL, axis=-1)
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
 
         progress_bar.set_postfix({
             'EPOCH': f'{epoch:04d}',
+            'Labeled Loss': f'{loss_avg.result():.4f}',
+            'Unlabeled Loss': f'{unlabel_loss_avg.result():.4f}',
             'Loss': f'{loss_avg.result():.4f}',
-            'Accuracy': f'{accuracy.result():.3%}'
+            'Accuracy': f'{accuracy.result():.3%}',
+            'LP Accuracy': f'{accL:.3%}'
         })
         
-    return loss_avg, accuracy
+    return loss_avg, label_loss_avg, unlabel_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, args, split):
     loss_avg = tf.keras.metrics.Mean()

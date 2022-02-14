@@ -46,7 +46,7 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     
     embeddings = []
     labelsL = []
-    images = []
+    imagesU = [] # without augmentation and normalization
     
     '''normalization'''
     channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
@@ -64,13 +64,14 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
             _, feats = model(imageL, training=False)
             embeddings.append(feats)
             labelsL.append(labelL)
-            images.append(imageL)
+            # images.append(imageL)
         except:
             break
     
     while True:
         try:
             imageU, _ = next(iteratorU)
+            imagesU.append(imageU)
             '''augmentation'''
             imageU = augment(imageU)    
             '''normalization'''
@@ -79,13 +80,12 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
 
             _, feats = model(imageU, training=False)
             embeddings.append(feats)
-            images.append(imageU)
         except:
             break
     
     embeddings = tf.concat(embeddings, axis=0)
     labelsL = tf.concat(labelsL, axis=0)
-    images = tf.concat(images, axis=0)
+    imagesU = tf.concat(imagesU, axis=0)
     
     # shuffled_indices = tf.random.shuffle(tf.range(start=0, limit=len(embeddings), dtype=tf.int32))
     # embeddings = tf.gather(embeddings, shuffled_indices)
@@ -133,10 +133,10 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     for i in range(num_classes):
         cur_idx = np.where(labelsL == i)[0]
         y = np.zeros((N, ))
-        # '''implementation'''
-        # y[cur_idx] = 1. / len(cur_idx)
-        '''paper'''
-        y[cur_idx] = 1. 
+        '''implementation'''
+        y[cur_idx] = 1. / len(cur_idx)
+        # '''paper'''
+        # y[cur_idx] = 1. 
         f, _ = scipy.sparse.linalg.cg(I_alphaW, y, tol=1e-6, maxiter=maxiter)
         Z[:, i] = f
     Z[Z < 0] = 0 # handle numerical errors
@@ -149,26 +149,30 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     weights = 1. - entropy / np.log(num_classes)
     weights = weights / np.max(weights)
     
+    '''labeled accuracy using label propagation'''
+    accL = len(np.where((plabels[:tf.shape(labelsL)[0]] - labelsL) == 0)[0]) / len(labelsL)
+    
     '''replace labeled examples with true values'''
     plabels[:tf.shape(labelsL)[0]] = labelsL
-    accL = len(np.where((plabels[:tf.shape(labelsL)[0]] - labelsL) == 0)[0]) / len(labelsL)
     weights[:tf.shape(labelsL)[0]] = 1.
     
     '''compute weight for each class'''
     class_weights = np.zeros((1, num_classes))
     for i in range(num_classes):
         cur_idx = np.where(plabels == i)[0]
-        # '''implementation'''
-        # class_weights[0, i] = (N / num_classes) / len(cur_idx)
-        '''paper'''
-        class_weights[0, i] = 1. / len(cur_idx)
-    '''paper'''
-    class_weights *= 1. / np.mean(class_weights)
+        '''implementation'''
+        class_weights[0, i] = (N / num_classes) / len(cur_idx)
+    #     '''paper'''
+    #     class_weights[0, i] = 1. / len(cur_idx)
+    # '''paper'''
+    # class_weights *= 1. / np.mean(class_weights)
     
     '''build pseudo-label dataset'''
     plabels = tf.one_hot(plabels[tf.shape(labelsL)[0]:], depth=num_classes)
-    pseudo_datasetU = tf.data.Dataset.from_tensor_slices((images.numpy()[tf.shape(labelsL)[0]:], 
-                                                          plabels, 
-                                                          tf.cast(weights[tf.shape(labelsL)[0]:], tf.float32)))
+    pseudo_datasetU = tf.data.Dataset.from_tensor_slices((
+        # images.numpy()[tf.shape(labelsL)[0]:], 
+        imagesU, 
+        plabels, 
+        tf.cast(weights[tf.shape(labelsL)[0]:], tf.float32)))
     return pseudo_datasetU, class_weights, accL
 #%%
