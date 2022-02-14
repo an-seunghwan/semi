@@ -244,14 +244,14 @@ def train(datasetL, model, buffer_model, optimizer, epoch, args, num_classes, to
             iteratorL = iter(shuffle_and_batch(datasetL))
             imageL, labelL = next(iteratorL)
         
-        '''augmentation'''
-        imageL = augment(imageL)
-        
         '''normalization'''
         channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
                             std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         imageL -= channel_stats['mean']
         imageL /= channel_stats['std']
+        
+        '''augmentation'''
+        imageL = augment(imageL)
             
         with tf.GradientTape(persistent=True) as tape:
             predL, _ = model(imageL)

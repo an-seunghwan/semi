@@ -49,7 +49,7 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     while True:
         try:
             imageL, labelL = next(iteratorL)
-            _, feats = model(imageL, training=False)
+            _, feats = model(imageL, training=True)
             embeddings.append(feats)
             labelsL.append(labelL)
             images.append(imageL)
@@ -59,7 +59,7 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     while True:
         try:
             imageU, _ = next(iteratorU)
-            _, feats = model(imageU, training=False)
+            _, feats = model(imageU, training=True)
             embeddings.append(feats)
             images.append(imageU)
         except:
