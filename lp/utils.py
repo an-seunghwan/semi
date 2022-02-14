@@ -7,6 +7,8 @@ import faiss
 
 from sklearn.preprocessing import normalize
 import scipy
+
+from utils import augment
 #%%
 @tf.function
 def augment(x):
@@ -38,18 +40,30 @@ def cosine_rampdown(current, rampdown_length):
 def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
                        k=50, maxiter=20):
     '''extract features'''
-    batch_iter = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=False)
-    iteratorL = iter(batch_iter(datasetL))
+    autotune = tf.data.AUTOTUNE
+    batch_iterL = lambda dataset: dataset.batch(batch_size=50, drop_remainder=False).prefetch(autotune)
+    batch_iter = lambda dataset: dataset.batch(batch_size=args['batch_size'] - 50, drop_remainder=False).prefetch(autotune)
+    iteratorL = iter(batch_iterL(datasetL))
     iteratorU = iter(batch_iter(datasetU))
     
     embeddings = []
     labelsL = []
     images = []
     
+    '''normalization'''
+    channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
+                        std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+    
     while True:
         try:
             imageL, labelL = next(iteratorL)
-            _, feats = model(imageL, training=True)
+            '''augmentation'''
+            imageL = augment(imageL)
+            '''normalization'''
+            imageL -= channel_stats['mean']
+            imageL /= channel_stats['std']
+    
+            _, feats = model(imageL, training=False)
             embeddings.append(feats)
             labelsL.append(labelL)
             images.append(imageL)
@@ -59,7 +73,13 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     while True:
         try:
             imageU, _ = next(iteratorU)
-            _, feats = model(imageU, training=True)
+            '''augmentation'''
+            imageU = augment(imageU)    
+            '''normalization'''
+            imageU -= channel_stats['mean']
+            imageU /= channel_stats['std']
+
+            _, feats = model(imageU, training=False)
             embeddings.append(feats)
             images.append(imageU)
         except:

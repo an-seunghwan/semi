@@ -274,17 +274,14 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
             iteratorU = iter(shuffle_and_batch(pseudo_datasetU))
             imageU, labelU, weightU = next(iteratorU)
         
+        '''augmentation'''
+        imageL = augment(imageL)
+        
         '''normalization'''
         channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
                             std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         imageL -= channel_stats['mean']
         imageL /= channel_stats['std']
-        imageU -= channel_stats['mean']
-        imageU /= channel_stats['std']
-        
-        '''augmentation'''
-        imageL = augment(imageL)
-        imageU = augment(imageU)
         
         with tf.GradientTape(persistent=True) as tape:
             '''labeled'''
@@ -293,6 +290,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
             ce_lossL = tf.reduce_sum(class_weights * labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1)
             ce_lossL = - tf.reduce_mean(ce_lossL)
             
+            '''unlabeled'''
             predU, _ = model(imageU)
             predU = tf.nn.softmax(predU, axis=-1)
             ce_lossU = tf.reduce_sum(class_weights * labelU * tf.math.log(tf.clip_by_value(predU, 1e-10, 1.0)), axis=-1)
