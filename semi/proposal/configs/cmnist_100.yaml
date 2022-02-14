@@ -1,4 +1,0 @@
-dataset: "cmnist"
-reconstruct_freq: 3
-start_epoch_nf: 0
-# wd: 0.0004
