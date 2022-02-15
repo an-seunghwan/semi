@@ -1,3 +1,2 @@
 dataset: "cmnist"
 reconstruct_freq: 3
-# wd: 0.0004

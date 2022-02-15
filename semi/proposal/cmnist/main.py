@@ -467,13 +467,13 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoc
             
             mixup_zU = tf.reduce_mean(tf.math.square(smoothed_zU - z_mixU))
             mixup_xhatU = tf.reduce_mean(tf.math.square(smoothed_xhatU - image_mixU))
-            '''CE'''
-            mixup_yU = - tf.reduce_mean(tf.reduce_sum(prob_mixU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
-            # '''JSD'''
-            # mixup_yU = 0.5 * tf.reduce_mean(tf.reduce_sum(prob_mixU * (tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0)) - 
-            #                                                            tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0))), axis=1))
-            # mixup_yU += 0.5 * tf.reduce_mean(tf.reduce_sum(smoothed_probU * (tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)) - 
-            #                                                                  tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0))), axis=1))
+            # '''CE'''
+            # mixup_yU = - tf.reduce_mean(tf.reduce_sum(prob_mixU * tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)), axis=-1))
+            '''JSD'''
+            mixup_yU = 0.5 * tf.reduce_mean(tf.reduce_sum(prob_mixU * (tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0)) - 
+                                                                       tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0))), axis=1))
+            mixup_yU += 0.5 * tf.reduce_mean(tf.reduce_sum(smoothed_probU * (tf.math.log(tf.clip_by_value(smoothed_probU, 1e-10, 1.0)) - 
+                                                                             tf.math.log(tf.clip_by_value(prob_mixU, 1e-10, 1.0))), axis=1))
             
             elbo_lossU = recon_lossU + (mixup_lambda_z * (mixup_zU + mixup_xhatU))
             loss_unsupervised = elbo_lossU + (mixup_lambda_y * mixup_yU) + (lambda_ * infoU)

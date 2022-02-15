@@ -250,7 +250,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
     
     autotune = tf.data.AUTOTUNE
     shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e5)).batch(batch_size=50, drop_remainder=True).prefetch(autotune)
-    shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'] - 50, drop_remainder=True).prefetch(autotune)
+    shuffle_and_batch = lambda dataset: dataset.batch(batch_size=args['batch_size'] - 50, drop_remainder=True).prefetch(autotune)
     
     pseudo_datasetU, class_weights, accL = build_pseudo_label(datasetL, datasetU, model, num_classes, args, k=args['dfs_k'])
     class_weights = tf.cast(class_weights, tf.float32)
