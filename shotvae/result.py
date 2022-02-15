@@ -166,6 +166,9 @@ model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
 model.load_weights(model_path + '/' + model_name)
 model.summary()
 #%%
+classnames = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+classdict = {i:x for i,x in enumerate(classnames)}
+#%%
 shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
 iteratorL = iter(shuffle_and_batch(datasetL))
 image, label = next(iteratorL)
@@ -179,26 +182,67 @@ x = tf.cast(x, tf.float32) / 255.
 mean, log_sigma, log_prob, z, y, xhat = model([x, y])
 #%%
 '''interpolation'''
-class_idx = 1
-i = 0
-j = 5
-# class_idx = 7
-# i = 0
-# j = 2
-interpolation_idx = np.where([tf.argmax(y, axis=-1).numpy() == class_idx])[1]
-inter = np.linspace(z[interpolation_idx[i]], z[interpolation_idx[j]], 8)
-inter_recon = model.decode_sample(inter, tf.one_hot([class_idx] * 8, depth=num_classes), training=False)
-
 figure = plt.figure(figsize=(25, 5))
-plt.subplot(1, 8+2, 1)
-plt.imshow(x[interpolation_idx[i]])
-plt.axis('off')
-for i in range(8):
-    plt.subplot(1, 8+2, i+2)
-    plt.imshow(inter_recon[i])
+for num, (i, j, class_idx) in enumerate([(0, 5, 1), (0, 2, 7)]):
+    interpolation_idx = np.where([tf.argmax(y, axis=-1).numpy() == class_idx])[1]
+    inter = np.linspace(z[interpolation_idx[i]], z[interpolation_idx[j]], 8)
+    inter_recon = model.decode_sample(inter, tf.one_hot([class_idx] * 8, depth=num_classes), training=False)
+    
+    plt.subplot(2, 8+2, 10*num+1)    
+    plt.imshow(x[interpolation_idx[i]])
     plt.axis('off')
-plt.subplot(1, 8+2, 8+2)
-plt.imshow(x[interpolation_idx[j]])
-plt.axis('off')
+    for i in range(8):
+        plt.subplot(2, 8+2, 10*num+i+2)
+        plt.imshow(inter_recon[i])
+        plt.axis('off')
+    plt.subplot(2, 8+2, 10*num+10)
+    plt.imshow(x[interpolation_idx[j]])
+    plt.axis('off')
+plt.savefig('{}/interpolation.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
+plt.close()
+#%%
+'''manipulation'''
+idx = [1, 6, 8, 17, 31, 48, 56, 65, 80, 84]
+plt.figure(figsize=(20, 20))
+for j in range(len(idx)):
+    z_ = z.numpy()[[j]]
+    p = np.linspace(1, 0, 11)
+    num1 = 7
+    num2 = 1
+
+    for i in range(len(p)):
+        attr = np.zeros((1, num_classes))
+        attr[:, num1] = p[i]
+        attr[:, num2] = 1 - p[i]
+        attr = tf.cast(attr, tf.float32)
+        xhat = model.decode_sample(z_, attr, training=False)
+
+        plt.subplot(len(idx), len(p), len(p) * j + i + 1)
+        plt.imshow(xhat[0])
+        plt.title('{}: {:.1f}'.format(classdict.get(num1), p[i]))
+        plt.axis('off')
+plt.savefig('{}/manipulation.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
+'''style latent random sampling of z'''
+tf.random.set_seed(1)
+z_sampling = tf.random.normal(shape=(100, args['ldc']))
+pi = np.zeros((len(z_sampling), num_classes))
+pi[:, 1] = 1 # automobile
+pi = tf.cast(pi, tf.float32)
+xhat = model.decode_sample(z, pi, training=False)
+
+fig, axes = plt.subplots(10, 10, figsize=(15, 15))
+for i in range(100):
+    axes.flatten()[i].imshow(xhat[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/z_sampling_{}.png'.format(model_path, classdict.get(1)),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
 #%%
