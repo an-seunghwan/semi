@@ -138,7 +138,7 @@ class Decoder(K.models.Model):
             units_skip.append(
                 K.Sequential(
                     [
-                        layers.Conv2DTranspose(filters = dims[i], kernel_size = 5, strides = 2, 
+                        layers.Conv2DTranspose(filters = dims[i], kernel_size = 5, strides = 2 if i != len(dims)-1 else 1, 
                                                 padding = 'same', use_bias=False),
                         layers.BatchNormalization(),
                         layers.ReLU()

@@ -19,8 +19,8 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model3 import VAE
-from mixup3 import augment
+from model import VAE
+from mixup import augment
 #%%
 import ast
 def arg_as_list(s):
@@ -50,8 +50,8 @@ def get_args():
                         help='number labeled examples (default: 4000')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
-    # parser.add_argument('--augment', action='store_true', 
-    #                     help="apply augmentation to image")
+    parser.add_argument('--augment', default=True, type=bool,
+                        help="apply augmentation to image")
 
     '''Deep VAE Model Parameters'''
     # parser.add_argument('--net-name', default="wideresnet-28-2", type=str, help="the name for network to use")
@@ -65,7 +65,7 @@ def get_args():
                         help='drop rate for the network')
     parser.add_argument("--br", "--bce_reconstruction", action='store_true', 
                         help='Do BCE Reconstruction')
-    parser.add_argument("-s", "--x_sigma", default=0.1, type=float,
+    parser.add_argument("-s", "--x_sigma", default=0.5, type=float,
                         help="The standard variance for reconstructed images, work as regularization")
 
     '''VAE parameters'''
@@ -84,7 +84,7 @@ def get_args():
                         help='the max epoch to adjust mixup')
     parser.add_argument('--recon_max', default=1, type=float, 
                         help='the max value for reconstruction error')
-    parser.add_argument('--recon_max_epoch',default=200, type=int, 
+    parser.add_argument('--recon_max_epoch',default=1, type=int, 
                         help='the max epoch to adjust reconstruction error')
     parser.add_argument('--lambda',default=10000, type=int, 
                         help='the weight of classification and mutual information')
@@ -100,11 +100,11 @@ def get_args():
     parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
 
     '''Normalizing Flow Model Parameters'''
-    parser.add_argument('--z_hidden_dim', default=128, type=int,
+    parser.add_argument('--z_hidden_dim', default=256, type=int,
                         help='embedding dimension of continuous latent for coupling layer')
     parser.add_argument('--c_hidden_dim', default=128, type=int,
                         help='embedding dimension of discrete latent for coupling layer')
-    parser.add_argument('--z_n_blocks', default=4, type=int,
+    parser.add_argument('--z_n_blocks', default=6, type=int,
                         help='number of coupling layers in Real NVP (continous latent)')
     parser.add_argument('--c_n_blocks', default=4, type=int,
                         help='number of coupling layers in Real NVP (discrete latent)')
@@ -123,12 +123,8 @@ def get_args():
                         help="The milestone list for adjust learning rate")
     parser.add_argument('--start_epoch_nf', default=0, type=int,
                         help="NF training start epoch")
-    # parser.add_argument('--decay_steps', default=1, type=int,
-    #                     help='decay steps for exponential decay schedule')
-    # parser.add_argument('--decay_rate', default=0.95, type=float,
-    #                     help='decay rate for exponential decay schedule')
-    # parser.add_argument('--gradclip', default=1., type=float,
-    #                     help='gradclip value')
+    parser.add_argument('--gradclip', default=1., type=float,
+                        help='gradclip value')
 
     '''Optimizer Transport Estimation Parameters'''
     parser.add_argument('--epsilon', default=0.1, type=float,
@@ -160,7 +156,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220212-001147'
+model_path = log_path + '/20220213-184741'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 model.build(input_shape=(None, 32, 32, 3))
