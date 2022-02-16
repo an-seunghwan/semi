@@ -216,8 +216,7 @@ plt.show()
 plt.close()
 #%%
 '''interpolation: smooth'''
-# pairs = [[10, 61], [19, 11], [1, 86]]
-pairs = [[60, 58], [19, 11], [1, 86]]
+pairs = [[10, 61], [19, 11], [1, 86]]
 fig, axes = plt.subplots(3, 10, figsize=(10, 3))
 for k in range(len(pairs)):
     z_epsilon1, _ = model.prior.zNF(latent.numpy()[[pairs[k][0]], :])
@@ -271,8 +270,7 @@ plt.close()
 # plt.close()
 #%%
 '''interpolation: non-smooth'''
-# pairs = [[10, 61], [19, 11], [1, 86]]
-pairs = [[60, 58], [19, 11], [1, 86]]
+pairs = [[10, 61], [19, 11], [1, 86]]
 fig, axes = plt.subplots(3, 10, figsize=(10, 3))
 for k in range(len(pairs)):
     z_interpolation = np.squeeze(np.linspace(latent.numpy()[[pairs[k][0]], :], 
@@ -309,7 +307,8 @@ plt.close()
 # plt.close()
 #%%
 '''manipulation'''
-idx = [1, 16, 32, 24, 7, 89]
+idx = [69, 59, 58, 50, 41, 35]
+# idx = [1, 16, 32, 24, 7, 89]
 # idx = [1, 2, 7, 12, 22, 27, 41, 45, 74, 87]
 plt.figure(figsize=(10, 6))
 for j in range(len(idx)):
@@ -326,8 +325,9 @@ for j in range(len(idx)):
 
         plt.subplot(len(idx), len(p), len(p) * j + i + 1)
         plt.imshow(xhat[0])
-        plt.title('p({}): {:.1f}'.format(num1, p[i]), fontsize=10)
+        plt.title('p({}):{:.1f}'.format(num1, p[i]), fontsize=12)
         plt.axis('off')
+plt.tight_layout()
 plt.savefig('{}/manipulation.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
@@ -357,7 +357,7 @@ plt.show()
 plt.close()
 #%%
 '''style latent random sampling of z'''
-tf.random.set_seed(1)
+tf.random.set_seed(10)
 z_epsilon = tf.random.normal(shape=(100, args['latent_dim']))
 z = model.prior.zflow(z_epsilon)
 # out = model.prior.zNF.affine_layers[-1].reverse(z_epsilon)
