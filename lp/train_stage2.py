@@ -268,12 +268,12 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
-        # '''learning rate schedule'''
-        # epoch_ = epoch + batch_num / iteration
-        # lr = linear_rampup(epoch_, args['lr_rampup']) * (optimizer.lr - args['initial_lr']) + args['initial_lr']
-        # if args['lr_rampdown_epochs']:
-        #     lr *= cosine_rampdown(epoch_, args['lr_rampdown_epochs'])
-        # optimizer.lr = lr
+        '''learning rate schedule'''
+        epoch_ = epoch + batch_num / iteration
+        lr = linear_rampup(epoch_, args['lr_rampup']) * (optimizer.lr - args['initial_lr']) + args['initial_lr']
+        if args['lr_rampdown_epochs']:
+            lr *= cosine_rampdown(epoch_, args['lr_rampdown_epochs'])
+        optimizer.lr = lr
         
         try:
             imageL, labelL = next(iteratorL)
@@ -335,6 +335,8 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
         loss_avg(loss)
         # label_loss_avg(ce_lossL / 50)
         # unlabel_loss_avg(ce_lossU / (args['batch_size'] - 50))
+        imageL -= channel_stats['mean']
+        imageL /= channel_stats['std']
         probL, _ = model(imageL, training=False)
         probL = tf.nn.softmax(probL, axis=-1)
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)

@@ -178,6 +178,19 @@ x = tf.cast(np.array(x), tf.float32)
 y = tf.cast(np.array(y), tf.float32)
 latent = model.ae.z_encode(x, training=False)
 #%%
+#%%
+'''examples'''
+plt.figure(figsize=(10, 10))
+for idx in tqdm.tqdm(range(100)):
+    plt.subplot(10, 10, idx+1)
+    plt.imshow(x[idx])
+    plt.axis('off')
+plt.tight_layout(pad=0)
+plt.savefig('cmnist_examples.png',
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
 '''style transfer'''
 for idx in tqdm.tqdm(range(100)):
     plt.figure(figsize=(20, 10))
