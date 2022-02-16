@@ -288,7 +288,7 @@ plt.savefig('{}/style_interpolation_nonsmooth.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
-
+#%%
 # z_interpolation = np.squeeze(np.linspace(latent.numpy()[[10], :], 
 #                                          latent.numpy()[[61], :], 15))
 

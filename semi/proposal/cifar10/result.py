@@ -156,14 +156,13 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220214-130735'
+model_path = log_path + '/20220213-184741'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 model.build(input_shape=(None, 32, 32, 3))
 model.load_weights(model_path + '/' + model_name)
 model.summary()
 #%%
-'''style transfer'''
 x = []
 y = []
 for example in datasetU:
@@ -174,6 +173,10 @@ x = tf.cast(np.array(x), tf.float32)
 y = tf.cast(np.array(y), tf.float32)
 latent = model.ae.z_encode(x, training=False)
 #%%
+classnames = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+classdict = {i:x for i,x in enumerate(classnames)}
+#%%
+'''style transfer'''
 for idx in tqdm.tqdm(range(100)):
     plt.figure(figsize=(20, 10))
     plt.subplot(1, num_classes+1, 1)
@@ -189,7 +192,7 @@ for idx in tqdm.tqdm(range(100)):
 
         plt.subplot(1, num_classes+1, i+2)
         plt.imshow(xhat[0])
-        plt.title('given label {}'.format(i))
+        plt.title('{}'.format(classdict.get(i)), fontsize=15)
         plt.axis('off')
     plt.savefig('{}/img{}.png'.format(model_path, idx),
                 dpi=200, bbox_inches="tight", pad_inches=0.1)
@@ -197,68 +200,131 @@ for idx in tqdm.tqdm(range(100)):
     plt.close()
 #%%
 style = []
-for idx in [1, 17, 21, 31, 32, 48, 58, 68, 81, 84]:
+# for idx in [1, 17, 21, 31, 32, 48, 58, 68, 81, 84]:
+for idx in [11, 3, 15, 23, 34, 81]:
     style.append(Image.open('{}/img{}.png'.format(model_path, idx)))
     
-fig, axes = plt.subplots(10, 1, figsize=(10, 6))
+fig, axes = plt.subplots(6, 1, figsize=(10, 6))
 for i in range(len(style)):
     axes.flatten()[i].imshow(style[i])
     axes.flatten()[i].axis('off')
 plt.tight_layout()
 plt.savefig('{}/style_transfer.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
+plt.show()
 plt.close()
 #%%
 '''interpolation: smooth'''
-z_epsilon1, _ = model.prior.zNF(latent.numpy()[[7], :])
-z_epsilon2, _ = model.prior.zNF(latent.numpy()[[62], :])
+pairs = [[11, 25], [11, 15], [11, 53]]
+fig, axes = plt.subplots(3, 10, figsize=(10, 3))
+for k in range(len(pairs)):
+    z_epsilon1, _ = model.prior.zNF(latent.numpy()[[pairs[k][0]], :])
+    z_epsilon2, _ = model.prior.zNF(latent.numpy()[[pairs[k][1]], :])
 
-interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 20))
-z_interpolation = model.prior.zflow(interpolation)
+    interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 8))
+    z_interpolation = model.prior.zflow(interpolation)
+    # out = model.prior.zNF.affine_layers[-1].reverse(interpolation)
+    # for i in range(model.prior.zNF.n_blocks - 1):
+    #     out = model.prior.zNF.permutations[-1-i].reverse(out)
+    #     out = model.prior.zNF.affine_layers[-2-i].reverse(out)
+    # z_interpolation = out
 
-label = np.zeros((z_interpolation.shape[0], num_classes))
-label[:, 3] = 1
-label = tf.cast(label, tf.float32)
-xhat_ = model.ae.decode(z_interpolation, label, training=False)
+    label = np.zeros((z_interpolation.shape[0], num_classes))
+    label[:, 1] = 1 # automobile
+    xhat_ = model.ae.decode(z_interpolation, label, training=False)
 
-fig, axes = plt.subplots(1, 20, figsize=(20, 6))
-for i in range(len(z_interpolation)):
-    axes.flatten()[i].imshow(xhat_[i])
-    axes.flatten()[i].axis('off')
+    axes[k][0].imshow(x[pairs[k][0]])
+    axes[k][0].axis('off')
+    for i in range(len(z_interpolation)):
+        axes[k][i+1].imshow(xhat_[i])
+        axes[k][i+1].axis('off')
+    axes[k][-1].imshow(x[pairs[k][1]])
+    axes[k][-1].axis('off')
+
 plt.tight_layout()
 plt.savefig('{}/style_interpolation_smooth.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
+plt.show()
 plt.close()
 #%%
+# '''interpolation: smooth'''
+# z_epsilon1, _ = model.prior.zNF(latent.numpy()[[7], :])
+# z_epsilon2, _ = model.prior.zNF(latent.numpy()[[62], :])
+
+# interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 20))
+# z_interpolation = model.prior.zflow(interpolation)
+
+# label = np.zeros((z_interpolation.shape[0], num_classes))
+# label[:, 3] = 1
+# label = tf.cast(label, tf.float32)
+# xhat_ = model.ae.decode(z_interpolation, label, training=False)
+
+# fig, axes = plt.subplots(1, 20, figsize=(20, 6))
+# for i in range(len(z_interpolation)):
+#     axes.flatten()[i].imshow(xhat_[i])
+#     axes.flatten()[i].axis('off')
+# plt.tight_layout()
+# plt.savefig('{}/style_interpolation_smooth.png'.format(model_path),
+#             dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+# plt.close()
+#%%
 '''interpolation: non-smooth'''
-z_interpolation = np.squeeze(np.linspace(latent.numpy()[[7], :], latent.numpy()[[62], :], 20))
+pairs = [[11, 25], [11, 15], [11, 53]]
+fig, axes = plt.subplots(3, 10, figsize=(10, 3))
+for k in range(len(pairs)):
+    z_interpolation = np.squeeze(np.linspace(latent.numpy()[[pairs[k][0]], :], 
+                                            latent.numpy()[[pairs[k][1]], :], 8))
 
-label = np.zeros((z_interpolation.shape[0], num_classes))
-label[:, 3] = 1
-label = tf.cast(label, tf.float32)
-xhat_ = model.ae.decode(z_interpolation, label, training=False)
+    label = np.zeros((z_interpolation.shape[0], num_classes))
+    label[:, 1] = 1 # automobile
+    xhat_ = model.ae.decode(z_interpolation, label, training=False)
 
-fig, axes = plt.subplots(1, 20, figsize=(20, 6))
-for i in range(len(z_interpolation)):
-    axes.flatten()[i].imshow(xhat_[i])
-    axes.flatten()[i].axis('off')
+    axes[k][0].imshow(x[pairs[k][0]])
+    axes[k][0].axis('off')
+    for i in range(len(z_interpolation)):
+        axes[k][i+1].imshow(xhat_[i])
+        axes[k][i+1].axis('off')
+    axes[k][-1].imshow(x[pairs[k][1]])
+    axes[k][-1].axis('off')
+
 plt.tight_layout()
 plt.savefig('{}/style_interpolation_nonsmooth.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
+plt.show()
 plt.close()
 #%%
+# '''interpolation: non-smooth'''
+# z_interpolation = np.squeeze(np.linspace(latent.numpy()[[7], :], latent.numpy()[[62], :], 20))
+
+# label = np.zeros((z_interpolation.shape[0], num_classes))
+# label[:, 3] = 1
+# label = tf.cast(label, tf.float32)
+# xhat_ = model.ae.decode(z_interpolation, label, training=False)
+
+# fig, axes = plt.subplots(1, 20, figsize=(20, 6))
+# for i in range(len(z_interpolation)):
+#     axes.flatten()[i].imshow(xhat_[i])
+#     axes.flatten()[i].axis('off')
+# plt.tight_layout()
+# plt.savefig('{}/style_interpolation_nonsmooth.png'.format(model_path),
+#             dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+# plt.close()
+#%%
 '''manipulation'''
-idx = [1, 6, 8, 17, 31, 48, 56, 65, 80, 84]
-plt.figure(figsize=(15, 20))
+idx = [11, 3, 15, 23, 34, 81]
+plt.figure(figsize=(10, 6))
 for j in range(len(idx)):
     z = model.ae.z_encode(tf.cast(x.numpy()[[idx[j]]], tf.float32), training=False)
     p = np.linspace(1, 0, 11)
-    num1 = 4
-    num2 = 9
+    num1 = 1 # automobile
+    num2 = 7 # horse
 
+    plt.subplot(len(idx), len(p)+1, (len(p)+1) * j + 1)
+    plt.imshow(x[idx[j]])
+    plt.title('original')
+    plt.axis('off')
     for i in range(len(p)):
         attr = np.zeros((1, num_classes))
         attr[:, num1] = p[i]
@@ -266,13 +332,14 @@ for j in range(len(idx)):
         attr = tf.cast(attr, tf.float32)
         xhat = model.ae.decode(z, attr, training=False)
 
-        plt.subplot(len(idx), len(p), len(p) * j + i + 1)
+        plt.subplot(len(idx), len(p)+1, (len(p)+1) * j + i + 2)
         plt.imshow(xhat[0])
-        plt.title('p of {}: {:.1f}'.format(num1, p[i]))
+        plt.title('{}:{:.1f}'.format(classdict.get(num1)[:4], p[i]), fontsize=12)
         plt.axis('off')
+plt.tight_layout()
 plt.savefig('{}/manipulation.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
+plt.show()
 plt.close()
 #%%
 '''style latent random sampling of c'''
@@ -290,7 +357,7 @@ for i in range(100):
 plt.tight_layout()
 plt.savefig('{}/inverse_flow_c.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
+plt.show()
 plt.close()
 #%%
 '''style latent random sampling of z'''
@@ -309,7 +376,7 @@ for i in range(100):
 plt.tight_layout()
 plt.savefig('{}/inverse_flow_z.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
+plt.show()
 plt.close()
 #%%
 # np.mean(latent.numpy(), axis=0) # why sparse?
