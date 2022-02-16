@@ -26,6 +26,7 @@ import tqdm
 import yaml
 import io
 import matplotlib.pyplot as plt
+from PIL import Image
 
 import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -169,49 +170,115 @@ model.summary()
 classnames = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 classdict = {i:x for i,x in enumerate(classnames)}
 #%%
-shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
-iteratorL = iter(shuffle_and_batch(datasetL))
-image, label = next(iteratorL)
+# shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
+# iteratorL = iter(shuffle_and_batch(datasetL))
+# image, label = next(iteratorL)
 #%%
 data_dir = r'D:\cifar10_{}'.format(5000)
 idx = np.arange(100)
 x = np.array([np.load(data_dir + '/x_{}.npy'.format(i)) for i in idx])
 y = np.array([np.load(data_dir + '/y_{}.npy'.format(i)) for i in idx])
 x = tf.cast(x, tf.float32) / 255.
-#%%
+
 mean, log_sigma, log_prob, z, y, xhat = model([x, y])
 #%%
-'''interpolation'''
-figure = plt.figure(figsize=(25, 5))
-for num, (i, j, class_idx) in enumerate([(0, 5, 1), (0, 2, 7)]):
-    interpolation_idx = np.where([tf.argmax(y, axis=-1).numpy() == class_idx])[1]
-    inter = np.linspace(z[interpolation_idx[i]], z[interpolation_idx[j]], 8)
-    inter_recon = model.decode_sample(inter, tf.one_hot([class_idx] * 8, depth=num_classes), training=False)
+for idx in tqdm.tqdm(range(100)):
+    plt.figure(figsize=(20, 10))
+    plt.subplot(1, num_classes+1, 1)
+    plt.imshow(x[idx])
+    plt.title('original')
+    plt.axis('off')
     
-    plt.subplot(2, 8+2, 10*num+1)    
-    plt.imshow(x[interpolation_idx[i]])
-    plt.axis('off')
-    for i in range(8):
-        plt.subplot(2, 8+2, 10*num+i+2)
-        plt.imshow(inter_recon[i])
+    for i in range(num_classes):
+        label = np.zeros((1, num_classes))
+        label[:, i] = 1
+        label = tf.cast(label, tf.float32)
+        xhat = model.decode_sample(z.numpy()[[idx]], label, training=False)
+
+        plt.subplot(1, num_classes+1, i+2)
+        plt.imshow(xhat[0])
+        plt.title('{}'.format(classdict.get(i)), fontsize=15)
         plt.axis('off')
-    plt.subplot(2, 8+2, 10*num+10)
-    plt.imshow(x[interpolation_idx[j]])
-    plt.axis('off')
-plt.savefig('{}/interpolation.png'.format(model_path),
+    plt.savefig('{}/img{}.png'.format(model_path, idx),
+                dpi=200, bbox_inches="tight", pad_inches=0.1)
+    # plt.show()
+    plt.close()
+#%%
+'''style transfer'''
+style = []
+# for idx in [1, 17, 21, 31, 32, 48, 58, 68, 81, 84]:
+for idx in [11, 3, 15, 23, 34, 81]:
+    style.append(Image.open('{}/img{}.png'.format(model_path, idx)))
+    
+fig, axes = plt.subplots(6, 1, figsize=(10, 6))
+for i in range(len(style)):
+    axes.flatten()[i].imshow(style[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/style_transfer.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
 #%%
-'''manipulation'''
-idx = [1, 6, 8, 17, 31, 48, 56, 65, 80, 84]
-plt.figure(figsize=(20, 20))
-for j in range(len(idx)):
-    z_ = z.numpy()[[j]]
-    p = np.linspace(1, 0, 11)
-    num1 = 7
-    num2 = 1
+'''interpolation'''
+pairs = [[11, 25], [11, 15], [11, 53]]
+fig, axes = plt.subplots(3, 10, figsize=(10, 3))
+for k in range(len(pairs)):
+    z_interpolation = np.squeeze(np.linspace(z.numpy()[[pairs[k][0]], :], 
+                                            z.numpy()[[pairs[k][1]], :], 8))
 
+    label = np.zeros((z_interpolation.shape[0], num_classes))
+    label[:, 1] = 1 # automobile
+    xhat_ = model.decode_sample(z_interpolation, label, training=False)
+
+    axes[k][0].imshow(x[pairs[k][0]])
+    axes[k][0].axis('off')
+    for i in range(len(z_interpolation)):
+        axes[k][i+1].imshow(xhat_[i])
+        axes[k][i+1].axis('off')
+    axes[k][-1].imshow(x[pairs[k][1]])
+    axes[k][-1].axis('off')
+
+plt.tight_layout()
+plt.savefig('{}/style_interpolation_nonsmooth.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
+# figure = plt.figure(figsize=(25, 5))
+# for num, (i, j, class_idx) in enumerate([(0, 5, 1), (0, 2, 7)]):
+#     interpolation_idx = np.where([tf.argmax(y, axis=-1).numpy() == class_idx])[1]
+#     inter = np.linspace(z[interpolation_idx[i]], z[interpolation_idx[j]], 8)
+#     inter_recon = model.decode_sample(inter, tf.one_hot([class_idx] * 8, depth=num_classes), training=False)
+    
+#     plt.subplot(2, 8+2, 10*num+1)    
+#     plt.imshow(x[interpolation_idx[i]])
+#     plt.axis('off')
+#     for i in range(8):
+#         plt.subplot(2, 8+2, 10*num+i+2)
+#         plt.imshow(inter_recon[i])
+#         plt.axis('off')
+#     plt.subplot(2, 8+2, 10*num+10)
+#     plt.imshow(x[interpolation_idx[j]])
+#     plt.axis('off')
+# plt.savefig('{}/interpolation.png'.format(model_path),
+#             dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+# plt.close()
+#%%
+'''manipulation'''
+idx = [11, 3, 15, 23, 34, 81]
+plt.figure(figsize=(10, 6))
+for j in range(len(idx)):
+    z_ = z.numpy()[[idx[j]]]
+    p = np.linspace(1, 0, 11)
+    num1 = 1 # automobile
+    num2 = 7 # horse
+
+    plt.subplot(len(idx), len(p)+1, (len(p)+1) * j + 1)
+    plt.imshow(x[idx[j]])
+    plt.title('original')
+    plt.axis('off')
     for i in range(len(p)):
         attr = np.zeros((1, num_classes))
         attr[:, num1] = p[i]
@@ -219,17 +286,18 @@ for j in range(len(idx)):
         attr = tf.cast(attr, tf.float32)
         xhat = model.decode_sample(z_, attr, training=False)
 
-        plt.subplot(len(idx), len(p), len(p) * j + i + 1)
+        plt.subplot(len(idx), len(p)+1, (len(p)+1) * j + i + 2)
         plt.imshow(xhat[0])
-        plt.title('{}: {:.1f}'.format(classdict.get(num1), p[i]))
+        plt.title('{}:{:.1f}'.format(classdict.get(num1)[:4], p[i]), fontsize=12)
         plt.axis('off')
+plt.tight_layout()
 plt.savefig('{}/manipulation.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
 #%%
 '''style latent random sampling of z'''
-tf.random.set_seed(1)
+tf.random.set_seed(10)
 z_sampling = tf.random.normal(shape=(100, args['ldc']))
 pi = np.zeros((len(z_sampling), num_classes))
 pi[:, 1] = 1 # automobile

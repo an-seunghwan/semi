@@ -176,7 +176,6 @@ latent = model.ae.z_encode(x, training=False)
 classnames = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
 classdict = {i:x for i,x in enumerate(classnames)}
 #%%
-'''style transfer'''
 for idx in tqdm.tqdm(range(100)):
     plt.figure(figsize=(20, 10))
     plt.subplot(1, num_classes+1, 1)
@@ -199,6 +198,7 @@ for idx in tqdm.tqdm(range(100)):
     # plt.show()
     plt.close()
 #%%
+'''style transfer'''
 style = []
 # for idx in [1, 17, 21, 31, 32, 48, 58, 68, 81, 84]:
 for idx in [11, 3, 15, 23, 34, 81]:
