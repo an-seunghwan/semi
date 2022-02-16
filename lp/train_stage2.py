@@ -49,9 +49,11 @@ def get_args():
                         help='manual epoch number (useful on restarts)')
     parser.add_argument('-b', '--batch-size', default=100, type=int,
                         metavar='N', help='mini-batch size (default: 256)')
+    parser.add_argument('-label_b', '--labeled-batch-size', default=50, type=int,
+                        metavar='N', help='labeled examples per minibatch (default: 256)')
     # parser.add_argument('--labeled-batch-size', default=None, type=int,
     #                     metavar='N', help="labeled examples per minibatch (default: no constrain)")
-    parser.add_argument('--lr', '--learning-rate', default=0.05, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                         metavar='LR', help='max learning rate')
     parser.add_argument('--initial-lr', default=0.0, type=float,
                         metavar='LR', help='initial learning rate when using linear rampup')
@@ -59,10 +61,10 @@ def get_args():
                         help='length of learning rate rampup in the beginning')
     parser.add_argument('--lr-rampdown-epochs', default=210, type=int, metavar='EPOCHS',
                         help='length of learning rate cosine rampdown (>= length of training)')
-    parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
-                        help='momentum')
-    parser.add_argument('--nesterov', default=True, type=bool,
-                        help='use nesterov momentum')
+    # parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
+    #                     help='momentum')
+    # parser.add_argument('--nesterov', default=True, type=bool,
+    #                     help='use nesterov momentum')
     parser.add_argument('--weight-decay', '--wd', default=2e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # parser.add_argument('--ema-decay', default=0.999, type=float, metavar='ALPHA',
@@ -169,10 +171,10 @@ def main():
     '''
     
     '''optimizer'''
-    optimizer = K.optimizers.SGD(learning_rate=args['lr'],
-                                momentum=args['momentum'],
-                                nesterov=args['nesterov'])
-    # optimizer = K.optimizers.Adam(learning_rate=args['lr'])
+    # optimizer = K.optimizers.SGD(learning_rate=args['lr'],
+    #                             momentum=args['momentum'],
+    #                             nesterov=args['nesterov'])
+    optimizer = K.optimizers.Adam(learning_rate=args['lr'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -180,14 +182,15 @@ def main():
 
     for epoch in range(args['start_epoch'], args['epochs']):
         
-        loss, label_loss, unlabel_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
+        loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
+        # loss, label_loss, unlabel_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
         val_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
-            tf.summary.scalar('label_loss', label_loss.result(), step=epoch)
-            tf.summary.scalar('unlabel_loss', unlabel_loss.result(), step=epoch)
+            # tf.summary.scalar('label_loss', label_loss.result(), step=epoch)
+            # tf.summary.scalar('unlabel_loss', unlabel_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
         with val_writer.as_default():
             tf.summary.scalar('loss', val_loss.result(), step=epoch)
@@ -198,8 +201,8 @@ def main():
 
         # Reset metrics every epoch
         loss.reset_states()
-        label_loss.reset_states()
-        unlabel_loss.reset_states()
+        # label_loss.reset_states()
+        # unlabel_loss.reset_states()
         accuracy.reset_states()
         val_loss.reset_states()
         val_accuracy.reset_states()
@@ -227,8 +230,8 @@ def main():
 #%%
 def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length):
     loss_avg = tf.keras.metrics.Mean()
-    label_loss_avg = tf.keras.metrics.Mean()
-    unlabel_loss_avg = tf.keras.metrics.Mean()
+    # label_loss_avg = tf.keras.metrics.Mean()
+    # unlabel_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     # batch_iter = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=True)
@@ -249,8 +252,8 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
     # pseudo_label_iteratorU = iter(batch_iter(pseudo_labelU))
     
     autotune = tf.data.AUTOTUNE
-    shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e5)).batch(batch_size=50, drop_remainder=True).prefetch(autotune)
-    shuffle_and_batch = lambda dataset: dataset.batch(batch_size=args['batch_size'] - 50, drop_remainder=True).prefetch(autotune)
+    shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e5)).batch(batch_size=args['labeled_batch_size'], drop_remainder=True).prefetch(autotune)
+    shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'] - args['labeled_batch_size'], drop_remainder=True).prefetch(autotune)
     
     pseudo_datasetU, class_weights, accL = build_pseudo_label(datasetL, datasetU, model, num_classes, args, k=args['dfs_k'])
     class_weights = tf.cast(class_weights, tf.float32)
@@ -265,12 +268,12 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
-        '''learning rate schedule'''
-        epoch_ = epoch + batch_num / iteration
-        lr = linear_rampup(epoch_, args['lr_rampup']) * (optimizer.lr - args['initial_lr']) + args['initial_lr']
-        if args['lr_rampdown_epochs']:
-            lr *= cosine_rampdown(epoch_, args['lr_rampdown_epochs'])
-        optimizer.lr = lr
+        # '''learning rate schedule'''
+        # epoch_ = epoch + batch_num / iteration
+        # lr = linear_rampup(epoch_, args['lr_rampup']) * (optimizer.lr - args['initial_lr']) + args['initial_lr']
+        # if args['lr_rampdown_epochs']:
+        #     lr *= cosine_rampdown(epoch_, args['lr_rampdown_epochs'])
+        # optimizer.lr = lr
         
         try:
             imageL, labelL = next(iteratorL)
@@ -287,28 +290,41 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
         imageL = augment(imageL)
         imageU = augment(imageU)
         
+        '''concat'''
+        image = tf.concat([imageL, imageU], axis=0)
+        label = tf.concat([labelL, labelU], axis=0)
+        weights = tf.concat([tf.ones((args['labeled_batch_size'], )), weightU], axis=0)
+        
         '''normalization'''
         channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
                              std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
-        imageL -= channel_stats['mean']
-        imageL /= channel_stats['std']
-        imageU -= channel_stats['mean']
-        imageU /= channel_stats['std']
+        # imageL -= channel_stats['mean']
+        # imageL /= channel_stats['std']
+        # imageU -= channel_stats['mean']
+        # imageU /= channel_stats['std']
+        image -= channel_stats['mean']
+        image /= channel_stats['std']
         
         with tf.GradientTape(persistent=True) as tape:
-            '''labeled'''
-            predL, _ = model(imageL)
-            predL = tf.nn.softmax(predL, axis=-1)
-            ce_lossL = tf.reduce_sum(class_weights * labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1)
-            ce_lossL = - tf.reduce_sum(ce_lossL)
+            '''both labeled and unlabeled'''
+            pred, _ = model(image)
+            pred = tf.nn.softmax(pred, axis=-1)
+            ce_loss = tf.reduce_sum(class_weights * label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1)
+            loss = - tf.reduce_sum(weights * ce_loss) / args['batch_size']
             
-            '''unlabeled'''
-            predU, _ = model(imageU)
-            predU = tf.nn.softmax(predU, axis=-1)
-            ce_lossU = tf.reduce_sum(class_weights * labelU * tf.math.log(tf.clip_by_value(predU, 1e-10, 1.0)), axis=-1)
-            ce_lossU = - tf.reduce_sum(weightU * ce_lossU)
+            # '''labeled'''
+            # predL, _ = model(imageL)
+            # predL = tf.nn.softmax(predL, axis=-1)
+            # ce_lossL = tf.reduce_sum(class_weights * labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1)
+            # ce_lossL = - tf.reduce_sum(ce_lossL)
             
-            loss = (ce_lossL + ce_lossU) / args['batch_size']
+            # '''unlabeled'''
+            # predU, _ = model(imageU)
+            # predU = tf.nn.softmax(predU, axis=-1)
+            # ce_lossU = tf.reduce_sum(class_weights * labelU * tf.math.log(tf.clip_by_value(predU, 1e-10, 1.0)), axis=-1)
+            # ce_lossU = - tf.reduce_sum(weightU * ce_lossU)
+            
+            # loss = (ce_lossL + ce_lossU) / args['batch_size']
             
         grads = tape.gradient(loss, model.trainable_variables) 
         '''SGD + momentum''' 
@@ -317,22 +333,23 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
         weight_decay_decoupled(model, buffer_model, decay_rate=args['weight_decay'] * optimizer.lr)
         
         loss_avg(loss)
-        label_loss_avg(ce_lossL / 50)
-        unlabel_loss_avg(ce_lossU / (args['batch_size'] - 50))
+        # label_loss_avg(ce_lossL / 50)
+        # unlabel_loss_avg(ce_lossU / (args['batch_size'] - 50))
         probL, _ = model(imageL, training=False)
         probL = tf.nn.softmax(probL, axis=-1)
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
 
         progress_bar.set_postfix({
             'EPOCH': f'{epoch:04d}',
-            'Labeled Loss': f'{loss_avg.result():.4f}',
-            'Unlabeled Loss': f'{unlabel_loss_avg.result():.4f}',
+            # 'Labeled Loss': f'{loss_avg.result():.4f}',
+            # 'Unlabeled Loss': f'{unlabel_loss_avg.result():.4f}',
             'Loss': f'{loss_avg.result():.4f}',
             'Accuracy': f'{accuracy.result():.3%}',
             'LP Accuracy': f'{accL:.3%}'
         })
         
-    return loss_avg, label_loss_avg, unlabel_loss_avg, accuracy
+    return loss_avg, accuracy
+    # return loss_avg, label_loss_avg, unlabel_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, args, split):
     loss_avg = tf.keras.metrics.Mean()
@@ -346,7 +363,7 @@ def validate(dataset, model, epoch, args, split):
         image -= channel_stats['mean']
         image /= channel_stats['std']
         
-        pred, _ = model(image)
+        pred, _ = model(image, training=False)
         pred = tf.nn.softmax(pred, axis=-1)
         ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))
         loss_avg(ce_loss)

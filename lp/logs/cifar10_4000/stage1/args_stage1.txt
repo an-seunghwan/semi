@@ -3,12 +3,10 @@ seed : 1
 epochs : 180
 start_epoch : 0
 batch_size : 100
-lr : 0.05
+lr : 0.001
 initial_lr : 0.0
 lr_rampup : 0
 lr_rampdown_epochs : 210
-momentum : 0.9
-nesterov : True
 weight_decay : 0.0002
 dfs_k : 50
 isL2 : True

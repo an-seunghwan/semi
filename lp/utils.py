@@ -37,7 +37,7 @@ def cosine_rampdown(current, rampdown_length):
 #%%
 def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
                        k=50, maxiter=20):
-    '''extract features'''
+    print('extracting features...')
     autotune = tf.data.AUTOTUNE
     batch_iterL = lambda dataset: dataset.batch(batch_size=50, drop_remainder=False).prefetch(autotune)
     batch_iter = lambda dataset: dataset.batch(batch_size=args['batch_size'] - 50, drop_remainder=False).prefetch(autotune)
@@ -64,7 +64,6 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
             _, feats = model(imageL, training=False)
             embeddings.append(feats)
             labelsL.append(labelL)
-            # images.append(imageL)
         except:
             break
     
@@ -96,12 +95,12 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     alpha = 0.99
     gamma = 3
     
-    '''KNN search'''
+    print('KNN searching...')
     embeddings = embeddings.numpy()
     d = embeddings.shape[1]
     index = faiss.IndexFlatIP(int(d))   
     # print(index.is_trained)
-    # embeddings = normalize(embeddings, axis=1, norm='l2') # originally, normalize_L2 from faiss
+    # embeddings = normalize(embeddings, axis=1, norm='l2') # originally, normalize_L2 from faiss, inside of model
     index.add(embeddings)
     
     D, I = index.search(embeddings, k+1) 
@@ -111,14 +110,14 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     D = D[:, 1:] ** gamma
     I = I[:, 1:]
     
-    '''create graph'''
+    print('building graph...')
     N = embeddings.shape[0]
     row_idx = np.arange(N)
     row_idx_rep = np.tile(row_idx, (k, 1)).T
     W = scipy.sparse.csr_matrix((D.flatten('F'), (row_idx_rep.flatten('F'), I.flatten('F'))), shape=(N, N))
     W = W + W.T
     
-    '''normalize graph'''
+    print('graph normalizing...')
     W = W - scipy.sparse.diags(W.diagonal())
     S = W.sum(axis=1)
     S[S == 0] = 1
@@ -126,28 +125,27 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     D = scipy.sparse.diags(D.reshape(-1))
     Wn = D * W * D
     
-    '''initialize Y (normalize with the class size)'''
+    print('diffusion...')
     Z = np.zeros((N, num_classes))
-    I_alphaW = scipy.sparse.eye(Wn.shape[0]) - alpha * Wn
+    I_alphaW = scipy.sparse.eye(N) - alpha * Wn
     labelsL = np.argmax(labelsL.numpy(), axis=1)
     for i in range(num_classes):
         cur_idx = np.where(labelsL == i)[0]
         y = np.zeros((N, ))
         '''implementation'''
         y[cur_idx] = 1. / len(cur_idx)
-        # '''paper'''
-        # y[cur_idx] = 1. 
         f, _ = scipy.sparse.linalg.cg(I_alphaW, y, tol=1e-6, maxiter=maxiter)
         Z[:, i] = f
     Z[Z < 0] = 0 # handle numerical errors
     
-    '''compute weight based on entropy'''
+    print('assigning pseudo labels and weights...')
     probs_Z = Z / np.sum(np.abs(Z), axis=1, keepdims=True)
     probs_Z[probs_Z < 0] = 0
-    plabels = np.argmax(probs_Z, axis=1)
-    entropy = -np.sum(probs_Z * np.log(np.clip(probs_Z, 1e-10, 1.)), axis=1)
+    entropy = scipy.stats.entropy(probs_Z.T)
+    # entropy = -np.sum(probs_Z * np.log(np.clip(probs_Z, 1e-10, 1.)), axis=1)
     weights = 1. - entropy / np.log(num_classes)
     weights = weights / np.max(weights)
+    plabels = np.argmax(probs_Z, axis=1)
     
     '''labeled accuracy using label propagation'''
     accL = len(np.where((plabels[:tf.shape(labelsL)[0]] - labelsL) == 0)[0]) / len(labelsL)
@@ -156,18 +154,14 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     plabels[:tf.shape(labelsL)[0]] = labelsL
     weights[:tf.shape(labelsL)[0]] = 1.
     
-    '''compute weight for each class'''
+    print('assigning class weights...')
     class_weights = np.zeros((1, num_classes))
     for i in range(num_classes):
         cur_idx = np.where(plabels == i)[0]
         '''implementation'''
         class_weights[0, i] = (N / num_classes) / len(cur_idx)
-    #     '''paper'''
-    #     class_weights[0, i] = 1. / len(cur_idx)
-    # '''paper'''
-    # class_weights *= 1. / np.mean(class_weights)
     
-    '''build pseudo-label dataset'''
+    print('build pseudo-label dataset...')
     plabels = tf.one_hot(plabels[tf.shape(labelsL)[0]:], depth=num_classes)
     pseudo_datasetU = tf.data.Dataset.from_tensor_slices((
         # images.numpy()[tf.shape(labelsL)[0]:], 
