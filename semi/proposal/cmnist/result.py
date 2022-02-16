@@ -156,7 +156,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220215-200549'
+model_path = log_path + '/20220206-141321'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(args, num_classes)
 # model = AutoEncoder(num_classes=num_classes,
@@ -168,7 +168,6 @@ model.build(input_shape=(None, 32, 32, 3))
 model.load_weights(model_path + '/' + model_name)
 model.summary()
 #%%
-'''style transfer'''
 x = []
 y = []
 for example in datasetU:
@@ -179,6 +178,7 @@ x = tf.cast(np.array(x), tf.float32)
 y = tf.cast(np.array(y), tf.float32)
 latent = model.ae.z_encode(x, training=False)
 #%%
+'''style transfer'''
 for idx in tqdm.tqdm(range(100)):
     plt.figure(figsize=(20, 10))
     plt.subplot(1, num_classes+1, 1)
@@ -216,13 +216,14 @@ plt.show()
 plt.close()
 #%%
 '''interpolation: smooth'''
-pairs = [[10, 61], [19, 11], [1, 86]]
-fig, axes = plt.subplots(3, 12, figsize=(12, 3))
+# pairs = [[10, 61], [19, 11], [1, 86]]
+pairs = [[60, 58], [19, 11], [1, 86]]
+fig, axes = plt.subplots(3, 10, figsize=(10, 3))
 for k in range(len(pairs)):
     z_epsilon1, _ = model.prior.zNF(latent.numpy()[[pairs[k][0]], :])
     z_epsilon2, _ = model.prior.zNF(latent.numpy()[[pairs[k][1]], :])
 
-    interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 12))
+    interpolation = np.squeeze(np.linspace(z_epsilon1, z_epsilon2, 10))
     z_interpolation = model.prior.zflow(interpolation)
     # out = model.prior.zNF.affine_layers[-1].reverse(interpolation)
     # for i in range(model.prior.zNF.n_blocks - 1):
@@ -243,7 +244,7 @@ plt.savefig('{}/style_interpolation_smooth.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
-
+#%%
 # z_epsilon1, _ = model.prior.zNF(latent.numpy()[[10], :])
 # z_epsilon2, _ = model.prior.zNF(latent.numpy()[[61], :])
 
@@ -270,11 +271,12 @@ plt.close()
 # plt.close()
 #%%
 '''interpolation: non-smooth'''
-pairs = [[10, 61], [19, 11], [1, 86]]
-fig, axes = plt.subplots(3, 12, figsize=(12, 3))
+# pairs = [[10, 61], [19, 11], [1, 86]]
+pairs = [[60, 58], [19, 11], [1, 86]]
+fig, axes = plt.subplots(3, 10, figsize=(10, 3))
 for k in range(len(pairs)):
     z_interpolation = np.squeeze(np.linspace(latent.numpy()[[pairs[k][0]], :], 
-                                            latent.numpy()[[pairs[k][1]], :], 12))
+                                            latent.numpy()[[pairs[k][1]], :], 10))
 
     label = np.zeros((z_interpolation.shape[0], num_classes))
     label[:, 3] = 1
