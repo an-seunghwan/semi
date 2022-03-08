@@ -180,7 +180,7 @@ x = np.array([np.load(data_dir + '/x_{}.npy'.format(i)) for i in idx])
 y = np.array([np.load(data_dir + '/y_{}.npy'.format(i)) for i in idx])
 x = tf.cast(x, tf.float32) / 255.
 
-mean, log_sigma, log_prob, z, y, xhat = model([x, y])
+mean, log_sigma, log_prob, z, y, xhat = model([x, y], training=False)
 #%%
 for idx in tqdm.tqdm(range(100)):
     plt.figure(figsize=(20, 10))
@@ -313,4 +313,130 @@ plt.savefig('{}/z_sampling_{}.png'.format(model_path, classdict.get(1)),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
+#%%
+'''inception score'''
+# assumes images have any shape and pixels in [0,255]
+def calculate_inception_score(images, n_split=50, eps=1E-16):
+    # load inception v3 model
+    inception = K.applications.InceptionV3(include_top=True)
+    # enumerate splits of images/predictions
+    scores = list()
+    n_part = int(np.floor(images.shape[0] / n_split))
+    for i in tqdm.tqdm(range(n_split)):
+        # retrieve images
+        ix_start, ix_end = i * n_part, (i+1) * n_part
+        subset = images[ix_start:ix_end]
+        # convert from uint8 to float32
+        subset = subset.astype('float32')
+        # scale images to the required size
+        subset = tf.image.resize(subset, (299, 299), 'nearest')
+        # pre-process images, scale to [-1,1]
+        subset = 2. * subset - 1.
+        # subset = K.applications.inception_v3.preprocess_input(subset)
+        # predict p(y|x)
+        p_yx = inception.predict(subset)
+        # calculate p(y)
+        p_y = tf.expand_dims(p_yx.mean(axis=0), 0)
+        # calculate KL divergence using log probabilities
+        kl_d = p_yx * (np.log(p_yx + eps) - np.log(p_y + eps))
+        # sum over classes
+        sum_kl_d = kl_d.sum(axis=1)
+        # average over images
+        avg_kl_d = np.mean(sum_kl_d)
+        # undo the log
+        is_score = np.exp(avg_kl_d)
+        # store
+        scores.append(is_score)
+    # average across images
+    is_avg, is_std = np.mean(scores), np.std(scores)
+    return is_avg, is_std
+#%%
+# 10,000 generated images from sampled latent variables
+np.random.seed(1)
+generated_images = []
+for i in tqdm.tqdm(range(num_classes)):
+    for _ in range(10):
+        latents = np.random.normal(size=(100, args['ldc']))
+        y_ = np.zeros((100, num_classes))
+        y_[:, i] = 1.
+        images = model.decode_sample(latents, y_, training=False)
+        generated_images.extend(images)
+generated_images = np.array(generated_images)
+np.random.shuffle(generated_images)
+#%%
+# calculate inception score
+is_avg, is_std = calculate_inception_score(generated_images)
+print('inception score | mean: {:.2f}, std: {:.2f}'.format(is_avg, is_std))
+#%%
+'''FID'''
+# inception_model = K.applications.InceptionV3(include_top=False, weights="imagenet", pooling='avg')
+
+# autotune = tf.data.AUTOTUNE
+# batch = lambda dataset: dataset.batch(batch_size=100, drop_remainder=False).prefetch(autotune)
+# iterator_train = iter(batch(datasetU))
+# iterator_test = iter(batch(test_dataset))
+# #%%
+# def compute_embeddings(data_iterator, count):
+#     image_embeddings = []
+#     for _ in tqdm.tqdm(range(count)):
+#         images = next(data_iterator)[0]
+#         # images = tf.pad(images, 
+#         #                 [[0, 0],
+#         #                  [150-16, 149-16],
+#         #                  [150-16, 149-16],
+#         #                  [0, 0]], 
+#         #                 'CONSTANT')
+#         images = tf.image.resize(images, (299, 299), 'nearest')
+#         images = K.applications.inception_v3.preprocess_input(images)
+#         embeddings = inception_model.predict(images)
+#         image_embeddings.extend(embeddings)
+#     return np.array(image_embeddings)
+
+# # 10,000 random images from train dataset (unlabeled)
+# real_image_embeddings1 = compute_embeddings(iterator_train, 10000 // 100)
+# real_image_embeddings2 = compute_embeddings(iterator_test, 10000 // 100)
+# #%%
+# # 10,000 generated images from sampled latent variables
+# np.random.seed(1)
+# generated_image_embeddings = []
+# for i in tqdm.tqdm(range(num_classes)):
+#     for _ in range(10):
+#         latents = np.random.normal(size=(100, args['ldc']))
+#         y_ = np.zeros((100, num_classes))
+#         y_[:, i] = 1.
+#         images = model.decode_sample(latents, y_, training=False)
+#         # images = tf.pad(images, 
+#         #                 [[0, 0],
+#         #                  [150-16, 149-16],
+#         #                  [150-16, 149-16],
+#         #                  [0, 0]], 
+#         #                 'CONSTANT')
+#         images = tf.image.resize(images, (299, 299), 'nearest')
+#         images = K.applications.inception_v3.preprocess_input(images)
+#         embeddings = inception_model.predict(images)
+#         generated_image_embeddings.extend(embeddings)
+# generated_image_embeddings = np.array(generated_image_embeddings)
+# #%%
+# import scipy
+# def calculate_fid(real_embeddings, generated_embeddings):
+#     # calculate mean and covariance statistics
+#     mu1, sigma1 = real_embeddings.mean(axis=0), np.cov(real_embeddings, rowvar=False)
+#     mu2, sigma2 = generated_embeddings.mean(axis=0), np.cov(generated_embeddings,  rowvar=False)
+#     # calculate sum squared difference between means
+#     ssdiff = np.sum((mu1 - mu2)**2.0)
+#     # calculate sqrt of product between cov
+#     covmean = scipy.linalg.sqrtm(sigma1.dot(sigma2))
+#     # check and correct imaginary numbers from sqrt
+#     if np.iscomplexobj(covmean):
+#         covmean = covmean.real
+#     # calculate score
+#     fid = ssdiff + np.trace(sigma1 + sigma2 - 2.0 * covmean)
+#     return fid
+# #%%
+# fid = calculate_fid(real_image_embeddings1, real_image_embeddings2)
+# print('baseline FID: {:.2f}'.format(fid))
+# fid = calculate_fid(real_image_embeddings1, generated_image_embeddings)
+# print('FID (with train): {:.2f}'.format(fid))
+# fid = calculate_fid(real_image_embeddings2, generated_image_embeddings)
+# print('FID (with test): {:.2f}'.format(fid))
 #%%
