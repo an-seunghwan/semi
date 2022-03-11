@@ -74,5 +74,5 @@ class CNN(K.models.Model):
 #%%
 # model = CNN()
 # model.build(input_shape=(None, 32, 32, 3))
-# model.units.summary()
+# model.summary()
 #%%
