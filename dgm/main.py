@@ -178,8 +178,8 @@ def main():
         else:
             loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
         # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
-        val_recon_loss, val_kl_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, num_classes, split='Validation')
-        test_recon_loss, test_kl_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, num_classes, split='Test')
+        val_recon_loss, val_kl_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, beta, args, num_classes, split='Validation')
+        test_recon_loss, test_kl_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, beta, args, num_classes, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
@@ -344,14 +344,12 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
     else:
         return loss_avg, recon_loss_avg, elboL_loss_avg, elboU_loss_avg, kl_loss_avg, accuracy
 #%%
-def validate(dataset, model, epoch, args, num_classes, split):
+def validate(dataset, model, epoch, beta, args, num_classes, split):
     recon_loss_avg = tf.keras.metrics.Mean()   
     kl_loss_avg = tf.keras.metrics.Mean()   
     elbo_loss_avg = tf.keras.metrics.Mean()   
     accuracy = tf.keras.metrics.Accuracy()
     
-    beta = 1.
-
     dataset = dataset.batch(args['batch_size'], drop_remainder=False)
     for image, label in dataset:
         mean, logvar, z, xhat = model([image, label], training=False)
@@ -364,7 +362,7 @@ def validate(dataset, model, epoch, args, num_classes, split):
         elbo_loss_avg(elbo)
         accuracy(tf.argmax(prob, axis=1, output_type=tf.int32), 
                  tf.argmax(label, axis=1, output_type=tf.int32))
-    print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, Recon: {recon_loss_avg.result():.4f}, KL1: {kl1_loss_avg.result():.4f}, KL2: {kl2_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
+    print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, Recon: {recon_loss_avg.result():.4f}, KL: {kl_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
     return recon_loss_avg, kl_loss_avg, elbo_loss_avg, accuracy
 #%%
