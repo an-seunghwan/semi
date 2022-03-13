@@ -11,6 +11,7 @@ custom SGD + weight decay ver.2
 220107: decoupled weight decay https://arxiv.org/pdf/1711.05101.pdf
 220110: modify mixup shuffle & optimal matching argument
 220113: modify weight decay factor = weight decay * scheduled lr
+220120: use seed in spliting dataset
 '''
 #%%
 import argparse
@@ -63,6 +64,8 @@ def get_args():
     # parser.add_argument('-bp', '--base_path', default=".")
     parser.add_argument('--dataset', type=str, default='cifar10',
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
+    parser.add_argument('--seed', type=int, default=1, 
+                        help='seed for repeatable results')
     # parser.add_argument('-is', "--image-size", default=[32, 32], type=arg_as_list,
     #                     metavar='Image Size List', help='the size of h * w for image')
     parser.add_argument('-b', '--batch-size', default=128, type=int,

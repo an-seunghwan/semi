@@ -1,3 +1,4 @@
+seed: 1
 dataset: 'cifar10'
 epochs: 2048
 val_iteration: 1024
@@ -10,3 +11,5 @@ K: 2
 alpha: 0.75
 lambda_u: 75
 rampup_length: 1024
+
+width: 4
