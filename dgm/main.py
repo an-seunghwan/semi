@@ -141,20 +141,20 @@ def main():
     # buffer_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
-    optimizer = K.optimizers.Adam(learning_rate=args['lr'])
-    # '''Gradient Cetralized optimizer'''
-    # class GCAdam(K.optimizers.Adam):
-    #     def get_gradients(self, loss, params):
-    #         grads = []
-    #         gradients = super().get_gradients()
-    #         for grad in gradients:
-    #             grad_len = len(grad.shape)
-    #             if grad_len > 1:
-    #                 axis = list(range(grad_len - 1))
-    #                 grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
-    #             grads.append(grad)
-    #         return grads
-    # optimizer = GCAdam(learning_rate=args['lr'])
+    # optimizer = K.optimizers.Adam(learning_rate=args['lr'])
+    '''Gradient Cetralized optimizer'''
+    class GCAdam(K.optimizers.Adam):
+        def get_gradients(self, loss, params):
+            grads = []
+            gradients = super().get_gradients()
+            for grad in gradients:
+                grad_len = len(grad.shape)
+                if grad_len > 1:
+                    axis = list(range(grad_len - 1))
+                    grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
+                grads.append(grad)
+            return grads
+    optimizer = GCAdam(learning_rate=args['lr'])
     # optimizer_classifier = GCAdam(learning_rate=args['lr'])
 
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
@@ -282,7 +282,7 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
             '''labeled'''
             mean, logvar, z, xhat = model([imageL, labelL])
             recon_loss, prior_y, pz, qz = ELBO_criterion(xhat, imageL, labelL, z, mean, logvar, num_classes, args)
-            elboL = tf.reduce_mean(recon_loss - prior_y - beta * (pz - qz))
+            elboL = tf.reduce_mean(recon_loss - prior_y + beta * (qz - pz))
             
             '''unlabeled'''
             with tape.stop_recording():
@@ -302,10 +302,10 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
             qz = tf.reshape(qz, (tf.shape(imageU)[0], num_classes, -1))
             
             probU = model.classify(imageU)
-            elboU = recon_loss - prior_y - beta * (pz - qz)
+            elboU = recon_loss - prior_y + beta * (qz - pz)
             elboU = tf.reduce_mean(tf.reduce_sum(probU[..., tf.newaxis] * elboU, axis=[1, 2]))
-            entropyU = tf.reduce_mean(tf.reduce_sum(probU * tf.math.log(tf.clip_by_value(probU, 1e-8, 1.)), axis=-1))
-            elboU += entropyU
+            entropyU = - tf.reduce_mean(tf.reduce_sum(probU * tf.math.log(tf.clip_by_value(probU, 1e-8, 1.)), axis=-1))
+            elboU -= entropyU
             
             '''supervised classification loss'''
             probL = model.classify(imageL)
@@ -354,7 +354,7 @@ def validate(dataset, model, epoch, beta, args, num_classes, split):
     for image, label in dataset:
         mean, logvar, z, xhat = model([image, label], training=False)
         recon_loss, prior_y, pz, qz = ELBO_criterion(xhat, image, label, z, mean, logvar, num_classes, args)
-        elbo = tf.reduce_mean(recon_loss - prior_y - beta * (pz - qz))
+        elbo = tf.reduce_mean(recon_loss - prior_y + beta * (qz - pz))
         prob = model.classify(image, training=False)
         
         recon_loss_avg(recon_loss)
