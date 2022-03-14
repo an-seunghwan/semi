@@ -46,7 +46,7 @@ class Encoder(K.models.Model):
 class Classifier(K.models.Model):
     def __init__(self, num_classes, name="Classifier", **kwargs):
         super(Classifier, self).__init__(name=name, **kwargs)
-        self.nets = K.Sequential(
+        self.nets1 = K.Sequential(
             [
                 layers.Conv2D(filters=32, kernel_size=5, strides=1, padding='same'), 
                 layers.BatchNormalization(),
@@ -70,7 +70,11 @@ class Classifier(K.models.Model):
                 layers.SpatialDropout2D(rate=0.5),
                 
                 layers.GlobalAveragePooling2D(),
-                
+            ]
+        )
+        
+        self.nets2 = K.Sequential(
+            [
                 layers.Dense(64, activation='linear'),
                 layers.BatchNormalization(),
                 layers.ReLU(),
@@ -79,8 +83,11 @@ class Classifier(K.models.Model):
         )
     
     # @tf.function
-    def call(self, x, training=True):
-        h = self.nets(x, training=training)
+    def call(self, inputs, training=True):
+        x, a = inputs
+        h = self.nets1(x, training=training)
+        h = tf.concat([h, a], axis=-1)
+        h = self.nets2(h, training=training)
         return h
 #%%
 class Decoder(K.models.Model):
@@ -102,19 +109,24 @@ class Decoder(K.models.Model):
         h = self.net(x, training=training)
         return h
 #%%
-class DGM(K.models.Model):
+class ADGM(K.models.Model):
     def __init__(self, 
                  args,
                  num_classes=10,
                  latent_dim=2, 
+                 a_dim=32,
                  activation='sigmoid',
                  input_dim=(None, 28, 28, 1), 
                  hard=True,
-                 name='DGM', **kwargs):
-        super(DGM, self).__init__(name=name, **kwargs)
+                 name='ADGM', **kwargs):
+        super(ADGM, self).__init__(name=name, **kwargs)
         self.num_classes = num_classes
         self.latent_dim = latent_dim
+        self.a_dim = a_dim
         self.input_dim = input_dim
+        
+        self.aux_encoder = Encoder(a_dim)
+        self.aux_decoder = Encoder(a_dim)
         
         self.encoder = Encoder(latent_dim)
         self.classifier = Classifier(num_classes)
@@ -130,7 +142,10 @@ class DGM(K.models.Model):
         return mean, logvar, z
     
     def classify(self, x, training=True):
-        prob = self.classifier(x, training=training)
+        qa_mean, qa_logvar = self.aux_encoder(layers.Flatten()(x), training=training)
+        epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.a_dim))
+        a = qa_mean + tf.math.exp(qa_logvar / 2.) * epsilon 
+        prob = self.classifier([x, a], training=training)
         return prob
     
     def decode(self, z, y, training=True):
@@ -141,12 +156,19 @@ class DGM(K.models.Model):
     def call(self, inputs, training=True):
         x, y = inputs
         x = layers.Flatten()(x)
-        h = tf.concat([x, y], axis=-1)
-        mean, logvar = self.encoder(h, training=training)
+        
+        qa_mean, qa_logvar = self.aux_encoder(x, training=training)
+        epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.a_dim))
+        a = qa_mean + tf.math.exp(qa_logvar / 2.) * epsilon 
+        
+        mean, logvar = self.encoder(tf.concat([x, y, a], axis=-1), training=training)
         epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.latent_dim))
         z = mean + tf.math.exp(logvar / 2.) * epsilon 
         # assert z.shape == (tf.shape(x)[0], self.latent_dim)
+        
         xhat = self.decoder(tf.concat([z, y], axis=-1), training=training) 
         # assert xhat.shape == (tf.shape(x)[0], self.input_dim[1], self.input_dim[2], self.input_dim[3])
-        return mean, logvar, z, xhat
+        
+        pa_mean, pa_logvar = self.aux_decoder(tf.concat([x, y, z], axis=-1), training=training)
+        return mean, logvar, z, xhat, a, qa_mean, qa_logvar, pa_mean, pa_logvar
 #%%
