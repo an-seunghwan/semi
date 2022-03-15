@@ -109,7 +109,6 @@ class DGM(K.models.Model):
                  latent_dim=2, 
                  activation='sigmoid',
                  input_dim=(None, 28, 28, 1), 
-                 hard=True,
                  name='DGM', **kwargs):
         super(DGM, self).__init__(name=name, **kwargs)
         self.num_classes = num_classes

@@ -59,7 +59,7 @@ def get_args():
     parser.add_argument('--latent_dim', "--latent_dim_continuous", default=2, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
-    parser.add_argument('--aux_dim', "--aux_dim_continuous", default=32, type=int,
+    parser.add_argument('--aux_dim', "--aux_dim_continuous", default=2, type=int,
                         metavar='Auxiliary Dim For Continuous Variable',
                         help='feature dimension in auxiliary latent space for continuous variable')
     
@@ -132,6 +132,7 @@ def main():
     
     model = ADGM(args,
                 num_classes,
+                a_dim=args['aux_dim'],
                 latent_dim=2)
     model.classifier.build(input_shape=[(None, 28, 28, 1), (None, args['aux_dim'])])
     model.build(input_shape=[(None, 28, 28, 1), (None, num_classes)])
@@ -237,12 +238,12 @@ def main():
         else:
             new_name = split_name[0] + '_' + str(i) + '/' + split_name[1] + '_' + str(i)
         model.variables[i]._handle_name = new_name
-    
+        
     model_path = f'{log_path}/{current_time}'
     if not os.path.exists(model_path):
         os.makedirs(model_path)
     model.save_weights(model_path + '/model_{}.h5'.format(current_time), save_format="h5")
-
+    
     with open(model_path + '/args_{}.txt'.format(current_time), "w") as f:
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')

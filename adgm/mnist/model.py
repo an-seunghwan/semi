@@ -5,8 +5,8 @@ from tensorflow.keras import layers
 import numpy as np
 #%%
 class Encoder(K.models.Model):
-    def __init__(self, latent_dim , name="Encoder", **kwargs):
-        super(Encoder, self).__init__(name=name, **kwargs)
+    def __init__(self, latent_dim, **kwargs):
+        super(Encoder, self).__init__(**kwargs)
         self.net = K.Sequential(
             [
                 layers.Dense(256, activation='linear'),
@@ -44,8 +44,8 @@ class Encoder(K.models.Model):
 #         return h
 #%%
 class Classifier(K.models.Model):
-    def __init__(self, num_classes, name="Classifier", **kwargs):
-        super(Classifier, self).__init__(name=name, **kwargs)
+    def __init__(self, num_classes, **kwargs):
+        super(Classifier, self).__init__(**kwargs)
         self.nets1 = K.Sequential(
             [
                 layers.Conv2D(filters=32, kernel_size=5, strides=1, padding='same'), 
@@ -91,8 +91,8 @@ class Classifier(K.models.Model):
         return h
 #%%
 class Decoder(K.models.Model):
-    def __init__(self, activation='sigmoid', name="Decoder", **kwargs):
-        super(Decoder, self).__init__(name=name, **kwargs)
+    def __init__(self, activation='sigmoid', **kwargs):
+        super(Decoder, self).__init__(**kwargs)
         self.net = K.Sequential(
             [
                 layers.Dense(128, activation='linear'),
@@ -114,12 +114,11 @@ class ADGM(K.models.Model):
                  args,
                  num_classes=10,
                  latent_dim=2, 
-                 a_dim=32,
+                 a_dim=2,
                  activation='sigmoid',
                  input_dim=(None, 28, 28, 1), 
-                 hard=True,
-                 name='ADGM', **kwargs):
-        super(ADGM, self).__init__(name=name, **kwargs)
+                 **kwargs):
+        super(ADGM, self).__init__(**kwargs)
         self.num_classes = num_classes
         self.latent_dim = latent_dim
         self.a_dim = a_dim
