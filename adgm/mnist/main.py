@@ -133,7 +133,7 @@ def main():
     model = ADGM(args,
                 num_classes,
                 a_dim=args['aux_dim'],
-                latent_dim=2)
+                latent_dim=args['latent_dim'])
     model.classifier.build(input_shape=[(None, 28, 28, 1), (None, args['aux_dim'])])
     model.build(input_shape=[(None, 28, 28, 1), (None, num_classes)])
     model.summary()
@@ -145,20 +145,20 @@ def main():
     # buffer_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
-    # optimizer = K.optimizers.Adam(learning_rate=args['lr'])
-    '''Gradient Cetralized optimizer'''
-    class GCAdam(K.optimizers.Adam):
-        def get_gradients(self, loss, params):
-            grads = []
-            gradients = super().get_gradients()
-            for grad in gradients:
-                grad_len = len(grad.shape)
-                if grad_len > 1:
-                    axis = list(range(grad_len - 1))
-                    grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
-                grads.append(grad)
-            return grads
-    optimizer = GCAdam(learning_rate=args['lr'])
+    optimizer = K.optimizers.RMSprop(learning_rate=args['lr'])
+    # '''Gradient Cetralized optimizer'''
+    # class GCAdam(K.optimizers.Adam):
+    #     def get_gradients(self, loss, params):
+    #         grads = []
+    #         gradients = super().get_gradients()
+    #         for grad in gradients:
+    #             grad_len = len(grad.shape)
+    #             if grad_len > 1:
+    #                 axis = list(range(grad_len - 1))
+    #                 grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
+    #             grads.append(grad)
+    #         return grads
+    # optimizer = GCAdam(learning_rate=args['lr'])
     # optimizer_classifier = GCAdam(learning_rate=args['lr'])
 
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
@@ -172,10 +172,18 @@ def main():
     
     for epoch in range(args['start_epoch'], args['epochs']):
         
-        # '''classifier: learning rate schedule'''
-        # if epoch >= args['rampdown_epoch']:
-        #     optimizer_classifier.lr = args['lr'] * tf.math.exp(-5 * (1. - (args['epochs'] - epoch) / args['epochs']) ** 2)
-        #     optimizer_classifier.beta_1 = 0.5
+        # '''weight of KL-divergence'''
+        # beta = tf.math.minimum(1., beta + epoch / 5.)
+        
+        # '''learning rate schedule'''
+        # lr_gamma = 0.75
+        # min_lr = 3e-5
+        # if epoch % 20 == 0:
+        #     new_lr = optimizer.lr * lr_gamma
+        #     if new_lr < min_lr:
+        #         optimizer.lr = min_lr    
+        #     else:
+        #         optimizer.lr = new_lr
             
         if epoch % args['reconstruct_freq'] == 0:
             loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
@@ -258,7 +266,7 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''supervised classification weight'''
-    alpha = tf.cast(0.1 * total_length / args['labeled_examples'], tf.float32)
+    alpha = tf.cast(0.1 * (total_length + args['labeled_examples']) / args['labeled_examples'], tf.float32)
     
     autotune = tf.data.AUTOTUNE
     shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['batch_size'], 
