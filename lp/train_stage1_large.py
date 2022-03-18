@@ -170,9 +170,9 @@ def main():
     #                             nesterov=args['nesterov'])
     optimizer = K.optimizers.Adam(learning_rate=args['lr'])
     
-    train_writer = tf.summary.create_file_writer(f'{log_path}/3M/{current_time}/train')
-    val_writer = tf.summary.create_file_writer(f'{log_path}/3M/{current_time}/val')
-    test_writer = tf.summary.create_file_writer(f'{log_path}/3M/{current_time}/test')
+    train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
+    val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
+    test_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/test')
 
     for epoch in range(args['start_epoch'], args['epochs']):
         
@@ -208,7 +208,7 @@ def main():
             new_name = split_name[0] + '_' + str(i) + '/' + split_name[1] + '_' + str(i)
         model.variables[i]._handle_name = new_name
     
-    model_path = f'{log_path}/3M/{current_time}'
+    model_path = f'{log_path}/{current_time}'
     if not os.path.exists(model_path):
         os.makedirs(model_path)
     model.save_weights(model_path + '/model_{}.h5'.format(current_time), save_format="h5")
