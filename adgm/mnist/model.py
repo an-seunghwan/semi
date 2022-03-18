@@ -26,69 +26,71 @@ class Encoder(K.models.Model):
         logvar = self.logvar_layer(h)
         return mean, logvar
 #%%
-# class Classifier(K.models.Model):
-#     def __init__(self, num_classes, name="Classifier", **kwargs):
-#         super(Classifier, self).__init__(name=name, **kwargs)
-#         self.net = K.Sequential(
-#             [
-#                 layers.Flatten(),
-#                 layers.Dense(256, activation='linear'),
-#                 layers.ReLU(),
-#                 layers.Dense(num_classes, activation='softmax'),
-#             ]
-#         )
-        
-#     # @tf.function
-#     def call(self, x, training=True):
-#         h = self.net(x, training=training)
-#         return h
-#%%
 class Classifier(K.models.Model):
     def __init__(self, num_classes, **kwargs):
         super(Classifier, self).__init__(**kwargs)
-        self.nets1 = K.Sequential(
+        self.net = K.Sequential(
             [
-                layers.Conv2D(filters=32, kernel_size=5, strides=1, padding='same'), 
-                layers.BatchNormalization(),
-                layers.LeakyReLU(0.1),
-                
-                layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
-                layers.SpatialDropout2D(rate=0.5),
-                
-                layers.Conv2D(filters=64, kernel_size=3, strides=1, padding='same'), 
-                layers.BatchNormalization(),
-                layers.LeakyReLU(0.1),
-                
-                layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
-                layers.SpatialDropout2D(rate=0.5),
-                
-                layers.Conv2D(filters=128, kernel_size=3, strides=1, padding='same'), 
-                layers.BatchNormalization(),
-                layers.LeakyReLU(0.1),
-                
-                layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
-                layers.SpatialDropout2D(rate=0.5),
-                
-                layers.GlobalAveragePooling2D(),
-            ]
-        )
-        
-        self.nets2 = K.Sequential(
-            [
-                layers.Dense(64, activation='linear'),
-                layers.BatchNormalization(),
+                layers.Flatten(),
+                layers.Dense(256, activation='linear'),
                 layers.ReLU(),
                 layers.Dense(num_classes, activation='softmax'),
             ]
         )
-    
+        
     # @tf.function
     def call(self, inputs, training=True):
         x, a = inputs
-        h = self.nets1(x, training=training)
-        h = tf.concat([h, a], axis=-1)
-        h = self.nets2(h, training=training)
+        h = tf.concat([layers.Flatten()(x), a], axis=-1)
+        h = self.net(x, training=training)
         return h
+#%%
+# class Classifier(K.models.Model):
+#     def __init__(self, num_classes, **kwargs):
+#         super(Classifier, self).__init__(**kwargs)
+#         self.nets1 = K.Sequential(
+#             [
+#                 layers.Conv2D(filters=32, kernel_size=5, strides=1, padding='same'), 
+#                 layers.BatchNormalization(),
+#                 layers.LeakyReLU(0.1),
+                
+#                 layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
+#                 layers.SpatialDropout2D(rate=0.5),
+                
+#                 layers.Conv2D(filters=64, kernel_size=3, strides=1, padding='same'), 
+#                 layers.BatchNormalization(),
+#                 layers.LeakyReLU(0.1),
+                
+#                 layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
+#                 layers.SpatialDropout2D(rate=0.5),
+                
+#                 layers.Conv2D(filters=128, kernel_size=3, strides=1, padding='same'), 
+#                 layers.BatchNormalization(),
+#                 layers.LeakyReLU(0.1),
+                
+#                 layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
+#                 layers.SpatialDropout2D(rate=0.5),
+                
+#                 layers.GlobalAveragePooling2D(),
+#             ]
+#         )
+        
+#         self.nets2 = K.Sequential(
+#             [
+#                 layers.Dense(64, activation='linear'),
+#                 layers.BatchNormalization(),
+#                 layers.ReLU(),
+#                 layers.Dense(num_classes, activation='softmax'),
+#             ]
+#         )
+    
+#     # @tf.function
+#     def call(self, inputs, training=True):
+#         x, a = inputs
+#         h = self.nets1(x, training=training)
+#         h = tf.concat([h, a], axis=-1)
+#         h = self.nets2(h, training=training)
+#         return h
 #%%
 class Decoder(K.models.Model):
     def __init__(self, activation='sigmoid', **kwargs):
