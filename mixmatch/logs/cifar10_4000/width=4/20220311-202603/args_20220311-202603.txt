@@ -1,0 +1,20 @@
+seed : 1
+dataset : cifar10
+epochs : 2048
+batch_size : 64
+learning_rate : 0.002
+labeled_examples : 4000
+validation_examples : 5000
+val_iteration : 1024
+T : tf.Tensor(0.5, shape=(), dtype=float32)
+K : 2
+alpha : 0.75
+lambda_u : 75
+rampup_length : 1024
+weight_decay : 0.02
+ema_decay : 0.999
+depth : 28
+width : 4
+slope : 0.1
+config_path : configs/cifar10_4000.yaml
+beta : <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=0.18960132>

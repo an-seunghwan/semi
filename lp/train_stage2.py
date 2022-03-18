@@ -139,8 +139,7 @@ def main():
     total_length = sum(1 for _ in datasetU)
     
     '''load model from stage1'''
-    model_path = log_path + '/stage1'
-    # model_path = log_path + '/20220214-201956'
+    model_path = log_path + '/3M/stage1'
     model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
     model = CNN(num_classes, args['isL2'])
     model.build(input_shape=(None, 32, 32, 3))
@@ -176,23 +175,11 @@ def main():
     #                             nesterov=args['nesterov'])
     optimizer = K.optimizers.Adam(learning_rate=args['lr'])
     
-    train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
-    val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
-    test_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/test')
+    train_writer = tf.summary.create_file_writer(f'{log_path}/3M/{current_time}/train')
+    val_writer = tf.summary.create_file_writer(f'{log_path}/3M/{current_time}/val')
+    test_writer = tf.summary.create_file_writer(f'{log_path}/3M/{current_time}/test')
 
     for epoch in range(args['start_epoch'], args['epochs']):
-        
-        '''learning rate schedule'''
-        if epoch == 0:
-            optimizer.lr = args['lr'] * 0.1 # warm-up
-        # else:
-        #     optimizer.lr = args['lr']
-        elif epoch < 200: 
-            optimizer.lr = args['lr']
-        elif epoch < 230:
-            optimizer.lr = args['lr'] * 0.5
-        else:
-            optimizer.lr = args['lr'] * (0.5 ** 2)
         
         loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
         # loss, label_loss, unlabel_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
@@ -231,7 +218,7 @@ def main():
             new_name = split_name[0] + '_' + str(i) + '/' + split_name[1] + '_' + str(i)
         model.variables[i]._handle_name = new_name
     
-    model_path = f'{log_path}/{current_time}'
+    model_path = f'{log_path}/3M/{current_time}'
     if not os.path.exists(model_path):
         os.makedirs(model_path)
     model.save_weights(model_path + '/model_{}.h5'.format(current_time), save_format="h5")
