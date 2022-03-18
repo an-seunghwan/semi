@@ -48,7 +48,7 @@ class CNN(K.models.Model):
                 layers.MaxPool2D(pool_size=(2, 2), strides=2, padding='valid'),
                 layers.SpatialDropout2D(rate=0.5),
                 
-                tfa.layers.WeightNormalization(layers.Conv2D(filters=512, kernel_size=1, strides=1, padding='same')),
+                tfa.layers.WeightNormalization(layers.Conv2D(filters=512, kernel_size=3, strides=1, padding='same')),
                 layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
                 
