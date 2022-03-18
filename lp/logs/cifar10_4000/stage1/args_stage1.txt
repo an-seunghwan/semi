@@ -7,7 +7,7 @@ lr : 0.001
 initial_lr : 0.0
 lr_rampup : 0
 lr_rampdown_epochs : 210
-weight_decay : 0.0002
+weight_decay : 0.0001
 dfs_k : 50
 isL2 : True
 num_labeled : 4000

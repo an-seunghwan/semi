@@ -53,7 +53,7 @@ def get_args():
                         metavar='N', help='labeled examples per minibatch (default: 256)')
     # parser.add_argument('--labeled-batch-size', default=None, type=int,
     #                     metavar='N', help="labeled examples per minibatch (default: no constrain)")
-    parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
                         metavar='LR', help='max learning rate')
     parser.add_argument('--initial-lr', default=0.0, type=float,
                         metavar='LR', help='initial learning rate when using linear rampup')
@@ -140,7 +140,6 @@ def main():
     
     '''load model from stage1'''
     model_path = log_path + '/stage1'
-    # model_path = log_path + '/20220214-201956'
     model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
     model = CNN(num_classes, args['isL2'])
     model.build(input_shape=(None, 32, 32, 3))
@@ -175,19 +174,6 @@ def main():
     #                             momentum=args['momentum'],
     #                             nesterov=args['nesterov'])
     optimizer = K.optimizers.Adam(learning_rate=args['lr'])
-    # '''Gradient Cetralized optimizer'''
-    # class GCAdam(K.optimizers.Adam):
-    #     def get_gradients(self, loss, params):
-    #         grads = []
-    #         gradients = super().get_gradients()
-    #         for grad in gradients:
-    #             grad_len = len(grad.shape)
-    #             if grad_len > 1:
-    #                 axis = list(range(grad_len - 1))
-    #                 grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
-    #             grads.append(grad)
-    #         return grads
-    # optimizer = GCAdam(learning_rate=args['lr'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')

@@ -18,7 +18,7 @@ import datetime
 current_time = 'stage1'
 
 from preprocess import fetch_dataset
-from model import CNN
+from model_large import CNN
 from utils import weight_decay_decoupled, linear_rampup, cosine_rampdown, augment
 #%%
 import ast
@@ -64,7 +64,7 @@ def get_args():
     #                     help='momentum')
     # parser.add_argument('--nesterov', default=True, type=bool,
     #                     help='use nesterov momentum')
-    parser.add_argument('--weight-decay', '--wd', default=2e-4, type=float,
+    parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # parser.add_argument('--ema-decay', default=0.999, type=float, metavar='ALPHA',
     #                     help='ema variable decay rate (default: 0.999)')
@@ -139,7 +139,7 @@ def main():
     
     model = CNN(num_classes, args['isL2'])
     model.build(input_shape=(None, 32, 32, 3))
-    # model.summary()
+    model.summary()
     
     buffer_model = CNN(num_classes, args['isL2'])
     buffer_model.build(input_shape=(None, 32, 32, 3))
