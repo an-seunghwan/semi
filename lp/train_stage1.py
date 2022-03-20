@@ -259,7 +259,6 @@ def train(datasetL, model, buffer_model, optimizer, epoch, args, num_classes, to
             ce_loss = - tf.reduce_mean(tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1))
             
         grads = tape.gradient(ce_loss, model.trainable_variables) 
-        '''SGD + momentum''' 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
         '''decoupled weight decay'''
         weight_decay_decoupled(model, buffer_model, decay_rate=args['weight_decay'] * optimizer.lr)

@@ -65,7 +65,7 @@ def get_args():
     #                     help='momentum')
     # parser.add_argument('--nesterov', default=True, type=bool,
     #                     help='use nesterov momentum')
-    parser.add_argument('--weight-decay', '--wd', default=2e-4, type=float,
+    parser.add_argument('--weight-decay', '--wd', default=1e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
     # parser.add_argument('--ema-decay', default=0.999, type=float, metavar='ALPHA',
     #                     help='ema variable decay rate (default: 0.999)')
@@ -181,17 +181,17 @@ def main():
 
     for epoch in range(args['start_epoch'], args['epochs']):
         
-        '''learning rate schedule'''
-        if epoch == 0:
-            optimizer.lr = args['lr'] * 0.1 # warm-up
+        # '''learning rate schedule'''
+        # if epoch == 0:
+            # optimizer.lr = args['lr'] * 0.1 # warm-up
         # else:
         #     optimizer.lr = args['lr']
-        elif epoch < 200: 
-            optimizer.lr = args['lr']
-        elif epoch < 250:
-            optimizer.lr = args['lr'] * 0.5
-        else:
-            optimizer.lr = args['lr'] * (0.5 ** 2)
+        # if epoch < 200: 
+        #     optimizer.lr = args['lr']
+        # elif epoch < 250:
+        #     optimizer.lr = args['lr'] * 0.5
+        # else:
+        #     optimizer.lr = args['lr'] * (0.5 ** 2)
         
         loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
         # loss, label_loss, unlabel_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
@@ -279,12 +279,12 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
-        # '''learning rate schedule'''
-        # epoch_ = epoch + batch_num / iteration
-        # lr = linear_rampup(epoch_, args['lr_rampup']) * (optimizer.lr - args['initial_lr']) + args['initial_lr']
-        # if args['lr_rampdown_epochs']:
-        #     lr *= cosine_rampdown(epoch_, args['lr_rampdown_epochs'])
-        # optimizer.lr = lr
+        '''learning rate schedule'''
+        epoch_ = epoch + batch_num / iteration
+        lr = linear_rampup(epoch_, args['lr_rampup']) * (optimizer.lr - args['initial_lr']) + args['initial_lr']
+        if args['lr_rampdown_epochs']:
+            lr *= cosine_rampdown(epoch_, args['lr_rampdown_epochs'])
+        optimizer.lr = lr
         
         try:
             imageL, labelL = next(iteratorL)
@@ -338,7 +338,6 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
             # loss = (ce_lossL + ce_lossU) / args['batch_size']
             
         grads = tape.gradient(loss, model.trainable_variables) 
-        '''SGD + momentum''' 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
         '''decoupled weight decay'''
         weight_decay_decoupled(model, buffer_model, decay_rate=args['weight_decay'] * optimizer.lr)

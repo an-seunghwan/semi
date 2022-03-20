@@ -326,7 +326,6 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
             # loss = (ce_lossL + ce_lossU) / args['batch_size']
             
         grads = tape.gradient(loss, model.trainable_variables) 
-        '''SGD + momentum''' 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
         '''decoupled weight decay'''
         weight_decay_decoupled(model, buffer_model, decay_rate=args['weight_decay'] * optimizer.lr)
