@@ -20,7 +20,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 from preprocess import fetch_dataset
 from model import ADGM
 from criterion import ELBO_criterion
-# from utils import augment, weight_decay_decoupled
+from utils import weight_decay_decoupled
 #%%
 import ast
 def arg_as_list(s):
@@ -36,11 +36,11 @@ def get_args():
                         help='dataset used for training')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('-b', '--batch-size', default=64, type=int,
-                        metavar='N', help='mini-batch size (default: 64)')
+    parser.add_argument('-b', '--batch-size', default=100, type=int,
+                        metavar='N', help='mini-batch size (default: 100)')
 
     '''SSL VAE Train PreProcess Parameter'''
-    parser.add_argument('--epochs', default=10, type=int, 
+    parser.add_argument('--epochs', default=1000, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
@@ -56,17 +56,22 @@ def get_args():
                         help="Do BCE Reconstruction")
 
     '''VAE parameters'''
-    parser.add_argument('--latent_dim', "--latent_dim_continuous", default=2, type=int,
+    parser.add_argument('--latent_dim', "--latent_dim_continuous", default=32, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
-    parser.add_argument('--aux_dim', "--aux_dim_continuous", default=2, type=int,
+    parser.add_argument('--aux_dim', "--aux_dim_continuous", default=32, type=int,
                         metavar='Auxiliary Dim For Continuous Variable',
                         help='feature dimension in auxiliary latent space for continuous variable')
+    parser.add_argument('--beta', default=0.1, type=float,
+                        metavar='beta',
+                        help='weight of KL-divergence')
     
     '''Optimizer Parameters'''
     parser.add_argument('--lr', '--learning_rate', default=3e-4, type=float,
                         metavar='LR', help='initial learning rate')
-    # parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
+    parser.add_argument('--wd', '--weight_decay', default=0.5, type=float)
+    parser.add_argument('--clipvalue', default=1, type=float)
+    parser.add_argument('--clipnorm', default=5, type=float)
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -134,18 +139,22 @@ def main():
                 num_classes,
                 a_dim=args['aux_dim'],
                 latent_dim=args['latent_dim'])
-    model.classifier.build(input_shape=[(None, 28, 28, 1), (None, args['aux_dim'])])
+    model.classifier.build(input_shape=[(None, 784), (None, args['aux_dim'])])
     model.build(input_shape=[(None, 28, 28, 1), (None, num_classes)])
     model.summary()
     
-    # buffer_model = DGM(args,
-    #                 num_classes,
-    #                 latent_dim=args['latent_dim'])
-    # buffer_model.build(input_shape=(None, 28, 28, 1))
-    # buffer_model.set_weights(model.get_weights()) # weight initialization
+    buffer_model = ADGM(args,
+                num_classes,
+                a_dim=args['aux_dim'],
+                latent_dim=args['latent_dim'])
+    buffer_model.classifier.build(input_shape=[(None, 784), (None, args['aux_dim'])])
+    buffer_model.build(input_shape=[(None, 28, 28, 1), (None, num_classes)])
+    buffer_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
-    optimizer = K.optimizers.RMSprop(learning_rate=args['lr'])
+    optimizer = K.optimizers.Adam(learning_rate=args['lr'],
+                                  clipvalue=args['clipvalue'],
+                                  clipnorm=args['clipnorm'])
     # '''Gradient Cetralized optimizer'''
     # class GCAdam(K.optimizers.Adam):
     #     def get_gradients(self, loss, params):
@@ -168,27 +177,23 @@ def main():
     test_accuracy_print = 0.
     
     # initial beta
-    beta = tf.cast(0, tf.float32)
+    beta = tf.cast(args['beta'], tf.float32)
     
     for epoch in range(args['start_epoch'], args['epochs']):
         
-        # '''weight of KL-divergence'''
-        # beta = tf.math.minimum(1., beta + epoch / 5.)
-        
-        # '''learning rate schedule'''
-        # lr_gamma = 0.75
-        # min_lr = 3e-5
-        # if epoch % 20 == 0:
-        #     new_lr = optimizer.lr * lr_gamma
-        #     if new_lr < min_lr:
-        #         optimizer.lr = min_lr    
-        #     else:
-        #         optimizer.lr = new_lr
+        '''learning rate schedule'''
+        lr_gamma = 0.75
+        min_lr = 3e-5
+        new_lr = optimizer.lr * lr_gamma
+        if new_lr < min_lr:
+            optimizer.lr = min_lr
+        elif epoch % 200 == 0:
+            optimizer.lr = new_lr
             
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
         else:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
         # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         val_recon_loss, val_kl_loss, val_kl_aux_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, beta, args, num_classes, split='Validation')
         test_recon_loss, test_kl_loss, test_kl_aux_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, beta, args, num_classes, split='Test')
@@ -256,7 +261,7 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print):
+def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print):
     loss_avg = tf.keras.metrics.Mean()
     recon_loss_avg = tf.keras.metrics.Mean()
     elboL_loss_avg = tf.keras.metrics.Mean()
@@ -269,12 +274,10 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
     alpha = tf.cast(0.1 * (total_length + args['labeled_examples']) / args['labeled_examples'], tf.float32)
     
     autotune = tf.data.AUTOTUNE
-    shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['batch_size'], 
-                                                                                    drop_remainder=False).prefetch(autotune)
-    shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], 
-                                                                                    drop_remainder=True).prefetch(autotune)
+    batchL = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=False).prefetch(autotune)
+    shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True).prefetch(autotune)
 
-    iteratorL = iter(shuffle_and_batchL(datasetL))
+    iteratorL = iter(batchL(datasetL))
     iteratorU = iter(shuffle_and_batchU(datasetU))
         
     iteration = total_length // args['batch_size'] 
@@ -282,13 +285,10 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
-        '''weight of KL-divergence'''
-        beta = tf.math.minimum(1., beta + (epoch * iteration + batch_num) / 200.)
-        
         try:
             imageL, labelL = next(iteratorL)
         except:
-            iteratorL = iter(shuffle_and_batchL(datasetL))
+            iteratorL = iter(batchL(datasetL))
             imageL, labelL = next(iteratorL)
         try:
             imageU, _ = next(iteratorU)
@@ -341,8 +341,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
             
         grads = tape.gradient(loss, model.trainable_variables) 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
-        # '''decoupled weight decay'''
-        # weight_decay_decoupled(model.classifier, buffer_model.classifier, decay_rate=args['wd'] * optimizer_classifier.lr)
+        '''decoupled weight decay'''
+        weight_decay_decoupled(model, buffer_model, decay_rate=args['wd'] * optimizer.lr)
         
         loss_avg(loss)
         elboL_loss_avg(elboL)
