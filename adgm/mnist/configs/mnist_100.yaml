@@ -1,5 +1,6 @@
 reconstruct_freq: 1
-latent_dim: 32
-aux_dim: 32
+# batch_size: 128
+# latent_dim: 32
+# aux_dim: 32
 # learning_rate: 0.001
-epochs: 30
+# epochs: 10
