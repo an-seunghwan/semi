@@ -53,7 +53,7 @@ def get_args():
                         metavar='N', help='labeled examples per minibatch (default: 256)')
     # parser.add_argument('--labeled-batch-size', default=None, type=int,
     #                     metavar='N', help="labeled examples per minibatch (default: no constrain)")
-    parser.add_argument('--lr', '--learning-rate', default=0.05, type=float,
+    parser.add_argument('--lr', '--learning-rate', default=0.01, type=float,
                         metavar='LR', help='max learning rate')
     parser.add_argument('--initial-lr', default=0.0, type=float,
                         metavar='LR', help='initial learning rate when using linear rampup')
@@ -61,10 +61,10 @@ def get_args():
                         help='length of learning rate rampup in the beginning')
     parser.add_argument('--lr-rampdown-epochs', default=210, type=int, metavar='EPOCHS',
                         help='length of learning rate cosine rampdown (>= length of training)')
-    parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
-                        help='momentum')
-    parser.add_argument('--nesterov', default=True, type=bool,
-                        help='use nesterov momentum')
+    # parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
+    #                     help='momentum')
+    # parser.add_argument('--nesterov', default=True, type=bool,
+    #                     help='use nesterov momentum')
     parser.add_argument('--weight-decay', '--wd', default=2e-4, type=float,
                         metavar='W', help='weight decay (default: 2e-4)')
     # parser.add_argument('--ema-decay', default=0.999, type=float, metavar='ALPHA',
@@ -170,10 +170,10 @@ def main():
     '''
     
     '''optimizer'''
-    optimizer = K.optimizers.SGD(learning_rate=args['lr'],
-                                momentum=args['momentum'],
-                                nesterov=args['nesterov'])
-    # optimizer = K.optimizers.Adam(learning_rate=args['lr'])
+    # optimizer = K.optimizers.SGD(learning_rate=args['lr'],
+    #                             momentum=args['momentum'],
+    #                             nesterov=args['nesterov'])
+    optimizer = K.optimizers.Adam(learning_rate=args['lr'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')

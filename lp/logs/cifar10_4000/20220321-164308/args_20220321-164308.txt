@@ -1,0 +1,17 @@
+dataset : cifar10
+seed : 1
+epochs : 180
+start_epoch : 0
+batch_size : 100
+labeled_batch_size : 50
+lr : 0.01
+initial_lr : 0.0
+lr_rampup : 0
+lr_rampdown_epochs : 210
+weight_decay : 0.0002
+print_freq : 10
+dfs_k : 50
+isL2 : True
+num_labeled : 4000
+validation_examples : 5000
+config_path : configs/cifar10_4000_large.yaml
