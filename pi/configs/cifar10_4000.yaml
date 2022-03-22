@@ -1,2 +1,3 @@
 dataset: 'cifar10'
-weight_max: 30
+# weight_max: 30
+# learning_rate: 0.001
