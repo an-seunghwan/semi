@@ -8,7 +8,6 @@ os.chdir(r'D:\semi\pi') # main directory (repository)
 import numpy as np
 import tensorflow as tf
 import tensorflow.keras as K
-from tf.keras.preprocessing.image import ImageDataGenerator
 import tqdm
 import yaml
 import io
@@ -114,9 +113,9 @@ def main():
     for epoch in range(args['start_epoch'], args['epochs']):
         
         T = epoch / args['ramp_up_period']
-        ramp_up = tf.math.minimum(1., tf.math.exp(-5 * (1 - T) ** 2))
-        T = epoch / (args['epochs'] - args['ramp_down_period'])
-        ramp_down = tf.math.minimum(1., tf.math.exp(-12.5 * (T - 1) ** 2))
+        ramp_up = tf.math.exp(-5 * (tf.math.maximum(0., 1 - T)) ** 2)
+        T = (args['epochs'] - epoch) / args['ramp_down_period']
+        ramp_down = tf.math.exp(-12.5 * (tf.math.maximum(0., T)) ** 2)
         
         '''unsupervised loss weight'''
         if epoch == 0:
@@ -135,7 +134,7 @@ def main():
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
             tf.summary.scalar('ce_loss', ce_loss.result(), step=epoch)
-            tf.summary.scalar('v_loss', u_loss.result(), step=epoch)
+            tf.summary.scalar('u_loss', u_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
         with val_writer.as_default():
             tf.summary.scalar('ce_loss', val_ce_loss.result(), step=epoch)
@@ -214,8 +213,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_cl
             # unsupervised
             predU1 = model(imageU)
             predU2 = model(imageU)
-            u_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(predL1 - predL2), axis=[1, 2, 3]))
-            u_loss += tf.reduce_mean(tf.reduce_sum(tf.math.square(predU1 - predU2), axis=[1, 2, 3]))
+            u_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(predL1 - predL2), axis=-1))
+            u_loss += tf.reduce_mean(tf.reduce_sum(tf.math.square(predU1 - predU2), axis=-1))
             
             loss = ce_loss + loss_weight * u_loss
             

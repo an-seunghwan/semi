@@ -1,1 +1,2 @@
 dataset: 'cifar10'
+weight_max: 30
