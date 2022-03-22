@@ -113,9 +113,9 @@ def main():
     for epoch in range(args['start_epoch'], args['epochs']):
         
         T = epoch / args['ramp_up_period']
-        ramp_up = tf.math.exp(-5 * (tf.math.maximum(0., 1 - T)) ** 2)
+        ramp_up = tf.math.exp(-5. * (tf.math.maximum(0., 1. - T)) ** 2)
         T = (args['epochs'] - epoch) / args['ramp_down_period']
-        ramp_down = tf.math.exp(-12.5 * (tf.math.maximum(0., T)) ** 2)
+        ramp_down = tf.math.exp(-12.5 * (tf.math.maximum(0., 1. - T)) ** 2)
         
         '''unsupervised loss weight'''
         if epoch == 0:
