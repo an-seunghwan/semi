@@ -1,4 +1,5 @@
-reconstruct_freq: 1
+dataset: 'mnist'
+# reconstruct_freq: 1
 # batch_size: 128
 # latent_dim: 32
 # aux_dim: 32
