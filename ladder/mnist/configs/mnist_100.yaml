@@ -1,1 +1,2 @@
+dataset: 'mnist'
 reconstruct_freq: 1
