@@ -181,14 +181,14 @@ def main():
     
     for epoch in range(args['start_epoch'], args['epochs']):
         
-        '''learning rate schedule'''
-        lr_gamma = 0.75
-        min_lr = 3e-5
-        new_lr = optimizer.lr * lr_gamma
-        if new_lr < min_lr:
-            optimizer.lr = min_lr
-        elif epoch % 200 == 0:
-            optimizer.lr = new_lr
+        # '''learning rate schedule'''
+        # lr_gamma = 0.75
+        # min_lr = 3e-5
+        # new_lr = optimizer.lr * lr_gamma
+        # if new_lr < min_lr:
+        #     optimizer.lr = min_lr
+        # elif epoch % 200 == 0:
+        #     optimizer.lr = new_lr
             
         if epoch % args['reconstruct_freq'] == 0:
             loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
