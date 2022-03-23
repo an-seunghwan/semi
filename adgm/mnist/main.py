@@ -38,6 +38,8 @@ def get_args():
                         help='seed for repeatable results')
     parser.add_argument('-b', '--batch-size', default=100, type=int,
                         metavar='N', help='mini-batch size (default: 100)')
+    parser.add_argument('--labeled-batch-size', default=100, type=int,
+                        metavar='N', help='mini-batch size of labeled dataset')
 
     '''SSL VAE Train PreProcess Parameter'''
     parser.add_argument('--epochs', default=30, type=int, 
@@ -69,9 +71,9 @@ def get_args():
     '''Optimizer Parameters'''
     parser.add_argument('--lr', '--learning_rate', default=3e-4, type=float,
                         metavar='LR', help='initial learning rate')
-    parser.add_argument('--wd', '--weight_decay', default=0.5, type=float)
+    parser.add_argument('--wd', '--weight_decay', default=1, type=float)
     parser.add_argument('--clipvalue', default=1, type=float)
-    parser.add_argument('--clipnorm', default=5, type=float)
+    # parser.add_argument('--clipnorm', default=5, type=float)
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -153,22 +155,7 @@ def main():
     
     '''optimizer'''
     optimizer = K.optimizers.Adam(learning_rate=args['lr'],
-                                  clipvalue=args['clipvalue'],
-                                  clipnorm=args['clipnorm'])
-    # '''Gradient Cetralized optimizer'''
-    # class GCAdam(K.optimizers.Adam):
-    #     def get_gradients(self, loss, params):
-    #         grads = []
-    #         gradients = super().get_gradients()
-    #         for grad in gradients:
-    #             grad_len = len(grad.shape)
-    #             if grad_len > 1:
-    #                 axis = list(range(grad_len - 1))
-    #                 grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
-    #             grads.append(grad)
-    #         return grads
-    # optimizer = GCAdam(learning_rate=args['lr'])
-    # optimizer_classifier = GCAdam(learning_rate=args['lr'])
+                                  clipvalue=args['clipvalue'])
 
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -181,14 +168,14 @@ def main():
     
     for epoch in range(args['start_epoch'], args['epochs']):
         
-        # '''learning rate schedule'''
-        # lr_gamma = 0.75
-        # min_lr = 3e-5
-        # new_lr = optimizer.lr * lr_gamma
-        # if new_lr < min_lr:
-        #     optimizer.lr = min_lr
-        # elif epoch % 200 == 0:
-        #     optimizer.lr = new_lr
+        '''learning rate schedule'''
+        lr_gamma = 0.75
+        min_lr = args['lr'] * 0.1
+        new_lr = optimizer.lr * lr_gamma
+        if new_lr < min_lr:
+            optimizer.lr = min_lr
+        elif epoch % 25 == 0:
+            optimizer.lr = new_lr
             
         if epoch % args['reconstruct_freq'] == 0:
             loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
@@ -271,10 +258,11 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''supervised classification weight'''
-    alpha = tf.cast(0.1 * (total_length + args['labeled_examples']) / args['labeled_examples'], tf.float32)
+    # alpha = tf.cast(0.1 * (total_length + args['labeled_examples']) / args['labeled_examples'], tf.float32)
+    alpha = tf.cast((total_length + args['labeled_examples']) / args['labeled_examples'], tf.float32)
     
     autotune = tf.data.AUTOTUNE
-    batchL = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=False).prefetch(autotune)
+    batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['labeled_batch_size'], drop_remainder=False).prefetch(autotune)
     shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True).prefetch(autotune)
 
     iteratorL = iter(batchL(datasetL))
