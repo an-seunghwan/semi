@@ -4,7 +4,7 @@ import os
 
 # os.chdir(r'D:\EXoN_official') # main directory (repository)
 # os.chdir('/home1/prof/jeon/an/EXoN_official') # main directory (repository)
-os.chdir('/Users/anseunghwan/Documents/GitHub/semi/adgm')
+os.chdir('/Users/anseunghwan/Documents/GitHub/semi/ladder')
 
 import numpy as np
 import tensorflow as tf
@@ -18,7 +18,7 @@ import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model import ADGM
+from model import LadderVAE
 from criterion import ELBO_criterion
 from utils import weight_decay_decoupled
 #%%
@@ -36,11 +36,11 @@ def get_args():
                         help='dataset used for training')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('-b', '--batch-size', default=100, type=int,
-                        metavar='N', help='mini-batch size (default: 100)')
+    parser.add_argument('-b', '--batch-size', default=64, type=int,
+                        metavar='N', help='mini-batch size (default: 64)')
 
     '''SSL VAE Train PreProcess Parameter'''
-    parser.add_argument('--epochs', default=30, type=int, 
+    parser.add_argument('--epochs', default=10, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
@@ -56,22 +56,16 @@ def get_args():
                         help="Do BCE Reconstruction")
 
     '''VAE parameters'''
-    parser.add_argument('--latent_dim', "--latent_dim_continuous", default=32, type=int,
-                        metavar='Latent Dim For Continuous Variable',
-                        help='feature dimension in latent space for continuous variable')
-    parser.add_argument('--aux_dim', "--aux_dim_continuous", default=32, type=int,
-                        metavar='Auxiliary Dim For Continuous Variable',
-                        help='feature dimension in auxiliary latent space for continuous variable')
-    parser.add_argument('--beta', default=0.1, type=float,
-                        metavar='beta',
-                        help='weight of KL-divergence')
+    parser.add_argument('--z_dims', default=[32, 8, 2], type=arg_as_list,
+                        help="dimensions for continuous latent variable")
+    # parser.add_argument('--latent_dim', "--latent_dim_continuous", default=2, type=int,
+    #                     metavar='Latent Dim For Continuous Variable',
+    #                     help='feature dimension in latent space for continuous variable')
     
     '''Optimizer Parameters'''
     parser.add_argument('--lr', '--learning_rate', default=3e-4, type=float,
                         metavar='LR', help='initial learning rate')
-    parser.add_argument('--wd', '--weight_decay', default=0.5, type=float)
-    parser.add_argument('--clipvalue', default=1, type=float)
-    parser.add_argument('--clipnorm', default=5, type=float)
+    parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -135,26 +129,22 @@ def main():
     datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     total_length = sum(1 for _ in datasetU)
     
-    model = ADGM(args,
+    model = LadderVAE(args,
                 num_classes,
-                a_dim=args['aux_dim'],
-                latent_dim=args['latent_dim'])
-    model.classifier.build(input_shape=[(None, 784), (None, args['aux_dim'])])
+                args['z_dims'])
+    model.classifier.build(input_shape=(None, 28, 28, 1))
     model.build(input_shape=[(None, 28, 28, 1), (None, num_classes)])
     model.summary()
     
-    buffer_model = ADGM(args,
+    buffer_model = LadderVAE(args,
                 num_classes,
-                a_dim=args['aux_dim'],
-                latent_dim=args['latent_dim'])
-    buffer_model.classifier.build(input_shape=[(None, 784), (None, args['aux_dim'])])
+                args['z_dims'])
+    buffer_model.classifier.build(input_shape=(None, 28, 28, 1))
     buffer_model.build(input_shape=[(None, 28, 28, 1), (None, num_classes)])
     buffer_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
-    optimizer = K.optimizers.Adam(learning_rate=args['lr'],
-                                  clipvalue=args['clipvalue'],
-                                  clipnorm=args['clipnorm'])
+    optimizer = K.optimizers.Adam(learning_rate=args['lr'])
     # '''Gradient Cetralized optimizer'''
     # class GCAdam(K.optimizers.Adam):
     #     def get_gradients(self, loss, params):
@@ -168,7 +158,6 @@ def main():
     #             grads.append(grad)
     #         return grads
     # optimizer = GCAdam(learning_rate=args['lr'])
-    # optimizer_classifier = GCAdam(learning_rate=args['lr'])
 
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -176,33 +165,28 @@ def main():
 
     test_accuracy_print = 0.
     
-    # initial beta
-    beta = tf.cast(args['beta'], tf.float32)
+    '''weight of KL-divergence'''
+    beta = tf.cast(1, tf.float32) 
     
     for epoch in range(args['start_epoch'], args['epochs']):
         
-        # '''learning rate schedule'''
-        # lr_gamma = 0.75
-        # min_lr = 3e-5
-        # new_lr = optimizer.lr * lr_gamma
-        # if new_lr < min_lr:
-        #     optimizer.lr = min_lr
-        # elif epoch % 200 == 0:
-        #     optimizer.lr = new_lr
+        # '''classifier: learning rate schedule'''
+        # if epoch >= args['rampdown_epoch']:
+        #     optimizer_classifier.lr = args['lr'] * tf.math.exp(-5 * (1. - (args['epochs'] - epoch) / args['epochs']) ** 2)
+        #     optimizer_classifier.beta_1 = 0.5
             
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
         else:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
         # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
-        val_recon_loss, val_kl_loss, val_kl_aux_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, beta, args, num_classes, split='Validation')
-        test_recon_loss, test_kl_loss, test_kl_aux_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, beta, args, num_classes, split='Test')
+        val_recon_loss, val_kl_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, beta, args, num_classes, split='Validation')
+        test_recon_loss, test_kl_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, beta, args, num_classes, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
             tf.summary.scalar('recon_loss', recon_loss.result(), step=epoch)
             tf.summary.scalar('kl_loss', kl_loss.result(), step=epoch)
-            tf.summary.scalar('kl_aux_loss', kl_aux_loss.result(), step=epoch)
             tf.summary.scalar('elboL_loss', elboL_loss.result(), step=epoch)
             tf.summary.scalar('elboU_loss', elboU_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
@@ -211,13 +195,11 @@ def main():
         with val_writer.as_default():
             tf.summary.scalar('recon_loss', val_recon_loss.result(), step=epoch)
             tf.summary.scalar('val_kl_loss', val_kl_loss.result(), step=epoch)
-            tf.summary.scalar('val_kl_aux_loss', val_kl_aux_loss.result(), step=epoch)
             tf.summary.scalar('elbo_loss', val_elbo_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', val_accuracy.result(), step=epoch)
         with test_writer.as_default():
             tf.summary.scalar('recon_loss', test_recon_loss.result(), step=epoch)
             tf.summary.scalar('test_kl_loss', test_kl_loss.result(), step=epoch)
-            tf.summary.scalar('test_kl_aux_loss', test_kl_loss.result(), step=epoch)
             tf.summary.scalar('elbo_loss', test_elbo_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', test_accuracy.result(), step=epoch)
             
@@ -227,18 +209,15 @@ def main():
         loss.reset_states()
         recon_loss.reset_states()
         kl_loss.reset_states()
-        kl_aux_loss.reset_states()
         elboL_loss.reset_states()
         elboU_loss.reset_states()
         accuracy.reset_states()
         val_recon_loss.reset_states()
         val_kl_loss.reset_states()
-        val_kl_aux_loss.reset_states()
         val_elbo_loss.reset_states()
         val_accuracy.reset_states()
         test_recon_loss.reset_states()
         test_kl_loss.reset_states()
-        test_kl_aux_loss.reset_states()
         test_elbo_loss.reset_states()
         test_accuracy.reset_states()
         
@@ -251,12 +230,12 @@ def main():
         else:
             new_name = split_name[0] + '_' + str(i) + '/' + split_name[1] + '_' + str(i)
         model.variables[i]._handle_name = new_name
-        
+    
     model_path = f'{log_path}/{current_time}'
     if not os.path.exists(model_path):
         os.makedirs(model_path)
     model.save_weights(model_path + '/model_{}.h5'.format(current_time), save_format="h5")
-    
+
     with open(model_path + '/args_{}.txt'.format(current_time), "w") as f:
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
@@ -267,17 +246,19 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
     elboL_loss_avg = tf.keras.metrics.Mean()
     elboU_loss_avg = tf.keras.metrics.Mean()
     kl_loss_avg = tf.keras.metrics.Mean()
-    kl_aux_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''supervised classification weight'''
-    alpha = tf.cast(0.1 * (total_length + args['labeled_examples']) / args['labeled_examples'], tf.float32)
+    # alpha = tf.cast(0.1 * total_length / args['labeled_examples'], tf.float32)
+    alpha = tf.cast(total_length / args['labeled_examples'], tf.float32)
     
     autotune = tf.data.AUTOTUNE
-    batchL = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=False).prefetch(autotune)
-    shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True).prefetch(autotune)
+    shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['batch_size'], 
+                                                                                    drop_remainder=False).prefetch(autotune)
+    shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], 
+                                                                                    drop_remainder=True).prefetch(autotune)
 
-    iteratorL = iter(batchL(datasetL))
+    iteratorL = iter(shuffle_and_batchL(datasetL))
     iteratorU = iter(shuffle_and_batchU(datasetU))
         
     iteration = total_length // args['batch_size'] 
@@ -288,7 +269,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
         try:
             imageL, labelL = next(iteratorL)
         except:
-            iteratorL = iter(batchL(datasetL))
+            iteratorL = iter(shuffle_and_batchL(datasetL))
             imageL, labelL = next(iteratorL)
         try:
             imageU, _ = next(iteratorU)
@@ -302,10 +283,9 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
             
         with tf.GradientTape(persistent=True) as tape:    
             '''labeled'''
-            mean, logvar, z, xhat, a, qa_mean, qa_logvar, pa_mean, pa_logvar = model([imageL, labelL])
-            recon_loss, prior_y, pz, qz, pa, qa = ELBO_criterion(xhat, imageL, labelL, z, mean, logvar, num_classes, args,
-                                                                a, qa_mean, qa_logvar, pa_mean, pa_logvar)
-            elboL = tf.reduce_mean(recon_loss - prior_y + beta * (qz - pz) + beta * (qa - pa))
+            posterior, prior, xhat = model([imageL, labelL])
+            recon_loss, prior_y, kl = ELBO_criterion(xhat, imageL, labelL, posterior, prior, num_classes, args)
+            elboL = tf.reduce_mean(recon_loss - prior_y + beta * kl)
             
             '''unlabeled'''
             with tape.stop_recording():
@@ -316,20 +296,16 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
             imageU_ = imageU[:, tf.newaxis, :, :, :]
             imageU_ = tf.reshape(tf.repeat(imageU_, num_classes, axis=1), (-1, 28, 28, 1))
             
-            mean, logvar, z, xhat, a, qa_mean, qa_logvar, pa_mean, pa_logvar = model([imageU_, labelU])
-            recon_loss, prior_y, pz, qz, pa, qa = ELBO_criterion(xhat, imageU_, labelU, z, mean, logvar, num_classes, args,
-                                                                 a, qa_mean, qa_logvar, pa_mean, pa_logvar)
+            posterior, prior, xhat = model([imageU_, labelU])
+            recon_loss, prior_y, kl = ELBO_criterion(xhat, imageU_, labelU, posterior, prior, num_classes, args)
             
-            recon_loss = tf.reshape(recon_loss, (tf.shape(imageU)[0], num_classes, -1))
-            prior_y = tf.reshape(prior_y, (tf.shape(imageU)[0], num_classes, -1))
-            pz = tf.reshape(pz, (tf.shape(imageU)[0], num_classes, -1))
-            qz = tf.reshape(qz, (tf.shape(imageU)[0], num_classes, -1))
-            pa = tf.reshape(pa, (tf.shape(imageU)[0], num_classes, -1))
-            qa = tf.reshape(qa, (tf.shape(imageU)[0], num_classes, -1))
+            recon_loss = tf.reshape(recon_loss, (tf.shape(imageU)[0], num_classes))
+            prior_y = tf.reshape(prior_y, (tf.shape(imageU)[0], num_classes))
+            kl = tf.reshape(kl, (tf.shape(imageU)[0], num_classes))
             
             probU = model.classify(imageU)
-            elboU = recon_loss - prior_y + beta * (qz - pz) + beta * (qa - pa)
-            elboU = tf.reduce_mean(tf.reduce_sum(probU[..., tf.newaxis] * elboU, axis=[1, 2]))
+            elboU = recon_loss - prior_y + beta * kl
+            elboU = tf.reduce_mean(tf.reduce_sum(probU * elboU, axis=-1))
             entropyU = - tf.reduce_mean(tf.reduce_sum(probU * tf.math.log(tf.clip_by_value(probU, 1e-8, 1.)), axis=-1))
             elboU -= entropyU
             
@@ -348,8 +324,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
         elboL_loss_avg(elboL)
         elboU_loss_avg(elboU)
         recon_loss_avg(recon_loss)
-        kl_loss_avg(qz - pz)
-        kl_aux_loss_avg(qa - pa)
+        kl_loss_avg(kl)
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
         
         progress_bar.set_postfix({
@@ -359,7 +334,6 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
             'ELBO(U)': f'{elboU_loss_avg.result():.4f}',
             'Recon': f'{recon_loss_avg.result():.4f}',
             'KL': f'{kl_loss_avg.result():.4f}',
-            'KL_aux': f'{kl_aux_loss_avg.result():.4f}',
             'Accuracy': f'{accuracy.result():.3%}',
             'Test Accuracy': f'{test_accuracy_print:.3%}',
             'beta': f'{beta:.4f}'
@@ -368,34 +342,31 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
     if epoch % args['reconstruct_freq'] == 0:
         sample_recon = generate_and_save_images1(model, xhat)
         generate_and_save_images2(model, xhat, epoch, f'logs/{args["dataset"]}_{args["labeled_examples"]}/{current_time}')
-        return loss_avg, recon_loss_avg, elboL_loss_avg, elboU_loss_avg, kl_loss_avg, kl_aux_loss_avg, accuracy, sample_recon
+        return loss_avg, recon_loss_avg, elboL_loss_avg, elboU_loss_avg, kl_loss_avg, accuracy, sample_recon
     else:
-        return loss_avg, recon_loss_avg, elboL_loss_avg, elboU_loss_avg, kl_loss_avg, kl_aux_loss_avg, accuracy
+        return loss_avg, recon_loss_avg, elboL_loss_avg, elboU_loss_avg, kl_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, beta, args, num_classes, split):
     recon_loss_avg = tf.keras.metrics.Mean()   
     kl_loss_avg = tf.keras.metrics.Mean()   
-    kl_aux_loss_avg = tf.keras.metrics.Mean()   
     elbo_loss_avg = tf.keras.metrics.Mean()   
     accuracy = tf.keras.metrics.Accuracy()
     
     dataset = dataset.batch(args['batch_size'], drop_remainder=False)
     for image, label in dataset:
-        mean, logvar, z, xhat, a, qa_mean, qa_logvar, pa_mean, pa_logvar = model([image, label], training=False)
-        recon_loss, prior_y, pz, qz, pa, qa = ELBO_criterion(xhat, image, label, z, mean, logvar, num_classes, args,
-                                                            a, qa_mean, qa_logvar, pa_mean, pa_logvar)
-        elbo = tf.reduce_mean(recon_loss - prior_y + beta * (qz - pz) + beta * (qa - pa))
+        posterior, prior, xhat = model([image, label], training=False)
+        recon_loss, prior_y, kl = ELBO_criterion(xhat, image, label, posterior, prior, num_classes, args)
+        elbo = tf.reduce_mean(recon_loss - prior_y + beta * kl)
         prob = model.classify(image, training=False)
         
         recon_loss_avg(recon_loss)
-        kl_loss_avg(qz - pz)
-        kl_aux_loss_avg(qa - pa)
+        kl_loss_avg(kl)
         elbo_loss_avg(elbo)
         accuracy(tf.argmax(prob, axis=1, output_type=tf.int32), 
                  tf.argmax(label, axis=1, output_type=tf.int32))
     print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, Recon: {recon_loss_avg.result():.4f}, KL: {kl_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
-    return recon_loss_avg, kl_loss_avg, kl_aux_loss_avg, elbo_loss_avg, accuracy
+    return recon_loss_avg, kl_loss_avg, elbo_loss_avg, accuracy
 #%%
 # def weight_schedule(epoch, epochs, weight_max):
 #     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
