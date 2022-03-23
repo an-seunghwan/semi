@@ -36,6 +36,8 @@ def get_args():
                         help='seed for repeatable results (ex. generating color MNIST)')
     parser.add_argument('-b', '--batch-size', default=100, type=int,
                         metavar='N', help='mini-batch size (default: 100)')
+    parser.add_argument('--labeled-batch-size', default=32, type=int,
+                        metavar='N', help='mini-batch size of labeled dataset')
 
     '''SSL Train PreProcess Parameter'''
     parser.add_argument('--epochs', default=300, type=int, 
@@ -88,7 +90,7 @@ def main():
     '''argparse to dictionary'''
     args = vars(get_args())
     # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/cmnist_100.yaml']))
+    # args = vars(parser.parse_args(args=['--config_path', 'configs/cifar10_4000.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -178,8 +180,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_cl
     u_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
-    shuffle_and_batch2 = lambda dataset: dataset.shuffle(buffer_size=int(1e4)).batch(batch_size=50, drop_remainder=True)
-    shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'] - 50, drop_remainder=True)
+    shuffle_and_batch2 = lambda dataset: dataset.shuffle(buffer_size=int(1e4)).batch(batch_size=args['labeled_batch_size'], drop_remainder=True)
+    shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'] - args['labeled_batch_size'], drop_remainder=True)
 
     iteratorL = iter(shuffle_and_batch2(datasetL))
     iteratorU = iter(shuffle_and_batch(datasetU))
@@ -204,17 +206,20 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_cl
         if args['augmentation_flag']:
             imageL = augment(imageL, args['trans_range'])
             imageU = augment(imageU, args['trans_range'])
+            
+        image = tf.concat([imageL, imageU], axis=0)
         
         with tf.GradientTape(persistent=True) as tape:
+            pred1 = model(image)
+            pred2 = model(image)
+            
             # supervised
-            predL1 = model(imageL)
-            predL2 = model(imageL)
-            ce_loss = - tf.reduce_mean(tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(predL1, 1e-10, 1.0)), axis=-1))
+            predL = tf.gather(pred1, tf.range(args['labeled_batch_size']))
+            ce_loss = - tf.reduce_sum(tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1))
+            ce_loss /= args['batch_size']
+            
             # unsupervised
-            predU1 = model(imageU)
-            predU2 = model(imageU)
-            u_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(predL1 - predL2), axis=-1))
-            u_loss += tf.reduce_mean(tf.reduce_sum(tf.math.square(predU1 - predU2), axis=-1))
+            u_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(pred1 - pred2), axis=-1))
             
             loss = ce_loss + loss_weight * u_loss
             
