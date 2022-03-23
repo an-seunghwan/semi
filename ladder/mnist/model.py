@@ -1,5 +1,4 @@
 #%%
-from turtle import pos
 import tensorflow as tf
 import tensorflow.keras as K
 from tensorflow.keras import layers
@@ -32,8 +31,10 @@ class Decoder(K.models.Model):
         self.net = K.Sequential(
             [
                 layers.Dense(128, activation='linear'),
+                layers.BatchNormalization(),
                 layers.ReLU(),
                 layers.Dense(256, activation='linear'),
+                layers.BatchNormalization(),
                 layers.ReLU(),
                 layers.Dense(784, activation=activation),
                 layers.Reshape((28, 28, 1)),
@@ -177,7 +178,7 @@ class LadderVAE(K.models.Model):
         # top-down of inference
         topdown = []
         for e in self.ladder_decoders:
-            mean, logvar = e(tf.concat([z, y], axis=-1), training=training)
+            mean, logvar = e(z, training=training)
             epsilon = tf.random.normal(shape=(tf.shape(x)[0], tf.shape(mean)[-1]))
             z = mean + tf.math.exp(logvar / 2.) * epsilon 
             topdown.append((z, mean, logvar))

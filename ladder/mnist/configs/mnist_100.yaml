@@ -1,2 +1,3 @@
 dataset: 'mnist'
-reconstruct_freq: 1
+reconstruct_freq: 5
+epochs: 30

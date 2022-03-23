@@ -20,7 +20,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 from preprocess import fetch_dataset
 from model import LadderVAE
 from criterion import ELBO_criterion
-# from utils import augment, weight_decay_decoupled
+from utils import weight_decay_decoupled
 #%%
 import ast
 def arg_as_list(s):
@@ -65,7 +65,7 @@ def get_args():
     '''Optimizer Parameters'''
     parser.add_argument('--lr', '--learning_rate', default=3e-4, type=float,
                         metavar='LR', help='initial learning rate')
-    # parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
+    parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -136,11 +136,12 @@ def main():
     model.build(input_shape=[(None, 28, 28, 1), (None, num_classes)])
     model.summary()
     
-    # buffer_model = DGM(args,
-    #                 num_classes,
-    #                 latent_dim=args['latent_dim'])
-    # buffer_model.build(input_shape=(None, 28, 28, 1))
-    # buffer_model.set_weights(model.get_weights()) # weight initialization
+    buffer_model = LadderVAE(args,
+                num_classes,
+                args['z_dims'])
+    buffer_model.classifier.build(input_shape=(None, 28, 28, 1))
+    buffer_model.build(input_shape=[(None, 28, 28, 1), (None, num_classes)])
+    buffer_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
     optimizer = K.optimizers.Adam(learning_rate=args['lr'])
@@ -175,9 +176,9 @@ def main():
         #     optimizer_classifier.beta_1 = 0.5
             
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
         else:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
         # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         val_recon_loss, val_kl_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, beta, args, num_classes, split='Validation')
         test_recon_loss, test_kl_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, beta, args, num_classes, split='Test')
@@ -239,7 +240,7 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print):
+def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print):
     loss_avg = tf.keras.metrics.Mean()
     recon_loss_avg = tf.keras.metrics.Mean()
     elboL_loss_avg = tf.keras.metrics.Mean()
@@ -248,7 +249,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''supervised classification weight'''
-    alpha = tf.cast(0.1 * total_length / args['labeled_examples'], tf.float32)
+    # alpha = tf.cast(0.1 * total_length / args['labeled_examples'], tf.float32)
+    alpha = tf.cast(total_length / args['labeled_examples'], tf.float32)
     
     autotune = tf.data.AUTOTUNE
     shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['batch_size'], 
@@ -315,8 +317,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
             
         grads = tape.gradient(loss, model.trainable_variables) 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
-        # '''decoupled weight decay'''
-        # weight_decay_decoupled(model.classifier, buffer_model.classifier, decay_rate=args['wd'] * optimizer_classifier.lr)
+        '''decoupled weight decay'''
+        weight_decay_decoupled(model, buffer_model, decay_rate=args['wd'] * optimizer.lr)
         
         loss_avg(loss)
         elboL_loss_avg(elboL)
