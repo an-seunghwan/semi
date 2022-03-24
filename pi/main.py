@@ -204,6 +204,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_cl
             imageU, _ = next(iteratorU)
         
         # if args['whitening_flag']:
+            # zca whitening
+        
         if args['augmentation_flag']:
             imageL = augment(imageL, args['trans_range'])
             imageU = augment(imageU, args['trans_range'])
@@ -211,7 +213,6 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_cl
         image = tf.concat([imageL, imageU], axis=0)
         
         '''normalization'''
-        # instead of whitening ZCA
         channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
                              std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         image -= channel_stats['mean']
@@ -223,8 +224,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_cl
             
             # supervised
             predL = tf.gather(pred1, tf.range(args['labeled_batch_size']))
-            ce_loss = - tf.reduce_sum(tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1))
-            ce_loss /= args['batch_size']
+            ce_loss = - tf.reduce_mean(tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1))
+            # ce_loss /= args['batch_size']
             
             # unsupervised
             u_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(pred1 - pred2), axis=-1))
@@ -261,9 +262,8 @@ def validate(dataset, model, epoch, args, split):
                              std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         image -= channel_stats['mean']
         image /= channel_stats['std']
-        pred = model(image, noise=False, training=False)
+        pred = tf.stop_gradient(model(image, noise=False, training=False))
         ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))
-        pred = tf.stop_gradient(model(image, training=False))
         ce_loss_avg(ce_loss)
         accuracy(tf.argmax(pred, axis=1, output_type=tf.int32), 
                  tf.argmax(label, axis=1, output_type=tf.int32))
