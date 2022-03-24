@@ -1,4 +1,5 @@
 dataset: 'cifar10'
-labeled_batch_size: 50
+epochs: 500
+# labeled_batch_size: 50
 # weight_max: 30
 # learning_rate: 0.001
