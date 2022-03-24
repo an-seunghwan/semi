@@ -127,6 +127,7 @@ def main():
         
         '''learning rate schedule'''
         optimizer.lr = ramp_up * ramp_down * args['lr']
+        # optimizer.lr = ramp_down * args['lr']
         optimizer.beta_1 = ramp_down * args['initial_beta1'] + (1. - ramp_down) * args['final_beta1']
         
         loss, ce_loss, u_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_classes, total_length)
@@ -209,6 +210,13 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_cl
             
         image = tf.concat([imageL, imageU], axis=0)
         
+        '''normalization'''
+        # instead of whitening ZCA
+        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
+                             std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        image -= channel_stats['mean']
+        image /= channel_stats['std']
+        
         with tf.GradientTape(persistent=True) as tape:
             pred1 = model(image)
             pred2 = model(image)
@@ -229,7 +237,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_cl
         loss_avg(loss)
         ce_loss_avg(ce_loss)
         u_loss_avg(u_loss)
-        probL = tf.nn.softmax(model(imageL, noise=False, training=False), axis=-1)
+        probL = model(image, noise=False, training=False)
+        probL = tf.gather(probL, tf.range(args['labeled_batch_size']))
         accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
 
         progress_bar.set_postfix({
@@ -248,6 +257,10 @@ def validate(dataset, model, epoch, args, split):
 
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
+        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
+                             std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        image -= channel_stats['mean']
+        image /= channel_stats['std']
         pred = model(image, noise=False, training=False)
         ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))
         pred = tf.stop_gradient(model(image, training=False))
