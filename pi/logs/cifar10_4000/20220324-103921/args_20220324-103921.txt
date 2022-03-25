@@ -1,7 +1,7 @@
 dataset : cifar10
 seed : 1
 batch_size : 100
-labeled_batch_size : 32
+labeled_batch_size : 50
 epochs : 300
 start_epoch : 0
 labeled_examples : 4000
