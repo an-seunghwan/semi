@@ -92,7 +92,7 @@ def generate_and_save_images1(model, image):
     figure = plt.figure(figsize=(10, 2))
     for i in range(10):
         plt.subplot(1, 10, i+1)
-        plt.imshow(image[i][..., 0])
+        plt.imshow(image[i])
         plt.axis('off')
     plt.savefig(buf, format='png')
     # Closing the figure prevents it from being displayed directly inside the notebook.
@@ -110,7 +110,7 @@ def generate_and_save_images2(model, image, step, save_dir):
     plt.figure(figsize=(10, 2))
     for i in range(10):
         plt.subplot(1, 10, i+1)
-        plt.imshow(image[i][..., 0])
+        plt.imshow(image[i])
         plt.axis('off')
     plt.savefig('{}/image_at_epoch_{}.png'.format(save_dir, step))
     # plt.show()
