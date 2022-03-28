@@ -2,9 +2,9 @@
 import argparse
 import os
 
-# os.chdir(r'D:\EXoN_official') # main directory (repository)
+os.chdir(r'D:\semi\dgm') # main directory (repository)
 # os.chdir('/home1/prof/jeon/an/EXoN_official') # main directory (repository)
-os.chdir('/Users/anseunghwan/Documents/GitHub/semi/dgm')
+# os.chdir('/Users/anseunghwan/Documents/GitHub/semi/dgm')
 
 import numpy as np
 import tensorflow as tf
@@ -36,9 +36,9 @@ def get_args():
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--batch-size', default=128, type=int,
+    parser.add_argument('--batch-size', default=64, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
-    parser.add_argument('--labeled-batch-size', default=32, type=int,
+    parser.add_argument('--labeled-batch-size', default=16, type=int,
                         metavar='N', help='mini-batch size for labeled dataset (default: 32)')
 
     '''SSL VAE Train PreProcess Parameter'''
@@ -66,6 +66,8 @@ def get_args():
     parser.add_argument('--learning_rate', default=3e-4, type=float,
                         metavar='LR', help='initial learning rate')
     parser.add_argument('--weight_decay', default=5e-4, type=float)
+    parser.add_argument('--alpha', default=0.1, type=float,
+                        help='weight of supervised classification loss')
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -129,15 +131,13 @@ def main():
     datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     total_length = sum(1 for _ in datasetU)
     
-    model = DGM(args,
-                num_classes,
+    model = DGM(num_classes,
                 latent_dim=args['latent_dim'])
     model.classifier.build(input_shape=(None, 32, 32, 3))
     model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
     model.summary()
     
-    buffer_model = DGM(args,
-                    num_classes,
+    buffer_model = DGM(num_classes,
                     latent_dim=args['latent_dim'])
     buffer_model.classifier.build(input_shape=(None, 32, 32, 3))
     buffer_model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
@@ -258,7 +258,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''supervised classification weight'''
-    alpha = tf.cast(0.1 * total_length / args['labeled_examples'], tf.float32)
+    alpha = tf.cast(args['alpha'] * total_length / args['labeled_examples'], tf.float32)
     
     autotune = tf.data.AUTOTUNE
     shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['labeled_batch_size'], 
@@ -302,7 +302,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
                 labelU = tf.reshape(labelU, (-1, num_classes))
                 
             imageU_ = imageU[:, tf.newaxis, :, :, :]
-            imageU_ = tf.reshape(tf.repeat(imageU_, num_classes, axis=1), (-1, 28, 28, 1))
+            imageU_ = tf.reshape(tf.repeat(imageU_, num_classes, axis=1), (-1, 32, 32, 3))
             
             mean, logvar, z, xhat = model([imageU_, labelU])
             recon_loss, prior_y, pz, qz = ELBO_criterion(xhat, imageU_, labelU, z, mean, logvar, num_classes, args)

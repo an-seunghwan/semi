@@ -5,7 +5,7 @@ from tensorflow.keras import layers
 import numpy as np
 #%%
 class Encoder(K.models.Model):
-    def __init__(self, latent_dim, name="Encoder", **kwargs):
+    def __init__(self, name="Encoder", **kwargs):
         super(Encoder, self).__init__(name=name, **kwargs)
         self.feature_num = 32
         self.nChannels = [self.feature_num * d for d in [1, 2, 4, 8]]
@@ -152,7 +152,7 @@ class DGM(K.models.Model):
         self.latent_dim = latent_dim
         self.input_dim = input_dim
         
-        self.encoder = Encoder(latent_dim)
+        self.encoder = Encoder()
         self.mean_layer = layers.Dense(latent_dim, activation='linear')
         self.logvar_layer = layers.Dense(latent_dim, activation='softplus')
         
