@@ -31,7 +31,7 @@ def get_args():
     parser = argparse.ArgumentParser('parameters')
 
     parser.add_argument('--dataset', type=str, default='cifar10',
-                        help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra, cmnist)')
+                        help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results (ex. generating color MNIST)')
     parser.add_argument('-b', '--batch-size', default=100, type=int,
@@ -262,7 +262,7 @@ def validate(dataset, model, epoch, args, split):
                              std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         image -= channel_stats['mean']
         image /= channel_stats['std']
-        pred = tf.stop_gradient(model(image, noise=False, training=False))
+        pred = model(image, noise=False, training=False)
         ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))
         ce_loss_avg(ce_loss)
         accuracy(tf.argmax(pred, axis=1, output_type=tf.int32), 
