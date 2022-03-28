@@ -1,3 +1,5 @@
 dataset: 'cifar10'
-alpha: 0.1
+epochs: 400
+alpha: 1
+labeled_batch_size: 64
 # reconstruct_freq: 1
