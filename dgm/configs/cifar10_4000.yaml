@@ -1,1 +1,2 @@
-reconstruct_freq: 1
+dataset: 'cifar10'
+# reconstruct_freq: 1
