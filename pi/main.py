@@ -2,8 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\pi') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/pi') # main directory (repository)
+# os.chdir(r'D:\semi\pi') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/pi') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
