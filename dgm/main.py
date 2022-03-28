@@ -2,8 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\dgm') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/EXoN_official') # main directory (repository)
+# os.chdir(r'D:\semi\dgm') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/dgm') # main directory (repository)
 # os.chdir('/Users/anseunghwan/Documents/GitHub/semi/dgm')
 
 import numpy as np
