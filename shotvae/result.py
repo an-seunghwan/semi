@@ -49,6 +49,8 @@ def get_args():
     # parser.add_argument('-bp', '--base_path', default=".")
     parser.add_argument('--dataset', type=str, default='cifar10',
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
+    parser.add_argument('--seed', type=int, default=1, 
+                        help='seed for repeatable results')
     # parser.add_argument('-is', "--image-size", default=[32, 32], type=arg_as_list,
     #                     metavar='Image Size List', help='the size of h * w for image')
     parser.add_argument('-b', '--batch-size', default=128, type=int,
@@ -159,7 +161,8 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = r'D:\semi\shotvae\logs\cifar10_4000\7.change_dataset\seed1\20220120-191853'
+# model_path = r'D:\semi\shotvae\logs\cifar10_4000\7.change_dataset\seed1\20220120-191853'
+model_path = r'D:\semi\shotvae\logs\cifar10_4000\20220317-200202'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(num_classes=num_classes, depth=args['depth'], width=args['width'], slope=args['slope'],
             latent_dim=args['ldc'], temperature=args['temperature'])
@@ -367,6 +370,22 @@ np.random.shuffle(generated_images)
 # calculate inception score
 is_avg, is_std = calculate_inception_score(generated_images)
 print('inception score | mean: {:.2f}, std: {:.2f}'.format(is_avg, is_std))
+#%%
+'''test dataset classification error'''
+autotune = tf.data.AUTOTUNE
+batch = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=False).prefetch(autotune)
+total_length = sum(1 for _ in test_dataset)
+iteration = total_length // args['batch_size'] 
+
+error_count = 0
+for x_test_batch, y_test_batch in batch(test_dataset):
+    _, _, log_prob, _, _, _ = model([x_test_batch, y_test_batch], training=False)
+    error_count += np.sum(tf.argmax(log_prob, axis=-1).numpy() - tf.argmax(y_test_batch, axis=-1).numpy() != 0)
+print('TEST classification error: {:.2f}%'.format(error_count / total_length * 100))
+#%%
+with open('{}/result.txt'.format(model_path), "w") as file:
+    file.write('TEST classification error: {:.2f}%\n\n'.format(error_count / total_length * 100))
+    file.write('inception score | mean: {:.2f}, std: {:.2f}\n\n'.format(is_avg, is_std))
 #%%
 '''FID'''
 # inception_model = K.applications.InceptionV3(include_top=False, weights="imagenet", pooling='avg')

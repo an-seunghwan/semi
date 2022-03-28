@@ -251,6 +251,20 @@ def main():
 
     for epoch in range(args['start_epoch'], args['epochs']):
         
+        # '''learning rate schedule'''
+        # if epoch == 0:
+        #     '''warm-up'''
+        #     optimizer.lr = args['lr'] * 0.2
+        # elif epoch < args['adjust_lr'][0]:
+        #     optimizer.lr = args['lr']
+        # elif epoch < args['adjust_lr'][1]:
+        #     optimizer.lr = args['lr'] * 0.1
+        # elif epoch < args['adjust_lr'][2]:
+        #     optimizer.lr = args['lr'] * 0.01
+        # else:
+        #     optimizer.lr = args['lr'] * 0.001
+        #     # optimizer.lr = learning_rate_fn(epoch)
+        
         '''learning rate schedule'''
         if epoch == 0:
             '''warm-up'''
@@ -259,11 +273,8 @@ def main():
             optimizer.lr = args['lr']
         elif epoch < args['adjust_lr'][1]:
             optimizer.lr = args['lr'] * 0.1
-        elif epoch < args['adjust_lr'][2]:
-            optimizer.lr = args['lr'] * 0.01
         else:
-            optimizer.lr = args['lr'] * 0.001
-            # optimizer.lr = learning_rate_fn(epoch)
+            optimizer.lr = args['lr'] * 0.01
         
         if epoch % args['reconstruct_freq'] == 0:
             labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
