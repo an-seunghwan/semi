@@ -3,7 +3,7 @@ import numpy as np
 import tensorflow as tf
 #%%
 def ELBO_criterion(xhat, image, label, posterior, prior, num_classes, args):
-    if args['bce']:
+    if args['bce_reconstruction']:
         error = - tf.reduce_sum(image * tf.math.log(tf.clip_by_value(xhat, 1e-10, 1.)) + 
                                 (1. - image) * tf.math.log(1. - tf.clip_by_value(xhat, 1e-10, 1.)), axis=[1, 2, 3])
     else:

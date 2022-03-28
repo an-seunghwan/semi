@@ -36,15 +36,17 @@ def get_args():
                         help='dataset used for training')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('-b', '--batch-size', default=64, type=int,
+    parser.add_argument('--batch_size', default=64, type=int,
                         metavar='N', help='mini-batch size (default: 64)')
+    parser.add_argument('--labeled_batch_size', default=100, type=int,
+                        metavar='N', help='mini-batch size (default: 32)')
 
     '''SSL VAE Train PreProcess Parameter'''
     parser.add_argument('--epochs', default=10, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    parser.add_argument('--reconstruct_freq', '-rf', default=10, type=int,
+    parser.add_argument('--reconstruct_freq', default=10, type=int,
                         metavar='N', help='reconstruct frequency (default: 10)')
     parser.add_argument('--labeled_examples', type=int, default=100, 
                         help='number labeled examples (default: 100), all labels are balanced')
@@ -52,7 +54,7 @@ def get_args():
                         help='number validation examples (default: 5000')
 
     '''Deep VAE Model Parameters'''
-    parser.add_argument('--bce', "--bce_reconstruction", default=True, type=bool,
+    parser.add_argument("--bce_reconstruction", default=True, type=bool,
                         help="Do BCE Reconstruction")
 
     '''VAE parameters'''
@@ -63,9 +65,9 @@ def get_args():
     #                     help='feature dimension in latent space for continuous variable')
     
     '''Optimizer Parameters'''
-    parser.add_argument('--lr', '--learning_rate', default=3e-4, type=float,
+    parser.add_argument('--learning_rate', default=3e-4, type=float,
                         metavar='LR', help='initial learning rate')
-    parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
+    parser.add_argument('--weight_decay', default=5e-4, type=float)
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -144,20 +146,7 @@ def main():
     buffer_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
-    optimizer = K.optimizers.Adam(learning_rate=args['lr'])
-    # '''Gradient Cetralized optimizer'''
-    # class GCAdam(K.optimizers.Adam):
-    #     def get_gradients(self, loss, params):
-    #         grads = []
-    #         gradients = super().get_gradients()
-    #         for grad in gradients:
-    #             grad_len = len(grad.shape)
-    #             if grad_len > 1:
-    #                 axis = list(range(grad_len - 1))
-    #                 grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
-    #             grads.append(grad)
-    #         return grads
-    # optimizer = GCAdam(learning_rate=args['lr'])
+    optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
 
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -166,14 +155,17 @@ def main():
     test_accuracy_print = 0.
     
     '''weight of KL-divergence'''
-    beta = tf.cast(1, tf.float32) 
+    beta = tf.cast(0.1, tf.float32) 
     
     for epoch in range(args['start_epoch'], args['epochs']):
         
-        # '''classifier: learning rate schedule'''
-        # if epoch >= args['rampdown_epoch']:
-        #     optimizer_classifier.lr = args['lr'] * tf.math.exp(-5 * (1. - (args['epochs'] - epoch) / args['epochs']) ** 2)
-        #     optimizer_classifier.beta_1 = 0.5
+        '''learning rate schedule'''
+        lr_gamma = 0.9
+        min_lr = args['learning_rate'] * 0.1
+        if optimizer.lr * lr_gamma < min_lr:
+            optimizer.lr = min_lr
+        elif epoch % 20 == 0:
+            optimizer.lr = optimizer.lr * lr_gamma
             
         if epoch % args['reconstruct_freq'] == 0:
             loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
@@ -253,8 +245,8 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
     alpha = tf.cast(total_length / args['labeled_examples'], tf.float32)
     
     autotune = tf.data.AUTOTUNE
-    shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['batch_size'], 
-                                                                                    drop_remainder=False).prefetch(autotune)
+    shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['labeled_batch_size'], 
+                                                                                    drop_remainder=True).prefetch(autotune)
     shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], 
                                                                                     drop_remainder=True).prefetch(autotune)
 
@@ -318,7 +310,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
         grads = tape.gradient(loss, model.trainable_variables) 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
         '''decoupled weight decay'''
-        weight_decay_decoupled(model, buffer_model, decay_rate=args['wd'] * optimizer.lr)
+        weight_decay_decoupled(model, buffer_model, decay_rate=args['weight_decay'] * optimizer.lr)
         
         loss_avg(loss)
         elboL_loss_avg(elboL)
