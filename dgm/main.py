@@ -2,8 +2,8 @@
 import argparse
 import os
 
-# os.chdir(r'D:\semi\dgm') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/dgm') # main directory (repository)
+os.chdir(r'D:\semi\dgm') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/dgm') # main directory (repository)
 # os.chdir('/Users/anseunghwan/Documents/GitHub/semi/dgm')
 
 import numpy as np
@@ -145,6 +145,7 @@ def main():
     
     '''optimizer'''
     optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
+    optimizer_classifier = K.optimizers.Adam(learning_rate=args['learning_rate'])
     # '''Gradient Cetralized optimizer'''
     # class GCAdam(K.optimizers.Adam):
     #     def get_gradients(self, loss, params):
@@ -172,12 +173,9 @@ def main():
     for epoch in range(args['start_epoch'], args['epochs']):
         
         '''learning rate schedule'''
-        lr_gamma = 0.75
-        min_lr = args['learning_rate'] * 0.1
-        if optimizer.lr * lr_gamma < min_lr:
-            optimizer.lr = min_lr
-        elif epoch % 50 == 0:
-            optimizer.lr = optimizer.lr * lr_gamma
+        lr_gamma = 0.9
+        if epoch % 5 == 0:
+            optimizer_classifier.lr = optimizer_classifier.lr * lr_gamma
             
         # '''classifier: learning rate schedule'''
         # if epoch >= args['rampdown_epoch']:
@@ -185,9 +183,9 @@ def main():
         #     optimizer_classifier.beta_1 = 0.5
             
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print)
         else:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print)
         # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         val_recon_loss, val_kl_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, beta, args, num_classes, split='Validation')
         test_recon_loss, test_kl_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, beta, args, num_classes, split='Test')
@@ -249,7 +247,7 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print):
+def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print):
     loss_avg = tf.keras.metrics.Mean()
     recon_loss_avg = tf.keras.metrics.Mean()
     elboL_loss_avg = tf.keras.metrics.Mean()
@@ -324,10 +322,13 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
             
             loss = elboL + elboU + alpha * cce
             
-        grads = tape.gradient(loss, model.trainable_variables) 
-        optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
+        grads = tape.gradient(loss, model.encoder.trainable_variables + model.decoder.trainable_variables) 
+        optimizer.apply_gradients(zip(grads, model.encoder.trainable_variables + model.decoder.trainable_variables))
+        # classifier
+        grads = tape.gradient(loss, model.classifier.trainable_variables) 
+        optimizer_classifier.apply_gradients(zip(grads, model.classifier.trainable_variables)) 
         '''decoupled weight decay'''
-        weight_decay_decoupled(model.classifier, buffer_model.classifier, decay_rate=args['weight_decay'] * optimizer.lr)
+        weight_decay_decoupled(model.classifier, buffer_model.classifier, decay_rate=args['weight_decay'] * optimizer_classifier.lr)
         
         loss_avg(loss)
         elboL_loss_avg(elboL)

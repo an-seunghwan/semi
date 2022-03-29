@@ -5,7 +5,7 @@ from tensorflow.keras import layers
 import numpy as np
 #%%
 class Encoder(K.models.Model):
-    def __init__(self, name="Encoder", **kwargs):
+    def __init__(self, latent_dim, name="Encoder", **kwargs):
         super(Encoder, self).__init__(name=name, **kwargs)
         self.feature_num = 32
         self.nChannels = [self.feature_num * d for d in [1, 2, 4, 8]]
@@ -33,11 +33,16 @@ class Encoder(K.models.Model):
                 layers.BatchNormalization(),
             ]
         )
+        self.mean_layer = layers.Dense(latent_dim, activation='linear')
+        self.logvar_layer = layers.Dense(latent_dim, activation='softplus')
         
     @tf.function
-    def call(self, x, training=True):
+    def call(self, inputs, training=True):
+        x, y = inputs
         h = self.net(x, training=training)
-        return h
+        mean = self.mean_layer(tf.concat([h, y], axis=-1))
+        logvar = self.logvar_layer(tf.concat([h, y], axis=-1))
+        return mean, logvar
 #%%
 class Classifier(K.models.Model):
     def __init__(self, 
@@ -152,18 +157,13 @@ class DGM(K.models.Model):
         self.latent_dim = latent_dim
         self.input_dim = input_dim
         
-        self.encoder = Encoder()
-        self.mean_layer = layers.Dense(latent_dim, activation='linear')
-        self.logvar_layer = layers.Dense(latent_dim, activation='softplus')
-        
+        self.encoder = Encoder(latent_dim)
         self.classifier = Classifier(num_classes, dropratio)
         self.decoder = Decoder(output_channel, activation)
     
     def encode(self, inputs, training=True):
         x, y = inputs
-        h = self.encoder(x, training=training)
-        mean = self.mean_layer(tf.concat([h, y], axis=-1))
-        logvar = self.logvar_layer(tf.concat([h, y], axis=-1))
+        mean, logvar = self.encoder([x, y], training=training)
         epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.latent_dim))
         z = mean + tf.math.exp(logvar / 2.) * epsilon 
         return mean, logvar, z
@@ -179,9 +179,7 @@ class DGM(K.models.Model):
     @tf.function
     def call(self, inputs, training=True):
         x, y = inputs
-        h = self.encoder(x, training=training)
-        mean = self.mean_layer(tf.concat([h, y], axis=-1))
-        logvar = self.logvar_layer(tf.concat([h, y], axis=-1))
+        mean, logvar = self.encoder([x, y], training=training)
         epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.latent_dim))
         z = mean + tf.math.exp(logvar / 2.) * epsilon 
         xhat = self.decoder(tf.concat([z, y], axis=-1), training=training) 
