@@ -5,3 +5,4 @@
 *.h5
 *.pyc
 *.sh
+pi/logs/cifar10_4000/etc
