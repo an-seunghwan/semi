@@ -2,8 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\dgm') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/dgm') # main directory (repository)
+# os.chdir(r'D:\semi\dgm') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/dgm') # main directory (repository)
 # os.chdir('/Users/anseunghwan/Documents/GitHub/semi/dgm')
 
 import numpy as np
@@ -173,8 +173,8 @@ def main():
     for epoch in range(args['start_epoch'], args['epochs']):
         
         '''learning rate schedule'''
-        lr_gamma = 0.75
-        if epoch % 5 == 0:
+        lr_gamma = 0.5
+        if epoch % 10 == 0:
             optimizer_classifier.lr = optimizer_classifier.lr * lr_gamma
             
         # '''classifier: learning rate schedule'''
