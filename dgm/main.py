@@ -173,7 +173,7 @@ def main():
     for epoch in range(args['start_epoch'], args['epochs']):
         
         '''learning rate schedule'''
-        lr_gamma = 0.9
+        lr_gamma = 0.75
         if epoch % 5 == 0:
             optimizer_classifier.lr = optimizer_classifier.lr * lr_gamma
             
