@@ -34,7 +34,7 @@ def get_args():
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results (ex. generating color MNIST)')
-    parser.add_argument('-b', '--batch-size', default=100, type=int,
+    parser.add_argument('--batch-size', default=100, type=int,
                         metavar='N', help='mini-batch size (default: 100)')
     parser.add_argument('--labeled-batch-size', default=32, type=int,
                         metavar='N', help='mini-batch size of labeled dataset')

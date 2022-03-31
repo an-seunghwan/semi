@@ -34,41 +34,48 @@ def get_args():
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results (ex. generating color MNIST)')
-    parser.add_argument('-b', '--batch-size', default=100, type=int,
-                        metavar='N', help='mini-batch size (default: 100)')
-    parser.add_argument('--labeled-batch-size', default=32, type=int,
-                        metavar='N', help='mini-batch size of labeled dataset')
+    parser.add_argument('--batch-size', default=100, type=int,
+                        help='mini-batch size (default: 100)')
+    parser.add_argument('--labeled_batch_size', default=16, type=int, metavar='N', 
+                        help="Labeled examples per minibatch (default: no constrain)")
 
     '''SSL Train PreProcess Parameter'''
-    parser.add_argument('--epochs', default=300, type=int, 
-                        metavar='N', help='number of total epochs to run')
+    parser.add_argument('--epochs', default=400, type=int, 
+                        help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
-                        metavar='N', help='manual epoch number (useful on restarts)')
+                        help='manual epoch number (useful on restarts)')
     parser.add_argument('--labeled_examples', type=int, default=4000, 
                         help='number labeled examples (default: 4000')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
     
-    '''Optimizer Parameters'''
-    parser.add_argument('--lr', '--learning_rate', default=0.003, type=float,
-                        metavar='LR', help='initial learning rate')
-    parser.add_argument('--initial_beta1', default=0.9, type=float, 
-                        help='initial beta_1 value of optimizer')
-    parser.add_argument('--final_beta1', default=0.5, type=float, 
-                        help='final beta_1 value of optimizer')
-    parser.add_argument('--ramp_up_period', default=80, type=int, 
-                        help='ramp-up period of loss function')
-    parser.add_argument('--ramp_down_period', default=50, type=int, 
-                        help='ramp-down period')
-    parser.add_argument('--weight_max', default=100, type=float, 
-                        help='related to unsupervised loss component')
+    parser.add_argument('--dropout', type=float, default=0.0, 
+                        help='CNN dropout')
     
-    # parser.add_argument('--weight_norm_flag', default=True, type=bool,
-    #                     help='Weight normalization is applied. Otherwise Batch normalization is applied')
-    parser.add_argument('--augmentation_flag', default=True, type=bool, 
-                        help='Data augmentation')
-    parser.add_argument('--trans_range', default=2, type=int, 
-                        help='random_translation_range')
+    '''Optimizer Parameters'''
+    parser.add_argument('--learning_rate', default=0.1, type=float,
+                        help='initial learning rate')
+    parser.add_argument('--momentum', default=0.9, type=float, 
+                        help='Momentum')
+    parser.add_argument('--weight_decay', type=float, default=1e-4, 
+                        help='Weight decay')
+    parser.add_argument('--reg1', type=float, default=0.8, 
+                        help='Hyperparam for loss')
+    parser.add_argument('--reg2', type=float, default=0.4, 
+                        help='Hyperparam for loss')
+    parser.add_argument("--M", default=[250, 350], type=arg_as_list,
+                        help="The milestone list for adjust learning rate")
+    # parser.add_argument('--swa', type=str, default='True', help='Apply SWA')
+    # parser.add_argument('--swa_start', type=int, default=350, help='Start SWA')
+    # parser.add_argument('--swa_freq', type=float, default=5, help='Frequency')
+    # parser.add_argument('--swa_lr', type=float, default=-0.01, help='LR')
+    
+    parser.add_argument('--Mixup_Alpha', type=float, default=1, 
+                        help='Alpha value for the beta dist from mixup')
+    parser.add_argument('--DApseudolab', type=str, default="False", 
+                        help='Apply data augmentation when computing pseudolabels')
+    parser.add_argument('--drop_extra_forward', type=str, default='True', 
+                        help='Do an extra forward pass to compute the labels without dropout.')
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -101,12 +108,19 @@ def main():
     datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     total_length = sum(1 for _ in datasetU)
     
-    model = CNN(num_classes)
+    model = CNN(num_classes, 
+                dropratio=args['dropout'])
     model.build(input_shape=(None, 32, 32, 3))
     model.summary()
     
+    buffer_model = CNN(num_classes, 
+                    dropratio=args['dropout'])
+    buffer_model.build(input_shape=(None, 32, 32, 3))
+    buffer_model.set_weights(model.get_weights()) # weight initialization
+    
     '''optimizer'''
-    optimizer = K.optimizers.Adam(learning_rate=args['lr'])
+    optimizer = K.optimizers.SGD(learning_rate=args['learning_rate'],
+                                momentum=args['momentum'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -114,21 +128,6 @@ def main():
 
     for epoch in range(args['start_epoch'], args['epochs']):
         
-        T = epoch / args['ramp_up_period']
-        ramp_up = tf.math.exp(-5. * (tf.math.maximum(0., 1. - T)) ** 2)
-        T = (args['epochs'] - epoch) / args['ramp_down_period']
-        ramp_down = tf.math.exp(-12.5 * (tf.math.maximum(0., 1. - T)) ** 2)
-        
-        '''unsupervised loss weight'''
-        if epoch == 0:
-            loss_weight = 0
-        else:
-            loss_weight = ramp_up * (args['weight_max'] * args['labeled_examples'] / 50000.)
-        
-        '''learning rate schedule'''
-        optimizer.lr = ramp_up * ramp_down * args['lr']
-        # optimizer.lr = ramp_down * args['lr']
-        optimizer.beta_1 = ramp_down * args['initial_beta1'] + (1. - ramp_down) * args['final_beta1']
         
         loss, ce_loss, u_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_classes, total_length)
         val_ce_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
