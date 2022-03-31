@@ -109,9 +109,12 @@ def main():
     datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     total_length = sum(1 for _ in datasetU)
     
+    model_path = log_path + '/warmup'
+    model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
     model = CNN(num_classes, 
                 dropratio=args['dropout'])
     model.build(input_shape=(None, 32, 32, 3))
+    model.load_weights(model_path + '/' + model_name)
     model.summary()
     
     buffer_model = CNN(num_classes, 

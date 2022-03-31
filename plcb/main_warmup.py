@@ -107,7 +107,7 @@ def main():
     log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
     datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
-    total_length = sum(1 for _ in datasetU)
+    total_length = sum(1 for _ in datasetL)
     
     model = CNN(num_classes, 
                 dropratio=args['dropout'])
