@@ -63,9 +63,9 @@ def get_args():
                         help='Hyperparam for loss')
     parser.add_argument('--reg2', type=float, default=0.4, 
                         help='Hyperparam for loss')
-    parser.add_argument("--M", default=[250, 350], type=arg_as_list,
-                        help="The milestone list for adjust learning rate")
-    parser.add_argument('--lr_gamma', default=0.1, type=float)
+    # parser.add_argument("--M", default=[250, 350], type=arg_as_list,
+    #                     help="The milestone list for adjust learning rate")
+    # parser.add_argument('--lr_gamma', default=0.1, type=float)
     # parser.add_argument('--swa', type=str, default='True', help='Apply SWA')
     # parser.add_argument('--swa_start', type=int, default=350, help='Start SWA')
     # parser.add_argument('--swa_freq', type=float, default=5, help='Frequency')
@@ -73,10 +73,10 @@ def get_args():
     
     parser.add_argument('--Mixup_Alpha', type=float, default=1, 
                         help='Alpha value for the beta dist from mixup')
-    parser.add_argument('--DApseudolab', type=bool, default=False, 
-                        help='Apply data augmentation when computing pseudolabels')
-    parser.add_argument('--drop_extra_forward', type=bool, default=True, 
-                        help='Do an extra forward pass to compute the labels without dropout.')
+    # parser.add_argument('--DApseudolab', type=bool, default=False, 
+    #                     help='Apply data augmentation when computing pseudolabels')
+    # parser.add_argument('--drop_extra_forward', type=bool, default=True, 
+    #                     help='Do an extra forward pass to compute the labels without dropout.')
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -119,14 +119,14 @@ def main():
     buffer_model.build(input_shape=(None, 32, 32, 3))
     buffer_model.set_weights(model.get_weights()) # weight initialization
     
-    if args['drop_extra_forward']:
-        pslab_model = CNN(num_classes, 
-                        dropratio=0.0) # without dropout
-    else:
-        pslab_model = CNN(num_classes, 
-                        dropratio=args['dropout']) 
-    pslab_model.build(input_shape=(None, 32, 32, 3))
-    pslab_model.set_weights(model.get_weights()) # weight initialization
+    # if args['drop_extra_forward']:
+    #     pslab_model = CNN(num_classes, 
+    #                     dropratio=0.0) # without dropout
+    # else:
+    #     pslab_model = CNN(num_classes, 
+    #                     dropratio=args['dropout']) 
+    # pslab_model.build(input_shape=(None, 32, 32, 3))
+    # pslab_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
     optimizer = K.optimizers.SGD(learning_rate=args['learning_rate'],
@@ -138,12 +138,12 @@ def main():
 
     for epoch in range(args['start_epoch'], args['epochs']):
         
-        for ad_num, ad_epoch in enumerate(args['M'] + [args['epochs']]):
-            if epoch < ad_epoch:
-                optimizer.lr = args['learning_rate'] * (args['lr_gamma'] ** ad_num)
-                break
+        # for ad_num, ad_epoch in enumerate(args['M'] + [args['epochs']]):
+        #     if epoch < ad_epoch:
+        #         optimizer.lr = args['learning_rate'] * (args['lr_gamma'] ** ad_num)
+        #         break
         
-        loss, mixup_loss, rega_loss, regb_loss, accuracy = train(datasetL, datasetU, model, buffer_model, pslab_model, optimizer, epoch, args, num_classes, total_length)
+        loss, mixup_loss, rega_loss, regb_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
         val_loss, val_ce_loss, val_rega_loss, val_regb_loss, val_accuracy = validate(val_dataset, model, epoch, args, num_classes, split='Validation')
         test_loss, test_ce_loss, test_rega_loss, test_regb_loss, test_accuracy = validate(test_dataset, model, epoch, args, num_classes, split='Test')
         
@@ -183,8 +183,8 @@ def main():
         test_regb_loss.reset_states()
         test_accuracy.reset_states()
         
-        '''update pseudo-label model for every epoch'''
-        pslab_model.set_weights(model.get_weights())
+        # '''update pseudo-label model for every epoch'''
+        # pslab_model.set_weights(model.get_weights())
 
     '''model & configurations save'''        
     # weight name for saving
@@ -205,7 +205,7 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, buffer_model, pslab_model, optimizer, epoch, args, num_classes, total_length):
+def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length):
     loss_avg = tf.keras.metrics.Mean()
     mixup_loss_avg = tf.keras.metrics.Mean()
     rega_loss_avg = tf.keras.metrics.Mean()
@@ -213,10 +213,10 @@ def train(datasetL, datasetU, model, buffer_model, pslab_model, optimizer, epoch
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e4)).batch(batch_size=args['labeled_batch_size'], drop_remainder=True)
-    shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
+    # shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
 
     iteratorL = iter(shuffle_and_batchL(datasetL))
-    iteratorU = iter(shuffle_and_batchU(datasetU))
+    # iteratorU = iter(shuffle_and_batchU(datasetU))
         
     iteration = total_length // args['batch_size'] 
     
@@ -228,44 +228,41 @@ def train(datasetL, datasetU, model, buffer_model, pslab_model, optimizer, epoch
         except:
             iteratorL = iter(shuffle_and_batchL(datasetL))
             imageL, labelL = next(iteratorL)
-        try:
-            imageU, _ = next(iteratorU)
-        except:
-            iteratorU = iter(shuffle_and_batchU(datasetU))
-            imageU, _ = next(iteratorU)
+        # try:
+        #     imageU, _ = next(iteratorU)
+        # except:
+        #     iteratorU = iter(shuffle_and_batchU(datasetU))
+        #     imageU, _ = next(iteratorU)
         
         imageL_aug = augment(imageL)
-        imageU_aug = augment(imageU)
+        # imageU_aug = augment(imageU)
             
         '''normalization'''
         channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
                              std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         imageL -= channel_stats['mean']
         imageL /= channel_stats['std']
-        imageU -= channel_stats['mean']
-        imageU /= channel_stats['std']
+        # imageU -= channel_stats['mean']
+        # imageU /= channel_stats['std']
         
         imageL_aug -= channel_stats['mean']
         imageL_aug /= channel_stats['std']
-        imageU_aug -= channel_stats['mean']
-        imageU_aug /= channel_stats['std']
+        # imageU_aug -= channel_stats['mean']
+        # imageU_aug /= channel_stats['std']
         
         mix_weight = tf.constant(np.random.beta(args['Mixup_Alpha'], args['Mixup_Alpha']))
         
         with tf.GradientTape(persistent=True) as tape:
             '''pseudo-label and mix-up'''
             with tape.stop_recording():
-                labelU = pslab_model(imageU, training=False) # without augmentation and dropout
-                image = tf.concat([imageL_aug, imageU_aug], axis=0)
-                label = tf.concat([labelL, labelU], axis=0)
-                image_mix, label_shuffle = non_smooth_mixup(image, label, mix_weight)
+                image_mix, label_shuffle = non_smooth_mixup(imageL_aug, labelL, mix_weight)
                 
             pred = model(image_mix)
             prob = tf.nn.softmax(pred, axis=-1)
             prob = tf.clip_by_value(prob, 1e-10, 1.0) 
             
             mixup_loss = - mix_weight * tf.reduce_mean(tf.reduce_sum(label_shuffle * tf.math.log(prob), axis=-1))
-            mixup_loss += - (1. - mix_weight) * tf.reduce_mean(tf.reduce_sum(label * tf.math.log(prob), axis=-1))
+            mixup_loss += - (1. - mix_weight) * tf.reduce_mean(tf.reduce_sum(labelL * tf.math.log(prob), axis=-1))
             
             prob_avg = tf.reduce_mean(prob, axis=0)
             prob_avg = tf.clip_by_value(prob_avg, 1e-10, 1.0)
