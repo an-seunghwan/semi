@@ -143,7 +143,7 @@ def main():
         #         optimizer.lr = args['learning_rate'] * (args['lr_gamma'] ** ad_num)
         #         break
         
-        loss, mixup_loss, rega_loss, regb_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
+        loss, mixup_loss, rega_loss, regb_loss, accuracy = train(datasetL, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
         val_loss, val_ce_loss, val_rega_loss, val_regb_loss, val_accuracy = validate(val_dataset, model, epoch, args, num_classes, split='Validation')
         test_loss, test_ce_loss, test_rega_loss, test_regb_loss, test_accuracy = validate(test_dataset, model, epoch, args, num_classes, split='Test')
         
@@ -205,7 +205,7 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length):
+def train(datasetL, model, buffer_model, optimizer, epoch, args, num_classes, total_length):
     loss_avg = tf.keras.metrics.Mean()
     mixup_loss_avg = tf.keras.metrics.Mean()
     rega_loss_avg = tf.keras.metrics.Mean()

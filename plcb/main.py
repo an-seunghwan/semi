@@ -259,6 +259,7 @@ def train(datasetL, datasetU, model, buffer_model, pslab_model, optimizer, epoch
             '''pseudo-label and mix-up'''
             with tape.stop_recording():
                 labelU = pslab_model(imageU, training=False) # without augmentation and dropout
+                labelU = tf.nn.softmax(labelU, axis=-1)
                 image = tf.concat([imageL_aug, imageU_aug], axis=0)
                 label = tf.concat([labelL, labelU], axis=0)
                 image_mix, label_shuffle = non_smooth_mixup(image, label, mix_weight)
@@ -315,11 +316,12 @@ def validate(dataset, model, epoch, args, num_classes, split):
                              std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         image -= channel_stats['mean']
         image /= channel_stats['std']
+        
         pred = model(image, training=False)
         prob = tf.nn.softmax(pred, axis=-1)
         prob = tf.clip_by_value(prob, 1e-10, 1.0)
-        ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(prob), axis=-1))
         
+        ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(prob), axis=-1))
         prob_avg = tf.reduce_mean(prob, axis=0)
         prob_avg = tf.clip_by_value(prob_avg, 1e-10, 1.0)
         # RegA = tf.reduce_sum(1./num_classes * (tf.math.log(tf.clip_by_value(1./num_classes, 1e-10, 1.0)) - tf.math.log(tf.clip_by_value(prob_avg, 1e-10, 1.0))))
