@@ -1,3 +1,0 @@
-dataset: "cmnist"
-reconstruct_freq: 3
-x_sigma: 0.5

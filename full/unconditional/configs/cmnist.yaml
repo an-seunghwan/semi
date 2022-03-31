@@ -1,3 +1,0 @@
-dataset: "cmnist"
-epochs: 100
-latent_dim: 6

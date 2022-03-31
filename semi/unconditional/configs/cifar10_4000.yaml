@@ -1,2 +1,0 @@
-dataset: "cifar10"
-reconstruct_freq: 10

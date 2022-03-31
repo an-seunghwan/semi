@@ -1,7 +1,4 @@
 dataset: 'cifar10'
 # epochs: 400
-alpha: 1
-labeled_batch_size: 32
 # weight_decay: 0.001
-
 # reconstruct_freq: 1

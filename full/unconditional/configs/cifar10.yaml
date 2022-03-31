@@ -1,8 +1,0 @@
-dataset: "cifar10"
-epochs: 100
-latent_dim: 256
-x_sigma: 0.1
-lambda1: 10.
-lambda2: 5.
-lambda3: 20.
-reconstruct_freq: 1

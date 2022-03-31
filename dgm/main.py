@@ -2,8 +2,8 @@
 import argparse
 import os
 
-# os.chdir(r'D:\semi\dgm') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/dgm') # main directory (repository)
+os.chdir(r'D:\semi\dgm') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/dgm') # main directory (repository)
 # os.chdir('/Users/anseunghwan/Documents/GitHub/semi/dgm')
 
 import numpy as np
@@ -38,7 +38,7 @@ def get_args():
                         help='seed for repeatable results')
     parser.add_argument('--batch-size', default=64, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
-    parser.add_argument('--labeled-batch-size', default=16, type=int,
+    parser.add_argument('--labeled-batch-size', default=8, type=int,
                         metavar='N', help='mini-batch size for labeled dataset (default: 32)')
 
     '''SSL VAE Train PreProcess Parameter'''
@@ -66,7 +66,7 @@ def get_args():
     parser.add_argument('--learning_rate', default=3e-4, type=float,
                         metavar='LR', help='initial learning rate')
     parser.add_argument('--weight_decay', default=5e-4, type=float)
-    parser.add_argument('--alpha', default=0.1, type=float,
+    parser.add_argument('--alpha', default=1, type=float,
                         help='weight of supervised classification loss')
 
     '''Configuration'''
