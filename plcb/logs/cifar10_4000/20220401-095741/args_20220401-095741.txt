@@ -7,7 +7,7 @@ start_epoch : 0
 labeled_examples : 4000
 validation_examples : 5000
 dropout : 0.1
-learning_rate : 0.1
+learning_rate : 0.01
 momentum : 0.9
 weight_decay : 0.0001
 reg1 : 0.8
