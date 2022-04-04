@@ -129,8 +129,9 @@ def main():
     # pslab_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
-    optimizer = K.optimizers.SGD(learning_rate=args['learning_rate'],
-                                momentum=args['momentum'])
+    # optimizer = K.optimizers.SGD(learning_rate=args['learning_rate'],
+    #                             momentum=args['momentum'])
+    optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
