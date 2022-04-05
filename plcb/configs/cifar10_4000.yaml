@@ -1,7 +1,8 @@
 dataset: 'cifar10'
 dropout: 0.1
 learning_rate: 0.001
-labeled_batch_size: 50
-M: [50, 100, 150, 200, 250, 300, 350]
-lr_gamma: 0.5
-# weight_decay: 0.0005
+batch_size: 128
+labeled_batch_size: 32
+weight_decay: 0.0005
+epochs: 200
+M: [100, 150]

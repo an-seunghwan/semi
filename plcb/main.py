@@ -3,7 +3,7 @@ import argparse
 import os
 
 os.chdir(r'D:\semi\plcb') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/pi') # main directory (repository)
+# os.chdir('/home1/seunghwan/semi/plcb') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -217,7 +217,7 @@ def train(datasetL, datasetU, model, buffer_model, pslab_model, optimizer, epoch
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e4)).batch(batch_size=args['labeled_batch_size'], drop_remainder=True)
-    shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
+    shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'] - args['labeled_batch_size'], drop_remainder=True)
 
     iteratorL = iter(shuffle_and_batchL(datasetL))
     iteratorU = iter(shuffle_and_batchU(datasetU))
