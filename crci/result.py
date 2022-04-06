@@ -2,11 +2,11 @@
 import argparse
 import os
 
-os.chdir(r'D:\EXoN_official') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/semi/proposal') # main directory (repository)
+os.chdir(r'D:\semi\dgm') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/dgm') # main directory (repository)
+# os.chdir('/Users/anseunghwan/Documents/GitHub/semi/dgm')
 
 import numpy as np
-import pandas as pd
 import tensorflow as tf
 import tensorflow.keras as K
 import tqdm
@@ -15,10 +15,13 @@ import io
 import matplotlib.pyplot as plt
 from PIL import Image
 
+import datetime
+current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
 from preprocess import fetch_dataset
-from model2 import MixtureVAE
-from criterion1 import ELBO_criterion
-# from mixup import augment, label_smoothing, non_smooth_mixup, weight_decay_decoupled
+from model import DGM
+from criterion import ELBO_criterion
+from utils import augment, weight_decay_decoupled
 #%%
 import ast
 def arg_as_list(s):
@@ -30,70 +33,47 @@ def arg_as_list(s):
 def get_args():
     parser = argparse.ArgumentParser('parameters')
 
-    parser.add_argument('--dataset', type=str, default='mnist',
-                        help='dataset used for training')
+    parser.add_argument('--dataset', type=str, default='cifar10',
+                        help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('-b', '--batch-size', default=128, type=int,
+    parser.add_argument('--batch-size', default=64, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
+    parser.add_argument('--labeled-batch-size', default=8, type=int,
+                        metavar='N', help='mini-batch size for labeled dataset (default: 32)')
 
     '''SSL VAE Train PreProcess Parameter'''
-    parser.add_argument('--epochs', default=100, type=int, 
+    parser.add_argument('--epochs', default=200, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
     parser.add_argument('--reconstruct_freq', '-rf', default=10, type=int,
                         metavar='N', help='reconstruct frequency (default: 10)')
-    parser.add_argument('--labeled_examples', type=int, default=100, 
-                        help='number labeled examples (default: 100), all labels are balanced')
+    parser.add_argument('--labeled_examples', type=int, default=4000, 
+                        help='number labeled examples (default: 4000), all labels are balanced')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
-    parser.add_argument('--augment', default=True, type=bool,
-                        help="apply augmentation to image")
 
     '''Deep VAE Model Parameters'''
-    parser.add_argument('--bce', "--bce_reconstruction", default=False, type=bool,
+    parser.add_argument("--bce_reconstruction", default=True, type=bool,
                         help="Do BCE Reconstruction")
-    parser.add_argument('--beta_trainable', default=False, type=bool,
-                        help="trainable beta")
 
     '''VAE parameters'''
-    parser.add_argument('--latent_dim', "--latent_dim_continuous", default=2, type=int,
+    parser.add_argument('--latent_dim', default=128, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
     
-    '''Prior design'''
-    parser.add_argument('--sigma', default=4, type=float,  
-                        help='variance of prior mixture component')
-
-    '''VAE Loss Function Parameters'''
-    parser.add_argument('--kl_y_threshold', default=0, type=float,  
-                        help='mutual information bound of discrete kl-divergence')
-    parser.add_argument('--lambda1', default=6000, type=int, # labeled dataset ratio?
-                        help='the weight of classification loss term')
-    '''lambda2 -> beta'''
-    parser.add_argument('--lambda2', default=10, type=int, 
-                        help='the weight of beta penalty term, initial value of beta')
-    parser.add_argument('--rampup_epoch',default=10, type=int, 
-                        help='the max epoch to adjust learning rate and unsupervised weight')
-    parser.add_argument('--rampdown_epoch',default=10, type=int, 
-                        help='the last epoch to adjust learning rate')
-    parser.add_argument('--entropy_loss', default=False, type=bool,
-                        help="add entropy minimization regularization to loss")
-    
     '''Optimizer Parameters'''
-    parser.add_argument('--lr', '--learning_rate', default=3e-3, type=float,
+    parser.add_argument('--learning_rate', default=3e-4, type=float,
                         metavar='LR', help='initial learning rate')
-    parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
-    # parser.add_argument('--clipnorm', default=1, type=float)
-
-    '''Interpolation Parameters'''
-    parser.add_argument('--epsilon', default=0.1, type=float,
-                        help="the label smoothing epsilon for labeled data")
+    parser.add_argument('--weight_decay', default=5e-4, type=float)
+    parser.add_argument('--alpha', default=1, type=float,
+                        help='weight of supervised classification loss')
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
                         help='path to yaml config file, overwrites args')
+
     return parser
 #%%
 def load_config(args):
@@ -106,7 +86,7 @@ def load_config(args):
             args[key] = config[key]
     return args
 #%%
-args = vars(get_args().parse_args(args=['--config_path', 'configs/mnist_100.yaml']))
+args = vars(get_args().parse_args(args=['--config_path', 'configs/cifar10_4000.yaml']))
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -116,283 +96,242 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220310-125521'
+model_path = log_path + '/20220330-204417'
 # model_path = log_path + '/beta_{}'.format(10)
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
-model = MixtureVAE(args,
-                num_classes,
-                latent_dim=args['latent_dim'])
-model.build(input_shape=(None, 28, 28, 1))
+
+model = DGM(num_classes,
+            latent_dim=args['latent_dim'])
+model.classifier.build(input_shape=(None, 32, 32, 3))
+model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
 model.load_weights(model_path + '/' + model_name)
 model.summary()
 #%%
-'''prior design'''
-r = 2. * np.sqrt(args['sigma']) / np.sin(np.pi / 10.)
-prior_means = np.array([[r*np.cos(np.pi/10), r*np.sin(np.pi/10)],
-                        [r*np.cos(3*np.pi/10), r*np.sin(3*np.pi/10)],
-                        [r*np.cos(5*np.pi/10), r*np.sin(5*np.pi/10)],
-                        [r*np.cos(7*np.pi/10), r*np.sin(7*np.pi/10)],
-                        [r*np.cos(9*np.pi/10), r*np.sin(9*np.pi/10)],
-                        [r*np.cos(11*np.pi/10), r*np.sin(11*np.pi/10)],
-                        [r*np.cos(13*np.pi/10), r*np.sin(13*np.pi/10)],
-                        [r*np.cos(15*np.pi/10), r*np.sin(15*np.pi/10)],
-                        [r*np.cos(17*np.pi/10), r*np.sin(17*np.pi/10)],
-                        [r*np.cos(19*np.pi/10), r*np.sin(19*np.pi/10)]])
-prior_means = tf.cast(prior_means[np.newaxis, :, :], tf.float32)
-sigma = tf.cast(args['sigma'], tf.float32)
+classnames = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
+classdict = {i:x for i,x in enumerate(classnames)}
 #%%
 autotune = tf.data.AUTOTUNE
 batch = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=False).prefetch(autotune)
-iterator_test = iter(batch(test_dataset))
+# iterator_test = iter(batch(test_dataset))
 total_length = sum(1 for _ in test_dataset)
 iteration = total_length // args['batch_size'] 
-#%%
-means = []
-logvars = []
-probs = []
-labels = []
-z_tildes = []
-for i in tqdm.tqdm(range(iteration + 1)):
-    image, label = next(iterator_test)
-    mean, logvar, prob, y, z, z_tilde = model.encode(image, training=False)
-    means.extend(mean)
-    logvars.extend(logvar)
-    probs.extend(prob)
-    labels.extend(label)
-    z_tildes.extend(z_tilde)
-means = tf.stack(means, axis=0)
-logvars = tf.stack(logvars, axis=0)
-probs = tf.stack(probs, axis=0)
-labels = tf.stack(labels, axis=0)
-z_tildes = tf.stack(z_tildes, axis=0)
-#%%
-'''classification loss'''
-classification_error = np.sum((tf.argmax(labels, axis=1) - tf.argmax(probs, axis=1) != 0).numpy()) / total_length
-print('test dataset classification error: ', classification_error)
 
-'''KL divergence'''
-kl1 = tf.reduce_mean(tf.reduce_sum(probs * (tf.math.log(tf.clip_by_value(probs, 1e-10, 1.)) + 
-                                            tf.math.log(tf.cast(num_classes, tf.float32))), axis=1))
-kl2 = tf.reduce_mean(tf.reduce_sum(tf.multiply(probs, 
-                                                tf.reduce_sum(0.5 * (tf.math.pow(means - prior_means, 2) / sigma
-                                                                    - 1
-                                                                    + tf.math.log(sigma)
-                                                                    + tf.math.exp(logvars) / sigma
-                                                                    - logvars), axis=-1)), axis=-1))
-print('KL divergence: ', (kl1 + kl2).numpy())
+error_count = 0
+for x_test_batch, y_test_batch in batch(test_dataset):
+    prob = model.classify(x_test_batch, training=False)
+    error_count += np.sum(tf.argmax(prob, axis=-1).numpy() - tf.argmax(y_test_batch, axis=-1).numpy() != 0)
+print('TEST classification error: {:.2f}%'.format(error_count / total_length * 100))
 #%%
-'''grid points'''
-a = np.arange(-15, 15.1, 2.5)
-b = np.arange(-15, 15.1, 2.5)
-aa, bb = np.meshgrid(a, b, sparse=True)
-grid = []
-for b_ in reversed(bb[:, 0]):
-    for a_ in aa[0, :]:
-        grid.append(np.array([a_, b_]))
-#%%
-'''Figure 2 top panel'''
-zmat = np.array(z_tildes)
-plt.figure(figsize=(10, 10))
-plt.tick_params(labelsize=30)    
-plt.locator_params(axis='y', nbins=8)
-plt.scatter(zmat[:, 0], zmat[:, 1], c=tf.argmax(labels, axis=1).numpy(), s=10, cmap=plt.cm.Reds, alpha=1)
-plt.savefig('./{}/latent.png'.format(model_path), 
-            dpi=200, bbox_inches="tight", pad_inches=0.1)
-plt.show()
-plt.close()
-#%%
-'''Figure 2 bottom panel'''
-grid_output = model.decode(tf.cast(np.array(grid), tf.float32), training=False)
-grid_output = grid_output.numpy()
-plt.figure(figsize=(10, 10))
-for i in range(len(grid)):
-    plt.subplot(len(b), len(a), i+1)
-    plt.imshow(grid_output[i].reshape(28, 28), cmap='gray_r')    
+'''test reconstruction'''
+(_, _), (x_test, y_test) = K.datasets.cifar10.load_data()
+x_test = x_test.astype('float32') / 255
+x = x_test[:49]
+
+prob = model.classify(x, training=False)
+label = tf.argmax(prob, axis=-1)
+label = tf.one_hot(label, depth=num_classes)
+
+_, _, _, xhat = model([x, label], training=False)
+
+plt.figure(figsize=(15, 15))
+for i in range(49):
+    plt.subplot(7, 7, i+1)
+    plt.imshow(xhat[i])
     plt.axis('off')
-    plt.tight_layout() 
-plt.savefig('./{}/reconstruction.png'.format(model_path),
-            dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
-plt.close()
-
-reconstruction = Image.open('./{}/reconstruction.png'.format(model_path))
-
-plt.figure(figsize=(10, 10))
-plt.xticks(np.arange(-15, 15.1, 5))    
-plt.yticks(np.arange(-15, 15.1, 5))    
-plt.tick_params(labelsize=30)    
-plt.imshow(reconstruction, extent=[-16.3, 16.3, -16.3, 16.3])
-plt.tight_layout() 
-plt.savefig('./{}/reconstruction.png'.format(model_path),
-            dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.tight_layout()
+plt.savefig('{}/test_recon.png'.format(model_path))
 plt.show()
 plt.close()
 #%%
-'''Appendix: Figure 1 middle panel'''
-a = np.arange(-20, 20.1, 0.25)
-b = np.arange(-20, 20.1, 0.25)
-aa, bb = np.meshgrid(a, b, sparse=True)
-grid = []
-for b_ in reversed(bb[:, 0]):
-    for a_ in aa[0, :]:
-        grid.append(np.array([a_, b_]))
-grid = tf.cast(np.array(grid), tf.float32)
-grid_output = model.decode(grid, training=False)
-grid_prob = model.classify(grid_output, training=False)
-grid_prob_argmax = np.argmax(grid_prob.numpy(), axis=1)
-plt.figure(figsize=(10, 10))
-plt.tick_params(labelsize=30)    
-plt.locator_params(axis='y', nbins=8)
-plt.scatter(grid[:, 0], grid[:, 1], c=grid_prob_argmax, s=10, cmap=plt.cm.Reds, alpha=1)
-plt.savefig('./{}/conditional_prob.png'.format(model_path), 
-            dpi=200, bbox_inches="tight", pad_inches=0.1)
-plt.show()
-plt.close()
-#%%
-'''interpolation on latent space'''
-z_inter = (prior_means.numpy()[0][0], prior_means.numpy()[0][1])    
+data_dir = r'D:\cifar10_{}'.format(5000)
+idx = np.arange(100)
+x = np.array([np.load(data_dir + '/x_{}.npy'.format(i)) for i in idx])
+y = np.array([np.load(data_dir + '/y_{}.npy'.format(i)) for i in idx])
+x = tf.cast(x, tf.float32) / 255.
 
-np.random.seed(1)
-samples = []
-color = []
-for i in range(num_classes):
-    samples.extend(np.random.multivariate_normal(mean=prior_means.numpy()[0][i, :2], cov=np.array([[sigma.numpy(), 0], 
-                                                                                        [0, sigma.numpy()]]), size=1000))
-    color.extend([i] * 1000)
-samples = np.array(samples)
+prob = model.classify(x, training=False)
+label = tf.argmax(prob, axis=-1)
+label = tf.one_hot(label, depth=num_classes)
 
-plt.figure(figsize=(10, 10))
-plt.tick_params(labelsize=30)    
-plt.locator_params(axis='y', nbins=8)
-plt.scatter(zmat[:, 0], zmat[:, 1], c=tf.argmax(labels, axis=1).numpy(), s=10, cmap=plt.cm.Reds, alpha=1)
-plt.locator_params(axis='x', nbins=5)
-plt.locator_params(axis='y', nbins=5)
-plt.scatter(z_inter[0][0], z_inter[0][1], color='blue', s=100)
-plt.annotate('A', (z_inter[0][0], z_inter[0][1]), fontsize=30)
-plt.scatter(z_inter[1][0], z_inter[1][1], color='blue', s=100)
-plt.annotate('B', (z_inter[1][0], z_inter[1][1]), fontsize=30)
-plt.plot((z_inter[0][0], z_inter[1][0]), (z_inter[0][1], z_inter[1][1]), color='black', linewidth=2, linestyle='--')
-plt.xlabel("$z_0$", fontsize=30)
-plt.ylabel("$z_1$", fontsize=30)
-plt.savefig('./{}/interpolation_path.png'.format(model_path), 
-            dpi=200, bbox_inches="tight", pad_inches=0.1)
-plt.show()
+mean, logvar, z, xhat = model([x, label], training=False)
 #%%
-# l = 10
-# model_path = log_path + '/path (consistency_interpolation)/lambda2_{}'.format(l)
-# model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
-# model = MixtureVAE(args,
-#                 num_classes,
-#                 latent_dim=args['latent_dim'])
-# model.build(input_shape=(None, 28, 28, 1))
-# model.load_weights(model_path + '/' + model_name)
-#%%
-'''interpolation'''
-inter = np.linspace(z_inter[0], z_inter[1], 10)
-inter_recon = model.decoder(inter)
-
-figure = plt.figure(figsize=(10, 2))
-for i in range(10):
-    plt.subplot(1, 10+1, i+1)
-    plt.imshow(inter_recon[i].numpy().reshape(28, 28), cmap='gray_r')
+'''train reconstruction'''
+plt.figure(figsize=(15, 15))
+for i in range(49):
+    plt.subplot(7, 7, i+1)
+    plt.imshow(xhat[i])
     plt.axis('off')
-plt.savefig('./{}/interpolation_path_recon.png'.format(model_path), 
-            dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.tight_layout()
+plt.savefig('{}/train_recon.png'.format(model_path))
 plt.show()
+plt.close()
 #%%
-'''interpolation path and reconstruction'''
-betas = [0.1, 0.2, 0.25, 0.5, 0.75, 1, 5, 10, 50]
-for l in betas:
-    img = [Image.open('./logs/mnist_100/beta_{}/interpolation_path.png'.format(l)),
-            Image.open('./logs/mnist_100/beta_{}/interpolation_path_recon.png'.format(l))]
+for idx in tqdm.tqdm(range(100)):
+    plt.figure(figsize=(20, 10))
+    plt.subplot(1, num_classes+1, 1)
+    plt.imshow(x[idx])
+    plt.title('original')
+    plt.axis('off')
+    
+    for i in range(num_classes):
+        label = np.zeros((1, num_classes))
+        label[:, i] = 1
+        label = tf.cast(label, tf.float32)
+        xhat = model.decode(z.numpy()[[idx]], label, training=False)
 
-    f, (a0, a1) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [2, 0.25]})
-    a0.imshow(img[0])    
-    a0.axis('off')
-    a1.imshow(img[1])    
-    a1.axis('off')
-    plt.tight_layout() 
-    plt.savefig('./logs/mnist_100/beta_{}/interpolation_path_and_recon.png'.format(l),
+        plt.subplot(1, num_classes+1, i+2)
+        plt.imshow(xhat[0])
+        plt.title('{}'.format(classdict.get(i)), fontsize=15)
+        plt.axis('off')
+    plt.savefig('{}/img{}.png'.format(model_path, idx),
                 dpi=200, bbox_inches="tight", pad_inches=0.1)
-    plt.show()
+    # plt.show()
     plt.close()
 #%%
-'''path: latent space and reconstruction'''
-betas = [0.1, 0.5, 5, 50]
-img = []
-for l in betas:
-    img.append([Image.open('./logs/mnist_100/beta_{}/latent.png'.format(l)),
-                Image.open('./logs/mnist_100/beta_{}/reconstruction.png'.format(l))])
-
-plt.figure(figsize=(10, 5))
-for i in range(len(img)):
-    plt.subplot(2, len(betas), i+1)
-    plt.imshow(img[i][0])    
-    plt.axis('off')
-    plt.tight_layout() 
-    # plt.title('$\lambda_1=6000$, $\\beta={}$'.format(betas[i]))
-    plt.title('$\\beta={}$'.format(betas[i]))
+'''style transfer'''
+style = []
+# for idx in [1, 17, 21, 31, 32, 48, 58, 68, 81, 84]:
+for idx in [11, 3, 15, 23, 34, 81]:
+    style.append(Image.open('{}/img{}.png'.format(model_path, idx)))
     
-    plt.subplot(2, len(betas), i+len(img)+1)
-    plt.imshow(img[i][1])    
-    plt.axis('off')
-    plt.tight_layout() 
-    
-plt.savefig('./logs/mnist_100/path_latent_recon.png',
+fig, axes = plt.subplots(6, 1, figsize=(10, 6))
+for i in range(len(style)):
+    axes.flatten()[i].imshow(style[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/style_transfer.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
 #%%
-'''path: test classifiation error'''
-args = vars(get_args().parse_args(args=['--config_path', 'configs/mnist_100.yaml']))
+'''interpolation'''
+pairs = [[11, 25], [11, 15], [11, 53]]
+fig, axes = plt.subplots(3, 10, figsize=(10, 3))
+for k in range(len(pairs)):
+    z_interpolation = np.squeeze(np.linspace(z.numpy()[[pairs[k][0]], :], 
+                                            z.numpy()[[pairs[k][1]], :], 8))
 
-dir_path = os.path.dirname(os.path.realpath(__file__))
-if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
-    args = load_config(args)
+    label = np.zeros((z_interpolation.shape[0], num_classes))
+    label[:, 1] = 1 # automobile
+    xhat_ = model.decode(z_interpolation, label, training=False)
 
-log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
+    axes[k][0].imshow(x[pairs[k][0]])
+    axes[k][0].axis('off')
+    for i in range(len(z_interpolation)):
+        axes[k][i+1].imshow(xhat_[i])
+        axes[k][i+1].axis('off')
+    axes[k][-1].imshow(x[pairs[k][1]])
+    axes[k][-1].axis('off')
 
-datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
-
-betas = [0.1, 0.2, 0.25, 0.5, 0.75, 1, 5, 10, 50]
-errors = {}
-for l in betas:
-    model_path = log_path + '/beta_{}'.format(l)
-    model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
-    model = MixtureVAE(args,
-                    num_classes,
-                    latent_dim=args['latent_dim'])
-    model.build(input_shape=(None, 28, 28, 1))
-    model.load_weights(model_path + '/' + model_name)
-    
-    test_iter = test_dataset.batch(args['batch_size'])
-    error = 0
-    count = 0
-    for image, label in test_iter:
-        prob = model.classify(image, training=False)
-        error += np.sum(np.argmax(prob, axis=1) != np.argmax(label, axis=1))
-        count += image.shape[0]
-    errors[l] = round((error / count) * 100., 3)
-pd.DataFrame.from_dict(errors, orient='index').rename(columns={0: 'test error'}).to_csv(log_path + '/test_error_path.csv')
+plt.tight_layout()
+plt.savefig('{}/style_interpolation.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
 #%%
-'''
-negative SSIM
--> inception score? FID?
-'''
-# a = np.arange(-15, 15.1, 1.0)
-# b = np.arange(-15, 15.1, 1.0)
-# aa, bb = np.meshgrid(a, b, sparse=True)
-# grid = []
-# for b_ in reversed(bb[:, 0]):
-#     for a_ in aa[0, :]:
-#         grid.append(np.array([a_, b_]))
-# grid_output = model.decoder(tf.cast(np.array(grid), tf.float32))
-# ssim = 0
-# for i in tqdm(range(len(grid_output))):
-#     s = tf.image.ssim(tf.reshape(grid_output[i, :], (28, 28, 1)), tf.reshape(grid_output, (len(grid_output), 28, 28, 1)), 
-#                     max_val=1.0, filter_size=11, filter_sigma=1.5, k1=0.01, k2=0.03)
-#     ssim += np.sum(s.numpy())
-# neg_ssim = (1 - ssim / (len(grid_output)*len(grid_output))) / 2
-# print('negative SSIM: ', neg_ssim)
-# result_negssim[str(PARAMS['lambda2'])] = result_negssim[str(PARAMS['lambda2'])] + [neg_ssim]
-#%%    
+'''manipulation'''
+idx = [11, 3, 15, 23, 34, 81]
+plt.figure(figsize=(10, 6))
+for j in range(len(idx)):
+    z_ = z.numpy()[[idx[j]]]
+    p = np.linspace(1, 0, 11)
+    num1 = 1 # automobile
+    num2 = 7 # horse
+
+    plt.subplot(len(idx), len(p)+1, (len(p)+1) * j + 1)
+    plt.imshow(x[idx[j]])
+    plt.title('original')
+    plt.axis('off')
+    for i in range(len(p)):
+        attr = np.zeros((1, num_classes))
+        attr[:, num1] = p[i]
+        attr[:, num2] = 1 - p[i]
+        attr = tf.cast(attr, tf.float32)
+        xhat = model.decode(z_, attr, training=False)
+
+        plt.subplot(len(idx), len(p)+1, (len(p)+1) * j + i + 2)
+        plt.imshow(xhat[0])
+        plt.title('{}:{:.1f}'.format(classdict.get(num1)[:4], p[i]), fontsize=12)
+        plt.axis('off')
+plt.tight_layout()
+plt.savefig('{}/manipulation.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
+'''style latent random sampling of z'''
+tf.random.set_seed(10)
+z_sampling = tf.random.normal(shape=(100, args['latent_dim']))
+pi = np.zeros((len(z_sampling), num_classes))
+pi[:, 1] = 1 # automobile
+pi = tf.cast(pi, tf.float32)
+xhat = model.decode(z, pi, training=False)
+
+fig, axes = plt.subplots(10, 10, figsize=(15, 15))
+for i in range(100):
+    axes.flatten()[i].imshow(xhat[i])
+    axes.flatten()[i].axis('off')
+plt.tight_layout()
+plt.savefig('{}/z_sampling_{}.png'.format(model_path, classdict.get(1)),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
+'''inception score'''
+# assumes images have any shape and pixels in [0,255]
+def calculate_inception_score(images, n_split=50, eps=1E-16):
+    # load inception v3 model
+    inception = K.applications.InceptionV3(include_top=True)
+    # enumerate splits of images/predictions
+    scores = list()
+    n_part = int(np.floor(images.shape[0] / n_split))
+    for i in tqdm.tqdm(range(n_split)):
+        # retrieve images
+        ix_start, ix_end = i * n_part, (i+1) * n_part
+        subset = images[ix_start:ix_end]
+        # convert from uint8 to float32
+        subset = subset.astype('float32')
+        # scale images to the required size
+        subset = tf.image.resize(subset, (299, 299), 'nearest')
+        # pre-process images, scale to [-1,1]
+        subset = 2. * subset - 1.
+        # subset = K.applications.inception_v3.preprocess_input(subset)
+        # predict p(y|x)
+        p_yx = inception.predict(subset)
+        # calculate p(y)
+        p_y = tf.expand_dims(p_yx.mean(axis=0), 0)
+        # calculate KL divergence using log probabilities
+        kl_d = p_yx * (np.log(p_yx + eps) - np.log(p_y + eps))
+        # sum over classes
+        sum_kl_d = kl_d.sum(axis=1)
+        # average over images
+        avg_kl_d = np.mean(sum_kl_d)
+        # undo the log
+        is_score = np.exp(avg_kl_d)
+        # store
+        scores.append(is_score)
+    # average across images
+    is_avg, is_std = np.mean(scores), np.std(scores)
+    return is_avg, is_std
+#%%
+# 10,000 generated images from sampled latent variables
+np.random.seed(1)
+generated_images = []
+for i in tqdm.tqdm(range(num_classes)):
+    for _ in range(10):
+        latents = np.random.normal(size=(100, args['latent_dim']))
+        y_ = np.zeros((100, num_classes))
+        y_[:, i] = 1.
+        images = model.decode(latents, y_, training=False)
+        generated_images.extend(images)
+generated_images = np.array(generated_images)
+np.random.shuffle(generated_images)
+#%%
+# calculate inception score
+is_avg, is_std = calculate_inception_score(generated_images)
+print('inception score | mean: {:.2f}, std: {:.2f}'.format(is_avg, is_std))
+#%%
+with open('{}/result.txt'.format(model_path), "w") as file:
+    file.write('TEST classification error: {:.2f}%\n\n'.format(error_count / total_length * 100))
+    file.write('inception score | mean: {:.2f}, std: {:.2f}\n\n'.format(is_avg, is_std))
+#%%

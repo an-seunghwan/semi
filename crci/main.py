@@ -2,9 +2,9 @@
 import argparse
 import os
 
-# os.chdir(r'D:\EXoN_official') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/EXoN_official') # main directory (repository)
-os.chdir('/Users/anseunghwan/Documents/GitHub/semi/dgm')
+os.chdir(r'D:\semi\dgm') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/dgm') # main directory (repository)
+# os.chdir('/Users/anseunghwan/Documents/GitHub/semi/dgm')
 
 import numpy as np
 import tensorflow as tf
@@ -20,7 +20,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 from preprocess import fetch_dataset
 from model import DGM
 from criterion import ELBO_criterion
-# from utils import augment, weight_decay_decoupled
+from utils import augment, weight_decay_decoupled
 #%%
 import ast
 def arg_as_list(s):
@@ -32,38 +32,42 @@ def arg_as_list(s):
 def get_args():
     parser = argparse.ArgumentParser('parameters')
 
-    parser.add_argument('--dataset', type=str, default='mnist',
-                        help='dataset used for training')
+    parser.add_argument('--dataset', type=str, default='cifar10',
+                        help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('-b', '--batch-size', default=64, type=int,
-                        metavar='N', help='mini-batch size (default: 64)')
+    parser.add_argument('--batch-size', default=64, type=int,
+                        metavar='N', help='mini-batch size (default: 128)')
+    parser.add_argument('--labeled-batch-size', default=8, type=int,
+                        metavar='N', help='mini-batch size for labeled dataset (default: 32)')
 
     '''SSL VAE Train PreProcess Parameter'''
-    parser.add_argument('--epochs', default=10, type=int, 
+    parser.add_argument('--epochs', default=200, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
     parser.add_argument('--reconstruct_freq', '-rf', default=10, type=int,
                         metavar='N', help='reconstruct frequency (default: 10)')
-    parser.add_argument('--labeled_examples', type=int, default=100, 
-                        help='number labeled examples (default: 100), all labels are balanced')
+    parser.add_argument('--labeled_examples', type=int, default=4000, 
+                        help='number labeled examples (default: 4000), all labels are balanced')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
 
     '''Deep VAE Model Parameters'''
-    parser.add_argument('--bce', "--bce_reconstruction", default=True, type=bool,
+    parser.add_argument("--bce_reconstruction", default=True, type=bool,
                         help="Do BCE Reconstruction")
 
     '''VAE parameters'''
-    parser.add_argument('--latent_dim', "--latent_dim_continuous", default=2, type=int,
+    parser.add_argument('--latent_dim', default=128, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
     
     '''Optimizer Parameters'''
-    parser.add_argument('--lr', '--learning_rate', default=3e-4, type=float,
+    parser.add_argument('--learning_rate', default=3e-4, type=float,
                         metavar='LR', help='initial learning rate')
-    # parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
+    parser.add_argument('--weight_decay', default=5e-4, type=float)
+    parser.add_argument('--alpha', default=1, type=float,
+                        help='weight of supervised classification loss')
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -88,7 +92,7 @@ def generate_and_save_images1(model, image):
     figure = plt.figure(figsize=(10, 2))
     for i in range(10):
         plt.subplot(1, 10, i+1)
-        plt.imshow(image[i][..., 0])
+        plt.imshow(image[i])
         plt.axis('off')
     plt.savefig(buf, format='png')
     # Closing the figure prevents it from being displayed directly inside the notebook.
@@ -106,7 +110,7 @@ def generate_and_save_images2(model, image, step, save_dir):
     plt.figure(figsize=(10, 2))
     for i in range(10):
         plt.subplot(1, 10, i+1)
-        plt.imshow(image[i][..., 0])
+        plt.imshow(image[i])
         plt.axis('off')
     plt.savefig('{}/image_at_epoch_{}.png'.format(save_dir, step))
     # plt.show()
@@ -116,7 +120,7 @@ def main():
     '''argparse to dictionary'''
     args = vars(get_args())
     # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/mnist_100.yaml']))
+    # args = vars(parser.parse_args(args=['--config_path', 'configs/cifar10_4000.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -127,34 +131,34 @@ def main():
     datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     total_length = sum(1 for _ in datasetU)
     
-    model = DGM(args,
-                num_classes,
-                latent_dim=2)
-    model.classifier.build(input_shape=(None, 28, 28, 1))
-    model.build(input_shape=[(None, 28, 28, 1), (None, num_classes)])
+    model = DGM(num_classes,
+                latent_dim=args['latent_dim'])
+    model.classifier.build(input_shape=(None, 32, 32, 3))
+    model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
     model.summary()
     
-    # buffer_model = DGM(args,
-    #                 num_classes,
-    #                 latent_dim=args['latent_dim'])
-    # buffer_model.build(input_shape=(None, 28, 28, 1))
-    # buffer_model.set_weights(model.get_weights()) # weight initialization
+    buffer_model = DGM(num_classes,
+                    latent_dim=args['latent_dim'])
+    buffer_model.classifier.build(input_shape=(None, 32, 32, 3))
+    buffer_model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
+    buffer_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
-    # optimizer = K.optimizers.Adam(learning_rate=args['lr'])
-    '''Gradient Cetralized optimizer'''
-    class GCAdam(K.optimizers.Adam):
-        def get_gradients(self, loss, params):
-            grads = []
-            gradients = super().get_gradients()
-            for grad in gradients:
-                grad_len = len(grad.shape)
-                if grad_len > 1:
-                    axis = list(range(grad_len - 1))
-                    grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
-                grads.append(grad)
-            return grads
-    optimizer = GCAdam(learning_rate=args['lr'])
+    optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
+    optimizer_classifier = K.optimizers.Adam(learning_rate=args['learning_rate'])
+    # '''Gradient Cetralized optimizer'''
+    # class GCAdam(K.optimizers.Adam):
+    #     def get_gradients(self, loss, params):
+    #         grads = []
+    #         gradients = super().get_gradients()
+    #         for grad in gradients:
+    #             grad_len = len(grad.shape)
+    #             if grad_len > 1:
+    #                 axis = list(range(grad_len - 1))
+    #                 grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
+    #             grads.append(grad)
+    #         return grads
+    # optimizer = GCAdam(learning_rate=args['lr'])
     # optimizer_classifier = GCAdam(learning_rate=args['lr'])
 
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
@@ -168,15 +172,20 @@ def main():
     
     for epoch in range(args['start_epoch'], args['epochs']):
         
+        '''learning rate schedule'''
+        lr_gamma = 0.5
+        if epoch % 5 == 0:
+            optimizer_classifier.lr = optimizer_classifier.lr * lr_gamma
+            
         # '''classifier: learning rate schedule'''
         # if epoch >= args['rampdown_epoch']:
         #     optimizer_classifier.lr = args['lr'] * tf.math.exp(-5 * (1. - (args['epochs'] - epoch) / args['epochs']) ** 2)
         #     optimizer_classifier.beta_1 = 0.5
             
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print)
         else:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print)
         # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         val_recon_loss, val_kl_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, beta, args, num_classes, split='Validation')
         test_recon_loss, test_kl_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, beta, args, num_classes, split='Test')
@@ -238,7 +247,7 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print):
+def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print):
     loss_avg = tf.keras.metrics.Mean()
     recon_loss_avg = tf.keras.metrics.Mean()
     elboL_loss_avg = tf.keras.metrics.Mean()
@@ -247,11 +256,11 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''supervised classification weight'''
-    alpha = tf.cast(0.1 * total_length / args['labeled_examples'], tf.float32)
+    alpha = tf.cast(args['alpha'] * total_length / args['labeled_examples'], tf.float32)
     
     autotune = tf.data.AUTOTUNE
-    shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['batch_size'], 
-                                                                                    drop_remainder=False).prefetch(autotune)
+    shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['labeled_batch_size'], 
+                                                                                    drop_remainder=True).prefetch(autotune)
     shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], 
                                                                                     drop_remainder=True).prefetch(autotune)
 
@@ -291,7 +300,7 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
                 labelU = tf.reshape(labelU, (-1, num_classes))
                 
             imageU_ = imageU[:, tf.newaxis, :, :, :]
-            imageU_ = tf.reshape(tf.repeat(imageU_, num_classes, axis=1), (-1, 28, 28, 1))
+            imageU_ = tf.reshape(tf.repeat(imageU_, num_classes, axis=1), (-1, 32, 32, 3))
             
             mean, logvar, z, xhat = model([imageU_, labelU])
             recon_loss, prior_y, pz, qz = ELBO_criterion(xhat, imageU_, labelU, z, mean, logvar, num_classes, args)
@@ -313,10 +322,13 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
             
             loss = elboL + elboU + alpha * cce
             
-        grads = tape.gradient(loss, model.trainable_variables) 
-        optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
-        # '''decoupled weight decay'''
-        # weight_decay_decoupled(model.classifier, buffer_model.classifier, decay_rate=args['wd'] * optimizer_classifier.lr)
+        grads = tape.gradient(loss, model.encoder.trainable_variables + model.decoder.trainable_variables) 
+        optimizer.apply_gradients(zip(grads, model.encoder.trainable_variables + model.decoder.trainable_variables))
+        # classifier
+        grads = tape.gradient(loss, model.classifier.trainable_variables) 
+        optimizer_classifier.apply_gradients(zip(grads, model.classifier.trainable_variables)) 
+        '''decoupled weight decay'''
+        weight_decay_decoupled(model.classifier, buffer_model.classifier, decay_rate=args['weight_decay'] * optimizer_classifier.lr)
         
         loss_avg(loss)
         elboL_loss_avg(elboL)
