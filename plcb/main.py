@@ -2,8 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\plcb') # main directory (repository)
-# os.chdir('/home1/seunghwan/semi/plcb') # main directory (repository)
+# os.chdir(r'D:\semi\plcb') # main directory (repository)
+os.chdir('/home1/seunghwan/semi/plcb') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf

@@ -4,5 +4,6 @@ learning_rate: 0.001
 batch_size: 128
 labeled_batch_size: 32
 weight_decay: 0.0005
-epochs: 200
-M: [190]
+# epochs: 200
+# M: [100, 150]
+lr_gamma: 1
