@@ -2,9 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\dgm') # main directory (repository)
+os.chdir(r'D:\semi\crci') # main directory (repository)
 # os.chdir('/home1/prof/jeon/an/semi/dgm') # main directory (repository)
-# os.chdir('/Users/anseunghwan/Documents/GitHub/semi/dgm')
 
 import numpy as np
 import tensorflow as tf
@@ -36,7 +35,7 @@ def get_args():
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--batch-size', default=64, type=int,
+    parser.add_argument('--batch-size', default=128, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
     parser.add_argument('--labeled-batch-size', default=8, type=int,
                         metavar='N', help='mini-batch size for labeled dataset (default: 32)')
