@@ -259,7 +259,7 @@ def train(datasetL, datasetU, model, buffer_model, pslab_model, optimizer, epoch
         with tf.GradientTape(persistent=True) as tape:
             '''pseudo-label and mix-up'''
             with tape.stop_recording():
-                '''FIXME''' # batch-normalization?
+                # computing pseudo-label, batch normalization is done in training mode
                 if args['DApseudolab']:
                     labelU = pslab_model(imageU_aug, training=True) # with augmentation 
                 else:
