@@ -60,7 +60,7 @@ def get_args():
     parser.add_argument('--z_dim', default=6, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
-    parser.add_argument('--u_dim', default=10, type=int,
+    parser.add_argument('--u_dim', default=16, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
     
@@ -257,6 +257,10 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifi
         
     iteration = total_length // args['batch_size'] 
     
+    # used in computing BC
+    BC_valid_mask = np.ones((num_classes, num_classes))
+    BC_valid_mask = tf.constant(np.tril(BC_valid_mask, k=-1), tf.float32)
+    
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
@@ -290,66 +294,67 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifi
         with tf.GradientTape(persistent=True) as tape:    
             z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat = model(image)
             
-            # reconstruction
+            '''reconstruction'''
             if args['bce_reconstruction']:
-                error = - tf.reduce_mean(tf.reduce_sum(image * tf.math.log(tf.clip_by_value(xhat, 1e-10, 1.)) + 
-                                                    (1. - image) * tf.math.log(1. - tf.clip_by_value(xhat, 1e-10, 1.)), axis=[1, 2, 3]))
+                recon_loss = - tf.reduce_mean(tf.reduce_sum(image * tf.math.log(tf.clip_by_value(xhat, 1e-10, 1.)) + 
+                                                            (1. - image) * tf.math.log(1. - tf.clip_by_value(xhat, 1e-10, 1.)), axis=[1, 2, 3]))
             else:
-                error = tf.reduce_mean(tf.reduce_sum(tf.math.abs(image - xhat), axis=[1, 2, 3]))
+                recon_loss = tf.reduce_mean(tf.reduce_sum(tf.math.abs(image - xhat), axis=[1, 2, 3]))
                     
-            # KL-divergence of z
+            '''KL-divergence of z'''
             cap_min, cap_max, num_iters, gamma = args['z_capacity']
-            z_kl = tf.reduce_mean(tf.reduce_sum(- 0.5 * (1 + z_logvar - tf.math.pow(z_mean, 2) - tf.math.exp(z_logvar)), axis=-1))
             num_steps = epoch * iteration + batch_num
             cap_current = (cap_max - cap_min) * (num_steps / num_iters) + cap_min
             cap_current = tf.math.minimum(cap_current, cap_max)
+            
+            z_kl = tf.reduce_mean(tf.reduce_sum(- 0.5 * (1 + z_logvar - tf.math.pow(z_mean, 2) - tf.math.exp(z_logvar)), axis=-1))
             z_loss = gamma * tf.math.abs(z_kl - cap_current)
             
-            # KL-divergence of c (marginal)
+            '''KL-divergence of c (marginal)'''
+            # log_qc = tf.math.reduce_logsumexp(c_logit, axis=0) - tf.math.log(tf.cast(tf.shape(image)[0], tf.float32))
+            qc_x = tf.nn.softmax(c_logit, axis=-1)
+            qc = tf.reduce_mean(qc_x, axis=0)
+            agg_c_kl = tf.reduce_sum(qc * (tf.math.log(tf.clip_by_value(qc, 1e-10, 1.)) - tf.math.log(1. / num_classes)))
+            c_loss = args['gamma_c'] * agg_c_kl
             
+            '''entropy of c'''
+            c_entropy = tf.reduce_mean(- tf.reduce_sum(qc_x * tf.math.log(tf.clip_by_value(qc_x, 1e-10, 1.)), axis=-1))
+            c_entropy_loss = args['gamma_h'] * c_entropy
             
+            '''mixture KL-divergence of u'''
+            cap_min, cap_max, num_iters, gamma = args['u_capacity']
+            num_steps = epoch * iteration + batch_num
+            cap_current = (cap_max - cap_min) * (num_steps / num_iters) + cap_min
+            cap_current = tf.math.minimum(cap_current, cap_max)
             
+            u_means = tf.tile(u_mean[..., tf.newaxis], (1, 1, num_classes))
+            u_logvars = tf.tile(u_logvar[..., tf.newaxis], (1, 1, num_classes))
+            u_kl = tf.reduce_sum(0.5 * (tf.math.pow(u_means - model.u_prior_means, 2) / tf.math.exp(model.u_prior_logvars)
+                                        - 1
+                                        + tf.math.exp(u_logvars) / tf.math.exp(model.u_prior_logvars)
+                                        + model.u_prior_logvars
+                                        - u_logvars), axis=-1)
+            u_kl = tf.reduce_mean(tf.reduce_sum(tf.multiply(qc_x, u_kl), axis=-1))
+            u_loss = gamma * tf.math.abs(u_kl - cap_current)
             
-            mean, logvar, z, xhat = model([imageL, labelL])
-            recon_loss, prior_y, pz, qz = ELBO_criterion(xhat, imageL, labelL, z, mean, logvar, num_classes, args)
-            elboL = tf.reduce_mean(recon_loss - prior_y + beta * (qz - pz))
+            '''Bhattacharyya coefficient'''
+            u_var = tf.math.exp(model.u_prior_logvars)
+            avg_u_var = 0.5 * (u_var[tf.newaxis, ...] + u_var[:, tf.newaxis, :])
+            inv_avg_u_var = 1. / (avg_u_var + 1e-8)
+            diff_mean = model.u_prior_means[tf.newaxis, ...] + model.u_prior_means[:, tf.newaxis, :]
+            D = 1/8 * tf.reduce_sum(diff_mean * inv_avg_u_var * diff_mean, axis=-1)
+            D += 0.5 * tf.reduce_sum(tf.math.log(avg_u_var + 1e-8), axis=-1)
+            D += - 0.25 * tf.reduce_sum(model.u_prior_logvars, axis=-1)[tf.newaxis, ...] + tf.reduce_sum(model.u_prior_logvars, axis=-1)[:, tf.newaxis]
+            BC = tf.math.exp(D)
+            valid_BC = BC * BC_valid_mask
+            prior_intersection_loss = args['gamma_bc'] * tf.reduce_sum(tf.math.maximum(valid_BC - args['bc_threshold'], 0))
             
-            '''unlabeled'''
-            with tape.stop_recording():
-                labelU = tf.concat([tf.one_hot(i, depth=num_classes)[tf.newaxis, ] for i in range(num_classes)], axis=0)[tf.newaxis, ...]
-                labelU = tf.repeat(labelU, tf.shape(imageU)[0], axis=0)
-                labelU = tf.reshape(labelU, (-1, num_classes))
-                
-            imageU_ = imageU[:, tf.newaxis, :, :, :]
-            imageU_ = tf.reshape(tf.repeat(imageU_, num_classes, axis=1), (-1, 32, 32, 3))
+            loss = recon_loss + z_loss + c_loss + c_entropy_loss + u_loss + prior_intersection_loss
             
-            mean, logvar, z, xhat = model([imageU_, labelU])
-            recon_loss, prior_y, pz, qz = ELBO_criterion(xhat, imageU_, labelU, z, mean, logvar, num_classes, args)
-            
-            recon_loss = tf.reshape(recon_loss, (tf.shape(imageU)[0], num_classes, -1))
-            prior_y = tf.reshape(prior_y, (tf.shape(imageU)[0], num_classes, -1))
-            pz = tf.reshape(pz, (tf.shape(imageU)[0], num_classes, -1))
-            qz = tf.reshape(qz, (tf.shape(imageU)[0], num_classes, -1))
-            
-            probU = model.classify(imageU)
-            elboU = recon_loss - prior_y + beta * (qz - pz)
-            elboU = tf.reduce_mean(tf.reduce_sum(probU[..., tf.newaxis] * elboU, axis=[1, 2]))
-            entropyU = - tf.reduce_mean(tf.reduce_sum(probU * tf.math.log(tf.clip_by_value(probU, 1e-8, 1.)), axis=-1))
-            elboU -= entropyU
-            
-            '''supervised classification loss'''
-            probL = model.classify(imageL)
-            cce = - tf.reduce_mean(tf.reduce_sum(tf.multiply(labelL, tf.math.log(tf.clip_by_value(probL, 1e-10, 1.))), axis=-1))
-            
-            loss = elboL + elboU + alpha * cce
-            
-        grads = tape.gradient(loss, model.encoder.trainable_variables + model.decoder.trainable_variables) 
-        optimizer.apply_gradients(zip(grads, model.encoder.trainable_variables + model.decoder.trainable_variables))
-        # classifier
-        grads = tape.gradient(loss, model.classifier.trainable_variables) 
-        optimizer_classifier.apply_gradients(zip(grads, model.classifier.trainable_variables)) 
-        '''decoupled weight decay'''
-        weight_decay_decoupled(model.classifier, buffer_model.classifier, decay_rate=args['weight_decay'] * optimizer_classifier.lr)
+        grads = tape.gradient(loss, model) 
+        optimizer.apply_gradients(zip(grads, model))
+        # '''decoupled weight decay'''
+        # weight_decay_decoupled(model, buffer_model, decay_rate=args['weight_decay'] * optimizer.lr)
         
         loss_avg(loss)
         elboL_loss_avg(elboL)
