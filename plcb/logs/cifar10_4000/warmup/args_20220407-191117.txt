@@ -9,7 +9,7 @@ validation_examples : 5000
 dropout : 0.1
 learning_rate : 0.001
 momentum : 0.9
-weight_decay : 0.0005
+weight_decay : 0.0001
 reg1 : 0.8
 reg2 : 0.4
 Mixup_Alpha : 1

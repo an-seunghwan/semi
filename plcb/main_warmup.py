@@ -124,7 +124,7 @@ def main():
     #                     dropratio=0.0) # without dropout
     # else:
     #     pslab_model = CNN(num_classes, 
-    #                     dropratio=args['dropout']) 
+    #                     dropratio=args['dropout']) # with dropout
     # pslab_model.build(input_shape=(None, 32, 32, 3))
     # pslab_model.set_weights(model.get_weights()) # weight initialization
     
