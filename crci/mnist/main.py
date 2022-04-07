@@ -37,7 +37,7 @@ def get_args():
                         help='seed for repeatable results')
     parser.add_argument('--batch-size', default=64, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
-    parser.add_argument('--labeled-batch-size', default=16, type=int,
+    parser.add_argument('--labeled-batch-size', default=8, type=int,
                         metavar='N', help='mini-batch size for labeled dataset (default: 32)')
 
     '''SSL VAE Train PreProcess Parameter'''
@@ -60,7 +60,7 @@ def get_args():
     parser.add_argument('--z_dim', default=6, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
-    parser.add_argument('--u_dim', default=16, type=int,
+    parser.add_argument('--u_dim', default=10, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
     
@@ -71,9 +71,9 @@ def get_args():
                         metavar='LR', help='initial learning rate for classifier')
     # parser.add_argument('--weight_decay', default=5e-4, type=float)
     
-    parser.add_argument("--z_capacity", default=[0, 7., 100000, 15], type=arg_as_list,
+    parser.add_argument("--z_capacity", default=[0., 7., 100000, 15.], type=arg_as_list,
                         help="controlled capacity")
-    parser.add_argument("--u_capacity", default=[0, 7., 100000, 15], type=arg_as_list,
+    parser.add_argument("--u_capacity", default=[0., 7., 100000, 15.], type=arg_as_list,
                         help="controlled capacity")
     parser.add_argument('--gamma_c', default=15, type=float,
                         help='weight of loss')
@@ -145,6 +145,7 @@ def main():
 
     datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     total_length = sum(1 for _ in datasetU)
+    iteration = total_length // args['batch_size'] 
     
     model = VAE(num_classes=num_classes,
                 latent_dim=args['z_dim'], 
@@ -165,6 +166,10 @@ def main():
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
     test_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/test')
+    
+    # used in computing BC
+    BC_valid_mask = np.ones((num_classes, num_classes))
+    BC_valid_mask = tf.constant(np.tril(BC_valid_mask, k=-1), tf.float32)
 
     test_accuracy_print = 0.
     
@@ -174,49 +179,68 @@ def main():
         # tf.keras.callbacks.ReduceLROnPlateau
             
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print)
         else:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print)
-        # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
-        val_recon_loss, val_kl_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, beta, args, num_classes, split='Validation')
-        test_recon_loss, test_kl_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, beta, args, num_classes, split='Test')
+            loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy = train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print)
+        val_loss, val_recon_loss, val_z_loss, val_c_loss, val_c_entropy_loss, val_u_loss, val_prior_intersection_loss, val_accuracy = validate(val_dataset, model, epoch, iteration, iteration, BC_valid_mask, args, num_classes, split='Validation')
+        test_loss, test_recon_loss, test_z_loss, test_c_loss, test_c_entropy_loss, test_u_loss, test_prior_intersection_loss, test_accuracy = validate(test_dataset, model, epoch, iteration, iteration, BC_valid_mask, args, num_classes, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
             tf.summary.scalar('recon_loss', recon_loss.result(), step=epoch)
-            tf.summary.scalar('kl_loss', kl_loss.result(), step=epoch)
-            tf.summary.scalar('elboL_loss', elboL_loss.result(), step=epoch)
-            tf.summary.scalar('elboU_loss', elboU_loss.result(), step=epoch)
+            tf.summary.scalar('z_loss', z_loss.result(), step=epoch)
+            tf.summary.scalar('c_loss', c_loss.result(), step=epoch)
+            tf.summary.scalar('c_entropy_loss', c_entropy_loss.result(), step=epoch)
+            tf.summary.scalar('u_loss', u_loss.result(), step=epoch)
+            tf.summary.scalar('prior_intersection_loss', prior_intersection_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
             if epoch % args['reconstruct_freq'] == 0:
                 tf.summary.image("train recon image", sample_recon, step=epoch)
         with val_writer.as_default():
-            tf.summary.scalar('recon_loss', val_recon_loss.result(), step=epoch)
-            tf.summary.scalar('val_kl_loss', val_kl_loss.result(), step=epoch)
-            tf.summary.scalar('elbo_loss', val_elbo_loss.result(), step=epoch)
-            tf.summary.scalar('accuracy', val_accuracy.result(), step=epoch)
-        with test_writer.as_default():
-            tf.summary.scalar('recon_loss', test_recon_loss.result(), step=epoch)
-            tf.summary.scalar('test_kl_loss', test_kl_loss.result(), step=epoch)
-            tf.summary.scalar('elbo_loss', test_elbo_loss.result(), step=epoch)
-            tf.summary.scalar('accuracy', test_accuracy.result(), step=epoch)
+            tf.summary.scalar('val_loss', val_loss.result(), step=epoch)
+            tf.summary.scalar('val_recon_loss', val_recon_loss.result(), step=epoch)
+            tf.summary.scalar('val_z_loss', val_z_loss.result(), step=epoch)
+            tf.summary.scalar('val_c_loss', val_c_loss.result(), step=epoch)
+            tf.summary.scalar('val_c_entropy_loss', val_c_entropy_loss.result(), step=epoch)
+            tf.summary.scalar('val_u_loss', val_u_loss.result(), step=epoch)
+            tf.summary.scalar('val_prior_intersection_loss', val_prior_intersection_loss.result(), step=epoch)
+            tf.summary.scalar('val_accuracy', val_accuracy.result(), step=epoch)
+        with val_writer.as_default():
+            tf.summary.scalar('test_loss', test_loss.result(), step=epoch)
+            tf.summary.scalar('test_recon_loss', test_recon_loss.result(), step=epoch)
+            tf.summary.scalar('test_z_loss', test_z_loss.result(), step=epoch)
+            tf.summary.scalar('test_c_loss', test_c_loss.result(), step=epoch)
+            tf.summary.scalar('test_c_entropy_loss', test_c_entropy_loss.result(), step=epoch)
+            tf.summary.scalar('test_u_loss', test_u_loss.result(), step=epoch)
+            tf.summary.scalar('test_prior_intersection_loss', test_prior_intersection_loss.result(), step=epoch)
+            tf.summary.scalar('test_accuracy', test_accuracy.result(), step=epoch)
             
         test_accuracy_print = test_accuracy.result()
 
         # Reset metrics every epoch
         loss.reset_states()
         recon_loss.reset_states()
-        kl_loss.reset_states()
-        elboL_loss.reset_states()
-        elboU_loss.reset_states()
+        z_loss.reset_states()
+        c_loss.reset_states()
+        c_entropy_loss.reset_states()
+        u_loss.reset_states()
+        prior_intersection_loss.reset_states()
         accuracy.reset_states()
+        val_loss.reset_states()
         val_recon_loss.reset_states()
-        val_kl_loss.reset_states()
-        val_elbo_loss.reset_states()
+        val_z_loss.reset_states()
+        val_c_loss.reset_states()
+        val_c_entropy_loss.reset_states()
+        val_u_loss.reset_states()
+        val_prior_intersection_loss.reset_states()
         val_accuracy.reset_states()
+        test_loss.reset_states()
         test_recon_loss.reset_states()
-        test_kl_loss.reset_states()
-        test_elbo_loss.reset_states()
+        test_z_loss.reset_states()
+        test_c_loss.reset_states()
+        test_c_entropy_loss.reset_states()
+        test_u_loss.reset_states()
+        test_prior_intersection_loss.reset_states()
         test_accuracy.reset_states()
         
     '''model & configurations save'''        
@@ -238,29 +262,25 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print):
+def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print):
     loss_avg = tf.keras.metrics.Mean()
     recon_loss_avg = tf.keras.metrics.Mean()
-    elboL_loss_avg = tf.keras.metrics.Mean()
-    elboU_loss_avg = tf.keras.metrics.Mean()
-    kl_loss_avg = tf.keras.metrics.Mean()
+    z_loss_avg = tf.keras.metrics.Mean()
+    c_loss_avg = tf.keras.metrics.Mean()
+    c_entropy_loss_avg = tf.keras.metrics.Mean()
+    u_loss_avg = tf.keras.metrics.Mean()
+    prior_intersection_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     autotune = tf.data.AUTOTUNE
     shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['labeled_batch_size'], 
                                                                                     drop_remainder=True).prefetch(autotune)
-    shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], 
+    shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'] - args['labeled_batch_size'], 
                                                                                     drop_remainder=True).prefetch(autotune)
 
     iteratorL = iter(shuffle_and_batchL(datasetL))
     iteratorU = iter(shuffle_and_batchU(datasetU))
         
-    iteration = total_length // args['batch_size'] 
-    
-    # used in computing BC
-    BC_valid_mask = np.ones((num_classes, num_classes))
-    BC_valid_mask = tf.constant(np.tril(BC_valid_mask, k=-1), tf.float32)
-    
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
         
@@ -294,115 +314,74 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifi
         with tf.GradientTape(persistent=True) as tape:    
             z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat = model(image)
             
-            '''reconstruction'''
-            if args['bce_reconstruction']:
-                recon_loss = - tf.reduce_mean(tf.reduce_sum(image * tf.math.log(tf.clip_by_value(xhat, 1e-10, 1.)) + 
-                                                            (1. - image) * tf.math.log(1. - tf.clip_by_value(xhat, 1e-10, 1.)), axis=[1, 2, 3]))
-            else:
-                recon_loss = tf.reduce_mean(tf.reduce_sum(tf.math.abs(image - xhat), axis=[1, 2, 3]))
-                    
-            '''KL-divergence of z'''
-            cap_min, cap_max, num_iters, gamma = args['z_capacity']
-            num_steps = epoch * iteration + batch_num
-            cap_current = (cap_max - cap_min) * (num_steps / num_iters) + cap_min
-            cap_current = tf.math.minimum(cap_current, cap_max)
-            
-            z_kl = tf.reduce_mean(tf.reduce_sum(- 0.5 * (1 + z_logvar - tf.math.pow(z_mean, 2) - tf.math.exp(z_logvar)), axis=-1))
-            z_loss = gamma * tf.math.abs(z_kl - cap_current)
-            
-            '''KL-divergence of c (marginal)'''
-            # log_qc = tf.math.reduce_logsumexp(c_logit, axis=0) - tf.math.log(tf.cast(tf.shape(image)[0], tf.float32))
-            qc_x = tf.nn.softmax(c_logit, axis=-1)
-            qc = tf.reduce_mean(qc_x, axis=0)
-            agg_c_kl = tf.reduce_sum(qc * (tf.math.log(tf.clip_by_value(qc, 1e-10, 1.)) - tf.math.log(1. / num_classes)))
-            c_loss = args['gamma_c'] * agg_c_kl
-            
-            '''entropy of c'''
-            c_entropy = tf.reduce_mean(- tf.reduce_sum(qc_x * tf.math.log(tf.clip_by_value(qc_x, 1e-10, 1.)), axis=-1))
-            c_entropy_loss = args['gamma_h'] * c_entropy
-            
-            '''mixture KL-divergence of u'''
-            cap_min, cap_max, num_iters, gamma = args['u_capacity']
-            num_steps = epoch * iteration + batch_num
-            cap_current = (cap_max - cap_min) * (num_steps / num_iters) + cap_min
-            cap_current = tf.math.minimum(cap_current, cap_max)
-            
-            u_means = tf.tile(u_mean[..., tf.newaxis], (1, 1, num_classes))
-            u_logvars = tf.tile(u_logvar[..., tf.newaxis], (1, 1, num_classes))
-            u_kl = tf.reduce_sum(0.5 * (tf.math.pow(u_means - model.u_prior_means, 2) / tf.math.exp(model.u_prior_logvars)
-                                        - 1
-                                        + tf.math.exp(u_logvars) / tf.math.exp(model.u_prior_logvars)
-                                        + model.u_prior_logvars
-                                        - u_logvars), axis=-1)
-            u_kl = tf.reduce_mean(tf.reduce_sum(tf.multiply(qc_x, u_kl), axis=-1))
-            u_loss = gamma * tf.math.abs(u_kl - cap_current)
-            
-            '''Bhattacharyya coefficient'''
-            u_var = tf.math.exp(model.u_prior_logvars)
-            avg_u_var = 0.5 * (u_var[tf.newaxis, ...] + u_var[:, tf.newaxis, :])
-            inv_avg_u_var = 1. / (avg_u_var + 1e-8)
-            diff_mean = model.u_prior_means[tf.newaxis, ...] + model.u_prior_means[:, tf.newaxis, :]
-            D = 1/8 * tf.reduce_sum(diff_mean * inv_avg_u_var * diff_mean, axis=-1)
-            D += 0.5 * tf.reduce_sum(tf.math.log(avg_u_var + 1e-8), axis=-1)
-            D += - 0.25 * tf.reduce_sum(model.u_prior_logvars, axis=-1)[tf.newaxis, ...] + tf.reduce_sum(model.u_prior_logvars, axis=-1)[:, tf.newaxis]
-            BC = tf.math.exp(D)
-            valid_BC = BC * BC_valid_mask
-            prior_intersection_loss = args['gamma_bc'] * tf.reduce_sum(tf.math.maximum(valid_BC - args['bc_threshold'], 0))
+            recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss = ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args)
             
             loss = recon_loss + z_loss + c_loss + c_entropy_loss + u_loss + prior_intersection_loss
             
-        grads = tape.gradient(loss, model) 
-        optimizer.apply_gradients(zip(grads, model))
+        grads = tape.gradient(loss, model.trainable_variables) 
+        optimizer.apply_gradients(zip(grads, model.trainable_variables))
         # '''decoupled weight decay'''
-        # weight_decay_decoupled(model, buffer_model, decay_rate=args['weight_decay'] * optimizer.lr)
+        # weight_decay_decoupled(model.trainable_variables, buffer_model.trainable_variables, decay_rate=args['weight_decay'] * optimizer.lr)
         
         loss_avg(loss)
-        elboL_loss_avg(elboL)
-        elboU_loss_avg(elboU)
         recon_loss_avg(recon_loss)
-        kl_loss_avg(qz - pz)
-        accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
+        z_loss_avg(z_loss)
+        c_loss_avg(c_loss)
+        c_entropy_loss_avg(c_entropy_loss)
+        u_loss_avg(u_loss)
+        prior_intersection_loss_avg(prior_intersection_loss)
+        accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), prob)
         
         progress_bar.set_postfix({
             'EPOCH': f'{epoch:04d}',
             'Loss': f'{loss_avg.result():.4f}',
-            'ELBO(L)': f'{elboL_loss_avg.result():.4f}',
-            'ELBO(U)': f'{elboU_loss_avg.result():.4f}',
             'Recon': f'{recon_loss_avg.result():.4f}',
-            'KL': f'{kl_loss_avg.result():.4f}',
+            'Z_Loss': f'{z_loss_avg.result():.4f}',
+            'C_Loss': f'{c_loss_avg.result():.4f}',
+            'C_Entropy': f'{c_entropy_loss_avg.result():.4f}',
+            'U_Loss': f'{u_loss_avg.result():.4f}',
+            'Prior_intersection': f'{prior_intersection_loss_avg.result():.4f}',
             'Accuracy': f'{accuracy.result():.3%}',
             'Test Accuracy': f'{test_accuracy_print:.3%}',
-            'beta': f'{beta:.4f}'
         })
     
     if epoch % args['reconstruct_freq'] == 0:
         sample_recon = generate_and_save_images1(model, xhat)
         generate_and_save_images2(model, xhat, epoch, f'logs/{args["dataset"]}_{args["labeled_examples"]}/{current_time}')
-        return loss_avg, recon_loss_avg, elboL_loss_avg, elboU_loss_avg, kl_loss_avg, accuracy, sample_recon
+        return loss_avg, recon_loss_avg, z_loss_avg, c_loss_avg, c_entropy_loss_avg, u_loss_avg, prior_intersection_loss_avg, accuracy, sample_recon
     else:
-        return loss_avg, recon_loss_avg, elboL_loss_avg, elboU_loss_avg, kl_loss_avg, accuracy
+        return loss_avg, recon_loss_avg, z_loss_avg, c_loss_avg, c_entropy_loss_avg, u_loss_avg, prior_intersection_loss_avg, accuracy
 #%%
-def validate(dataset, model, epoch, beta, args, num_classes, split):
-    recon_loss_avg = tf.keras.metrics.Mean()   
-    kl_loss_avg = tf.keras.metrics.Mean()   
-    elbo_loss_avg = tf.keras.metrics.Mean()   
+def validate(dataset, model, epoch, iteration, batch_num, BC_valid_mask, args, num_classes, split):
+    loss_avg = tf.keras.metrics.Mean()
+    recon_loss_avg = tf.keras.metrics.Mean()
+    z_loss_avg = tf.keras.metrics.Mean()
+    c_loss_avg = tf.keras.metrics.Mean()
+    c_entropy_loss_avg = tf.keras.metrics.Mean()
+    u_loss_avg = tf.keras.metrics.Mean()
+    prior_intersection_loss_avg = tf.keras.metrics.Mean()  
     accuracy = tf.keras.metrics.Accuracy()
     
     dataset = dataset.batch(args['batch_size'], drop_remainder=False)
     for image, label in dataset:
-        mean, logvar, z, xhat = model([image, label], training=False)
-        recon_loss, prior_y, pz, qz = ELBO_criterion(xhat, image, label, z, mean, logvar, num_classes, args)
-        elbo = tf.reduce_mean(recon_loss - prior_y + beta * (qz - pz))
-        prob = model.classify(image, training=False)
+        z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat = model(image, training=False)
+        prob = tf.nn.softmax(c_logit, axis=-1)
+        recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss = ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args)
+        loss = recon_loss + z_loss + c_loss + c_entropy_loss + u_loss + prior_intersection_loss
         
+        loss_avg(loss)
         recon_loss_avg(recon_loss)
-        kl_loss_avg(qz - pz)
-        elbo_loss_avg(elbo)
+        z_loss_avg(z_loss)
+        c_loss_avg(c_loss)
+        c_entropy_loss_avg(c_entropy_loss)
+        u_loss_avg(u_loss)
+        prior_intersection_loss_avg(prior_intersection_loss)
         accuracy(tf.argmax(prob, axis=1, output_type=tf.int32), 
                  tf.argmax(label, axis=1, output_type=tf.int32))
-    print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, Recon: {recon_loss_avg.result():.4f}, KL: {kl_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
+    print(f'Epoch {epoch:04d}: {split} Loss: {loss_avg.result():.4f}, Recon: {recon_loss_avg.result():.4f}, Z_Loss: {z_loss_avg.result():.4f}, C_Loss: {c_loss_avg.result():.4f}, \
+          C_Entropy: {c_entropy_loss_avg.result():.4f}, U_Loss: {u_loss_avg.result():.4f}, Prior_intersection: {prior_intersection_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
-    return recon_loss_avg, kl_loss_avg, elbo_loss_avg, accuracy
+    return loss_avg, recon_loss_avg, z_loss_avg, c_loss_avg, c_entropy_loss_avg, u_loss_avg, prior_intersection_loss_avg, accuracy
 #%%
 # def weight_schedule(epoch, epochs, weight_max):
 #     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)

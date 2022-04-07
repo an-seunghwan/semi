@@ -1,1 +1,2 @@
 dataset: 'mnist'
+z_dim: 2
