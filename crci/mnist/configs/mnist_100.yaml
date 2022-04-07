@@ -1,4 +1,1 @@
-dataset: 'cifar10'
-# epochs: 400
-# weight_decay: 0.001
-# reconstruct_freq: 1
+dataset: 'mnist'

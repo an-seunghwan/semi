@@ -90,10 +90,10 @@ class VAE(K.models.Model):
                  hidden_dim=256,
                  u_dim=10,
                  output_channel=1, 
-                 activation='sigmoid',
-                 input_dim=(None, 28, 28, 3), 
                  temperature=0.67,
                  sigmoid_coef=1,
+                 activation='sigmoid',
+                 input_dim=(None, 28, 28, 1), 
                  name='VAE', **kwargs):
         super(VAE, self).__init__(name=name, **kwargs)
         self.num_classes = num_classes
@@ -178,7 +178,7 @@ class VAE(K.models.Model):
         epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.latent_dim))
         z = z_mean + tf.math.exp(z_logvar / 2.) * epsilon 
         
-        # class dependent
+        # class related
         c_logit = self.h_to_c_logit(hidden)
         onehot_c = self.gumbel_softmax_sample(c_logit)
         a_logit = self.c_to_a_logit(onehot_c)
@@ -190,7 +190,7 @@ class VAE(K.models.Model):
         u = u_mean + tf.math.exp(u_logvar / 2.) * epsilon 
         
         xhat = self.decoder(tf.concat([z, u], axis=-1), training=training) 
-        return z_mean, z_logvar, z, u_mean, u_logvar, u, xhat
+        return z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat
 #%%
 # model = VAE()
 # model.build((10, 28, 28, 1))
