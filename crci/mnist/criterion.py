@@ -55,8 +55,8 @@ def ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, mod
     D += 0.5 * tf.reduce_sum(tf.math.log(avg_u_var + 1e-8), axis=-1)
     D += - 0.25 * (tf.reduce_sum(model.u_prior_logvars, axis=-1)[tf.newaxis, ...] + tf.reduce_sum(model.u_prior_logvars, axis=-1)[:, tf.newaxis])
     BC = tf.math.exp(- D)
-    valid_BC = BC * BC_valid_mask
-    prior_intersection_loss = args['gamma_bc'] * tf.reduce_sum(tf.math.maximum(valid_BC - args['bc_threshold'], 0))
+    valid_BC = tf.math.maximum(BC - args['bc_threshold'], 0) * BC_valid_mask
+    prior_intersection_loss = args['gamma_bc'] * tf.reduce_sum(valid_BC)
     
     return recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss
 #%%

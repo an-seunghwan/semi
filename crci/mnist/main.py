@@ -301,16 +301,16 @@ def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_
         #     imageL_aug = augment(imageL)
         #     imageU_aug = augment(imageU)
         
-        '''classifier training (warm-up)'''
+        '''1. classifier training (warm-up)'''
         with tf.GradientTape(persistent=True) as tape:    
             prob = model.classify(imageL)
             prob = tf.clip_by_value(prob, 1e-10, 1.)
-            ce_loss = tf.reduce_mean(tf.reduce_sum(labelL * tf.math.log(prob), axis=-1))
+            ce_loss = tf.reduce_mean(- tf.reduce_sum(labelL * tf.math.log(prob), axis=-1))
             
         grads = tape.gradient(ce_loss, model.feature_extractor.trainable_variables + model.h_to_c_logit.trainable_variables) 
         optimizer_classifier.apply_gradients(zip(grads, model.feature_extractor.trainable_variables + model.h_to_c_logit.trainable_variables)) 
             
-        '''objective training'''
+        '''2. objective training'''
         with tf.GradientTape(persistent=True) as tape:    
             z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat = model(image)
             
@@ -378,8 +378,7 @@ def validate(dataset, model, epoch, iteration, batch_num, BC_valid_mask, args, n
         prior_intersection_loss_avg(prior_intersection_loss)
         accuracy(tf.argmax(prob, axis=1, output_type=tf.int32), 
                  tf.argmax(label, axis=1, output_type=tf.int32))
-    print(f'Epoch {epoch:04d}: {split} Loss: {loss_avg.result():.4f}, Recon: {recon_loss_avg.result():.4f}, Z_Loss: {z_loss_avg.result():.4f}, C_Loss: {c_loss_avg.result():.4f}, \
-          C_Entropy: {c_entropy_loss_avg.result():.4f}, U_Loss: {u_loss_avg.result():.4f}, Prior_intersection: {prior_intersection_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
+    print(f'Epoch {epoch:04d}: {split} Loss: {loss_avg.result():.4f}, Recon: {recon_loss_avg.result():.4f}, Z_Loss: {z_loss_avg.result():.4f}, C_Loss: {c_loss_avg.result():.4f}, C_Entropy: {c_entropy_loss_avg.result():.4f}, U_Loss: {u_loss_avg.result():.4f}, Prior_intersection: {prior_intersection_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
     return loss_avg, recon_loss_avg, z_loss_avg, c_loss_avg, c_entropy_loss_avg, u_loss_avg, prior_intersection_loss_avg, accuracy
 #%%
