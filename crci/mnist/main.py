@@ -167,7 +167,7 @@ def main():
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
     test_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/test')
     
-    # used in computing BC
+    '''used in computing BC'''
     BC_valid_mask = np.ones((num_classes, num_classes))
     BC_valid_mask = tf.constant(np.tril(BC_valid_mask, k=-1), tf.float32)
 
@@ -176,37 +176,38 @@ def main():
     for epoch in range(args['start_epoch'], args['epochs']):
         
         '''learning rate schedule'''
-        optimizer_scheduler = CustomReduceLRoP(
+        optimizer_classifier_scheduler = CustomReduceLRoP(
             factor=0.5,
             patience=2,
             min_delta=1e-1,
             mode='auto',
             cooldown=3,
             min_lr=0,
-            optim_lr=optimizer.learning_rate, 
+            optim_lr=optimizer_classifier.learning_rate, 
             reduce_lin=True,
             verbose=1
         )
-        optimizer_classifier_scheduler = CustomReduceLRoP(
+        optimizer_scheduler = CustomReduceLRoP(
             factor=0.5,
             patience=2,
             min_delta=1e-2,
             mode='auto',
             cooldown=4,
             min_lr=0,
-            optim_lr=optimizer_classifier.learning_rate, 
+            optim_lr=optimizer.learning_rate, 
             reduce_lin=True,
             verbose=1
         )
 
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print)
+            ce_loss, loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print)
         else:
-            loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy = train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print)
+            ce_loss, loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy = train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print)
         val_loss, val_recon_loss, val_z_loss, val_c_loss, val_c_entropy_loss, val_u_loss, val_prior_intersection_loss, val_accuracy = validate(val_dataset, model, epoch, iteration, iteration, BC_valid_mask, args, num_classes, split='Validation')
         test_loss, test_recon_loss, test_z_loss, test_c_loss, test_c_entropy_loss, test_u_loss, test_prior_intersection_loss, test_accuracy = validate(test_dataset, model, epoch, iteration, iteration, BC_valid_mask, args, num_classes, split='Test')
         
         with train_writer.as_default():
+            tf.summary.scalar('ce_loss', ce_loss.result(), step=epoch)
             tf.summary.scalar('loss', loss.result(), step=epoch)
             tf.summary.scalar('recon_loss', recon_loss.result(), step=epoch)
             tf.summary.scalar('z_loss', z_loss.result(), step=epoch)
@@ -237,6 +238,10 @@ def main():
             tf.summary.scalar('test_accuracy', test_accuracy.result(), step=epoch)
             
         test_accuracy_print = test_accuracy.result()
+        
+        '''optimizer scheduling'''
+        optimizer_classifier_scheduler.on_epoch_end(epoch, ce_loss.result())
+        optimizer_scheduler.on_epoch_end(epoch, loss.result())
 
         # Reset metrics every epoch
         loss.reset_states()
@@ -284,6 +289,7 @@ def main():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
 def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print):
+    ce_loss_avg = tf.keras.metrics.Mean()
     loss_avg = tf.keras.metrics.Mean()
     recon_loss_avg = tf.keras.metrics.Mean()
     z_loss_avg = tf.keras.metrics.Mean()
@@ -344,6 +350,7 @@ def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_
         # '''decoupled weight decay'''
         # weight_decay_decoupled(model.trainable_variables, buffer_model.trainable_variables, decay_rate=args['weight_decay'] * optimizer.lr)
         
+        ce_loss_avg(ce_loss)    
         loss_avg(loss)
         recon_loss_avg(recon_loss)
         z_loss_avg(z_loss)
@@ -369,9 +376,9 @@ def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_
     if epoch % args['reconstruct_freq'] == 0:
         sample_recon = generate_and_save_images1(model, xhat)
         generate_and_save_images2(model, xhat, epoch, f'logs/{args["dataset"]}_{args["labeled_examples"]}/{current_time}')
-        return loss_avg, recon_loss_avg, z_loss_avg, c_loss_avg, c_entropy_loss_avg, u_loss_avg, prior_intersection_loss_avg, accuracy, sample_recon
+        return ce_loss_avg, loss_avg, recon_loss_avg, z_loss_avg, c_loss_avg, c_entropy_loss_avg, u_loss_avg, prior_intersection_loss_avg, accuracy, sample_recon
     else:
-        return loss_avg, recon_loss_avg, z_loss_avg, c_loss_avg, c_entropy_loss_avg, u_loss_avg, prior_intersection_loss_avg, accuracy
+        return ce_loss_avg, loss_avg, recon_loss_avg, z_loss_avg, c_loss_avg, c_entropy_loss_avg, u_loss_avg, prior_intersection_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, iteration, batch_num, BC_valid_mask, args, num_classes, split):
     loss_avg = tf.keras.metrics.Mean()
