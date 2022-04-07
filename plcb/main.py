@@ -3,7 +3,7 @@ import argparse
 import os
 
 # os.chdir(r'D:\semi\plcb') # main directory (repository)
-os.chdir('/home1/seunghwan/semi/plcb') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/plcb') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -127,7 +127,7 @@ def main():
                         dropratio=0.0) # without dropout
     else:
         pslab_model = CNN(num_classes, 
-                        dropratio=args['dropout']) 
+                        dropratio=args['dropout']) # with dropout
     pslab_model.build(input_shape=(None, 32, 32, 3))
     pslab_model.set_weights(model.get_weights()) # weight initialization
     
@@ -259,7 +259,11 @@ def train(datasetL, datasetU, model, buffer_model, pslab_model, optimizer, epoch
         with tf.GradientTape(persistent=True) as tape:
             '''pseudo-label and mix-up'''
             with tape.stop_recording():
-                labelU = pslab_model(imageU, training=False) # without augmentation and dropout
+                '''FIXME''' # batch-normalization?
+                if args['DApseudolab']:
+                    labelU = pslab_model(imageU_aug, training=True) # with augmentation 
+                else:
+                    labelU = pslab_model(imageU, training=True) # without augmentation 
                 labelU = tf.nn.softmax(labelU, axis=-1)
                 image = tf.concat([imageL_aug, imageU_aug], axis=0)
                 label = tf.concat([labelL, labelU], axis=0)
