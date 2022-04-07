@@ -19,7 +19,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 from preprocess import fetch_dataset
 from model import VAE
 from criterion import ELBO_criterion
-from utils import augment, weight_decay_decoupled
+from utils import CustomReduceLRoP
 #%%
 import ast
 def arg_as_list(s):
@@ -176,8 +176,29 @@ def main():
     for epoch in range(args['start_epoch'], args['epochs']):
         
         '''learning rate schedule'''
-        # tf.keras.callbacks.ReduceLROnPlateau
-            
+        optimizer_scheduler = CustomReduceLRoP(
+            factor=0.5,
+            patience=2,
+            min_delta=1e-1,
+            mode='auto',
+            cooldown=3,
+            min_lr=0,
+            optim_lr=optimizer.learning_rate, 
+            reduce_lin=True,
+            verbose=1
+        )
+        optimizer_classifier_scheduler = CustomReduceLRoP(
+            factor=0.5,
+            patience=2,
+            min_delta=1e-2,
+            mode='auto',
+            cooldown=4,
+            min_lr=0,
+            optim_lr=optimizer_classifier.learning_rate, 
+            reduce_lin=True,
+            verbose=1
+        )
+
         if epoch % args['reconstruct_freq'] == 0:
             loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print)
         else:
@@ -205,7 +226,7 @@ def main():
             tf.summary.scalar('val_u_loss', val_u_loss.result(), step=epoch)
             tf.summary.scalar('val_prior_intersection_loss', val_prior_intersection_loss.result(), step=epoch)
             tf.summary.scalar('val_accuracy', val_accuracy.result(), step=epoch)
-        with val_writer.as_default():
+        with test_writer.as_default():
             tf.summary.scalar('test_loss', test_loss.result(), step=epoch)
             tf.summary.scalar('test_recon_loss', test_recon_loss.result(), step=epoch)
             tf.summary.scalar('test_z_loss', test_z_loss.result(), step=epoch)
