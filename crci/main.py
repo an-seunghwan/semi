@@ -2,8 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\crci') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/crci') # main directory (repository)
+# os.chdir(r'D:\semi\crci') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/crci') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -219,23 +219,23 @@ def main():
             if epoch % args['reconstruct_freq'] == 0:
                 tf.summary.image("train recon image", sample_recon, step=epoch)
         with val_writer.as_default():
-            tf.summary.scalar('val_loss', val_loss.result(), step=epoch)
-            tf.summary.scalar('val_recon_loss', val_recon_loss.result(), step=epoch)
-            tf.summary.scalar('val_z_loss', val_z_loss.result(), step=epoch)
-            tf.summary.scalar('val_c_loss', val_c_loss.result(), step=epoch)
-            tf.summary.scalar('val_c_entropy_loss', val_c_entropy_loss.result(), step=epoch)
-            tf.summary.scalar('val_u_loss', val_u_loss.result(), step=epoch)
-            tf.summary.scalar('val_prior_intersection_loss', val_prior_intersection_loss.result(), step=epoch)
-            tf.summary.scalar('val_accuracy', val_accuracy.result(), step=epoch)
+            tf.summary.scalar('loss', val_loss.result(), step=epoch)
+            tf.summary.scalar('recon_loss', val_recon_loss.result(), step=epoch)
+            tf.summary.scalar('z_loss', val_z_loss.result(), step=epoch)
+            tf.summary.scalar('c_loss', val_c_loss.result(), step=epoch)
+            tf.summary.scalar('c_entropy_loss', val_c_entropy_loss.result(), step=epoch)
+            tf.summary.scalar('u_loss', val_u_loss.result(), step=epoch)
+            tf.summary.scalar('prior_intersection_loss', val_prior_intersection_loss.result(), step=epoch)
+            tf.summary.scalar('accuracy', val_accuracy.result(), step=epoch)
         with test_writer.as_default():
-            tf.summary.scalar('test_loss', test_loss.result(), step=epoch)
-            tf.summary.scalar('test_recon_loss', test_recon_loss.result(), step=epoch)
-            tf.summary.scalar('test_z_loss', test_z_loss.result(), step=epoch)
-            tf.summary.scalar('test_c_loss', test_c_loss.result(), step=epoch)
-            tf.summary.scalar('test_c_entropy_loss', test_c_entropy_loss.result(), step=epoch)
-            tf.summary.scalar('test_u_loss', test_u_loss.result(), step=epoch)
-            tf.summary.scalar('test_prior_intersection_loss', test_prior_intersection_loss.result(), step=epoch)
-            tf.summary.scalar('test_accuracy', test_accuracy.result(), step=epoch)
+            tf.summary.scalar('loss', test_loss.result(), step=epoch)
+            tf.summary.scalar('recon_loss', test_recon_loss.result(), step=epoch)
+            tf.summary.scalar('z_loss', test_z_loss.result(), step=epoch)
+            tf.summary.scalar('c_loss', test_c_loss.result(), step=epoch)
+            tf.summary.scalar('c_entropy_loss', test_c_entropy_loss.result(), step=epoch)
+            tf.summary.scalar('u_loss', test_u_loss.result(), step=epoch)
+            tf.summary.scalar('prior_intersection_loss', test_prior_intersection_loss.result(), step=epoch)
+            tf.summary.scalar('accuracy', test_accuracy.result(), step=epoch)
             
         test_accuracy_print = test_accuracy.result()
         

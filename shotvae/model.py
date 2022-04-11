@@ -68,7 +68,6 @@ class ResidualBlock(K.layers.Layer):
 #%%
 class WideResNet(K.models.Model):
     def __init__(self, 
-                 num_classes,
                  depth=28,
                  width=2,
                  slope=0.1,
@@ -93,7 +92,6 @@ class WideResNet(K.models.Model):
         self.norm = layers.BatchNormalization()
         self.relu = layers.LeakyReLU(alpha=slope)
         self.pooling = layers.GlobalAveragePooling2D()
-        self.dense = layers.Dense(num_classes)
     
     @tf.function
     def call(self, x, training=True):
@@ -103,7 +101,6 @@ class WideResNet(K.models.Model):
         h = self.block3(h, training=training)
         h = self.relu(self.norm(h, training=training))
         h = self.pooling(h)
-        h = self.dense(h)
         return h
 #%%
 class Decoder(K.models.Model):
@@ -150,7 +147,7 @@ class VAE(K.models.Model):
                  name='VAE', **kwargs):
         super(VAE, self).__init__(name=name, **kwargs)
         
-        self.FeatureExtractor = WideResNet(num_classes, depth, width, slope, input_shape)
+        self.FeatureExtractor = WideResNet(depth, width, slope, input_shape)
         self.mean_layer = layers.Dense(latent_dim) 
         self.logsigma_layer = layers.Dense(latent_dim) 
         self.prob_layer = layers.Dense(num_classes) 

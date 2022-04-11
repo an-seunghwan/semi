@@ -36,8 +36,8 @@ def ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, mod
     cap_current = (cap_max - cap_min) * (num_steps / num_iters) + cap_min
     cap_current = tf.math.minimum(cap_current, cap_max)
     
-    u_means = tf.tile(u_mean[..., tf.newaxis], (1, 1, num_classes))
-    u_logvars = tf.tile(u_logvar[..., tf.newaxis], (1, 1, num_classes))
+    u_means = tf.tile(u_mean[:, tf.newaxis, :], (1, num_classes, 1))
+    u_logvars = tf.tile(u_logvar[:, tf.newaxis, :], (1, num_classes, 1))
     u_kl = tf.reduce_sum(0.5 * (tf.math.pow(u_means - model.u_prior_means, 2) / tf.math.exp(model.u_prior_logvars)
                                 - 1
                                 + tf.math.exp(u_logvars) / tf.math.exp(model.u_prior_logvars)

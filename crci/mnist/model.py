@@ -164,7 +164,7 @@ class VAE(K.models.Model):
         hidden_a = hidden * a
         u_mean = self.u_mean_layer(hidden_a)
         u_logvar = self.u_logvar_layer(hidden_a)
-        epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.latent_dim))
+        epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.u_dim))
         u = u_mean + tf.math.exp(u_logvar / 2.) * epsilon 
         return z_mean, z_logvar, z, u_mean, u_logvar, u
     

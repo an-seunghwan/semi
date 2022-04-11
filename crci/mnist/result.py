@@ -2,9 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\dgm') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/dgm') # main directory (repository)
-# os.chdir('/Users/anseunghwan/Documents/GitHub/semi/dgm')
+os.chdir(r'D:\semi\crci') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/crci') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -13,15 +12,14 @@ import tqdm
 import yaml
 import io
 import matplotlib.pyplot as plt
-from PIL import Image
 
 import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
-from model import DGM
+from model import VAE
 from criterion import ELBO_criterion
-from utils import augment, weight_decay_decoupled
+from utils import CustomReduceLRoP
 #%%
 import ast
 def arg_as_list(s):
@@ -33,8 +31,8 @@ def arg_as_list(s):
 def get_args():
     parser = argparse.ArgumentParser('parameters')
 
-    parser.add_argument('--dataset', type=str, default='cifar10',
-                        help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
+    parser.add_argument('--dataset', type=str, default='mnist',
+                        help='dataset used for training')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
     parser.add_argument('--batch-size', default=64, type=int,
@@ -43,14 +41,14 @@ def get_args():
                         metavar='N', help='mini-batch size for labeled dataset (default: 32)')
 
     '''SSL VAE Train PreProcess Parameter'''
-    parser.add_argument('--epochs', default=200, type=int, 
+    parser.add_argument('--epochs', default=80, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
     parser.add_argument('--reconstruct_freq', '-rf', default=10, type=int,
                         metavar='N', help='reconstruct frequency (default: 10)')
-    parser.add_argument('--labeled_examples', type=int, default=4000, 
-                        help='number labeled examples (default: 4000), all labels are balanced')
+    parser.add_argument('--labeled_examples', type=int, default=100, 
+                        help='number labeled examples (default: 100), all labels are balanced')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
 
@@ -59,16 +57,32 @@ def get_args():
                         help="Do BCE Reconstruction")
 
     '''VAE parameters'''
-    parser.add_argument('--latent_dim', default=128, type=int,
+    parser.add_argument('--z_dim', default=6, type=int,
+                        metavar='Latent Dim For Continuous Variable',
+                        help='feature dimension in latent space for continuous variable')
+    parser.add_argument('--u_dim', default=10, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
     
     '''Optimizer Parameters'''
-    parser.add_argument('--learning_rate', default=3e-4, type=float,
+    parser.add_argument('--learning_rate', default=5e-4, type=float,
                         metavar='LR', help='initial learning rate')
-    parser.add_argument('--weight_decay', default=5e-4, type=float)
-    parser.add_argument('--alpha', default=1, type=float,
-                        help='weight of supervised classification loss')
+    parser.add_argument('--classifier_learning_rate', default=5e-4, type=float,
+                        metavar='LR', help='initial learning rate for classifier')
+    # parser.add_argument('--weight_decay', default=5e-4, type=float)
+    
+    parser.add_argument("--z_capacity", default=[0., 7., 100000, 15.], type=arg_as_list,
+                        help="controlled capacity")
+    parser.add_argument("--u_capacity", default=[0., 7., 100000, 15.], type=arg_as_list,
+                        help="controlled capacity")
+    parser.add_argument('--gamma_c', default=15, type=float,
+                        help='weight of loss')
+    parser.add_argument('--gamma_h', default=30, type=float,
+                        help='weight of loss')
+    parser.add_argument('--gamma_bc', default=30, type=float,
+                        help='weight of loss')
+    parser.add_argument('--bc_threshold', default=0.15, type=float,
+                        help='threshold of Bhattacharyya coefficient')
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -86,7 +100,7 @@ def load_config(args):
             args[key] = config[key]
     return args
 #%%
-args = vars(get_args().parse_args(args=['--config_path', 'configs/cifar10_4000.yaml']))
+args = vars(get_args().parse_args(args=['--config_path', 'configs/mnist_100.yaml']))
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -96,19 +110,15 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220330-204417'
-# model_path = log_path + '/beta_{}'.format(10)
+model_path = log_path + '/20220408-140712'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 
-model = DGM(num_classes,
-            latent_dim=args['latent_dim'])
-model.classifier.build(input_shape=(None, 32, 32, 3))
-model.build(input_shape=[(None, 32, 32, 3), (None, num_classes)])
+model = VAE(num_classes=num_classes,
+            latent_dim=args['z_dim'], 
+            u_dim=args['u_dim'])
+model.build(input_shape=(None, 28, 28, 1))
 model.load_weights(model_path + '/' + model_name)
 model.summary()
-#%%
-classnames = ['airplane', 'automobile', 'bird', 'cat', 'deer', 'dog', 'frog', 'horse', 'ship', 'truck']
-classdict = {i:x for i,x in enumerate(classnames)}
 #%%
 autotune = tf.data.AUTOTUNE
 batch = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=False).prefetch(autotune)

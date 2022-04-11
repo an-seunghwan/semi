@@ -4,73 +4,141 @@ import tensorflow.keras as K
 from tensorflow.keras import layers
 import numpy as np
 #%%
-class FeatureExtractor(K.models.Model):
-    def __init__(self, hidden_dim, name="FeatureExtractor", **kwargs):
-        super(FeatureExtractor, self).__init__(name=name, **kwargs)
-        self.hidden_dim = hidden_dim
-        self.nChannels = [32, 64, 64]
+class ResidualUnit(K.layers.Layer):
+    def __init__(self, 
+                 filter_in, 
+                 filter_out,
+                 strides, 
+                 slope=0.1,
+                 **kwargs):
+        super(ResidualUnit, self).__init__(**kwargs)
         
-        self.net = K.Sequential(
-            [
-                layers.Conv2D(filters=self.nChannels[0], kernel_size=4, strides=2, padding='same'), 
-                # layers.BatchNormalization(),
-                layers.ReLU(),
-                
-                layers.Conv2D(filters=self.nChannels[1], kernel_size=4, strides=2, padding='same'), 
-                # layers.BatchNormalization(),
-                layers.ReLU(),
-                
-                layers.Conv2D(filters=self.nChannels[2], kernel_size=4, strides=2, padding='same'), 
-                # layers.BatchNormalization(),
-                layers.LeakyReLU(alpha=0.1),
-                
-                layers.Flatten(),
-                layers.Dense(self.hidden_dim),
-                # layers.BatchNormalization(),
-                layers.LeakyReLU(alpha=0.1),
-            ]
-        )
+        self.norm1 = layers.BatchNormalization()
+        self.relu1 = layers.LeakyReLU(alpha=slope)
+        self.conv1 = layers.Conv2D(filters=filter_out, kernel_size=3, strides=strides, 
+                                    padding='same', use_bias=False)
+        self.norm2 = layers.BatchNormalization()
+        self.relu2 = layers.LeakyReLU(alpha=slope)
+        self.conv2 = layers.Conv2D(filters=filter_out, kernel_size=3, strides=1, 
+                                    padding='same', use_bias=False)
         
+        self.downsample = (filter_in != filter_out)
+        if self.downsample:
+            self.shortcut = layers.Conv2D(filters=filter_out, kernel_size=1, strides=strides, 
+                                        padding='same', use_bias=False)
+
     @tf.function
     def call(self, x, training=True):
-        hidden = self.net(x, training=training)
-        return hidden
+        if self.downsample:
+            x = self.relu1(self.norm1(x, training=training))
+            h = self.relu2(self.norm2(self.conv1(x), training=training))
+        else:
+            h = self.relu1(self.norm1(x, training=training))
+            h = self.relu2(self.norm2(self.conv1(h), training=training))
+        h = self.conv2(h)
+        if self.downsample:
+            h = h + self.shortcut(x)
+        else:
+            h = h + x
+        return h
 #%%
-# e = FeatureExtractor(256)
-# e.build((10, 28, 28, 1))
-# e.net.summary()
+class ResidualBlock(K.layers.Layer):
+    def __init__(self,
+                 n_units,
+                 filter_in,
+                 filter_out,
+                 unit,
+                 strides, 
+                 **kwargs):
+        super(ResidualBlock, self).__init__(**kwargs)
+        self.units = self._build_unit(n_units, unit, filter_in, filter_out, strides)
+    
+    def _build_unit(self, n_units, unit, filter_in, filter_out, strides):
+        units = []
+        for i in range(n_units):
+            units.append(unit(filter_in if i == 0 else filter_out, filter_out, strides if i == 0 else 1))
+        # return units
+        return K.models.Sequential(units)
+    
+    @tf.function
+    def call(self, x, training=True):
+        # for unit in self.units:
+        #     x = unit(x, training=training)
+        x = self.units(x, training=training)
+        return x
+#%%
+class WideResNet(K.models.Model):
+    def __init__(self, 
+                 depth=28,
+                 width=2,
+                 slope=0.1,
+                 input_shape=(None, 32, 32, 3),
+                 name="WideResNet", 
+                 **kwargs):
+        super(WideResNet, self).__init__(input_shape, name=name, **kwargs)
+        
+        assert (depth - 4) % 6 == 0
+        self.n_units = (depth - 4) // 6
+        self.nChannels = [16, 16*width, 32*width, 64*width]
+        self.slope = slope
+        
+        '''small_input = True'''
+        self.conv = layers.Conv2D(filters=self.nChannels[0], kernel_size=3, strides=1, 
+                                    padding='same', use_bias=False)
+        
+        self.block1 = ResidualBlock(self.n_units, self.nChannels[0], self.nChannels[1], ResidualUnit, 1)
+        self.block2 = ResidualBlock(self.n_units, self.nChannels[1], self.nChannels[2], ResidualUnit, 2)
+        self.block3 = ResidualBlock(self.n_units, self.nChannels[2], self.nChannels[3], ResidualUnit, 2)
+        
+        self.norm = layers.BatchNormalization()
+        self.relu = layers.LeakyReLU(alpha=slope)
+        self.pooling = layers.GlobalAveragePooling2D()
+    
+    @tf.function
+    def call(self, x, training=True):
+        h = self.conv(x)
+        h = self.block1(h, training=training)
+        h = self.block2(h, training=training)
+        h = self.block3(h, training=training)
+        h = self.relu(self.norm(h, training=training))
+        h = self.pooling(h)
+        return h
+#%%
+# e = WideResNet(256)
+# e.build((10, 32, 32, 3))
+# e.summary()
+# e(tf.random.normal((10, 32, 32, 3))).shape
 #%%
 class Decoder(K.models.Model):
-    def __init__(self, activation, name="Decoder", **kwargs):
+    def __init__(self, channel, activation, name="Decoder", **kwargs):
         super(Decoder, self).__init__(name=name, **kwargs)
-        # self.nChannels = [32, 32]
+        self.feature_num = 32
+        self.nChannels = [self.feature_num * d for d in [8, 4, 2, 1]]
         
         self.net = K.Sequential(
             [
-                layers.Dense(128, activation='linear'),
+                layers.Dense(4*4*512),
+                layers.BatchNormalization(),
                 layers.ReLU(),
-                layers.Dense(256, activation='linear'),
+                layers.Reshape((4, 4, 512)),
+                
+                layers.Conv2DTranspose(filters=self.nChannels[0], kernel_size=5, strides=2, padding='same'),
+                layers.BatchNormalization(),
                 layers.ReLU(),
-                layers.Dense(784, activation=activation),
-                layers.Reshape((28, 28, 1)),
                 
-                # layers.Dense(hidden_dim),
-                # # layers.BatchNormalization(),
-                # layers.ReLU(),
-                # layers.Dense(4 * 4 * 64),
-                # # layers.BatchNormalization(),
-                # layers.ReLU(),
-                # layers.Reshape((4, 4, 64)),
+                layers.Conv2DTranspose(filters=self.nChannels[1], kernel_size=5, strides=2, padding='same'),
+                layers.BatchNormalization(),
+                layers.ReLU(),
                 
-                # layers.Conv2DTranspose(filters=self.nChannels[0], kernel_size=4, strides=2, padding='same'),
-                # # layers.BatchNormalization(),
-                # layers.ReLU(),
+                layers.Conv2DTranspose(filters=self.nChannels[2], kernel_size=5, strides=2, padding='same'),
+                layers.BatchNormalization(),
+                layers.ReLU(),
                 
-                # layers.Conv2DTranspose(filters=self.nChannels[1], kernel_size=4, strides=2, padding='same'),
-                # # layers.BatchNormalization(),
-                # layers.ReLU(),
+                layers.Conv2DTranspose(filters=self.nChannels[3], kernel_size=5, strides=1, padding='same'),
+                layers.BatchNormalization(),
+                layers.ReLU(),
                 
-                # layers.Conv2DTranspose(filters=channel, kernel_size=4, strides=2, padding='same', activation=activation)
+                layers.Conv2D(filters=channel, kernel_size=4, strides=1, padding='same', activation=activation)
             ]
         )
     
@@ -85,26 +153,33 @@ class Decoder(K.models.Model):
 #%%
 class VAE(K.models.Model):
     def __init__(self, 
-                 num_classes=10,
-                 latent_dim=6, 
-                 hidden_dim=256,
-                 u_dim=10,
-                 output_channel=1, 
-                 temperature=0.67,
-                 sigmoid_coef=1,
-                 activation='sigmoid',
-                 input_dim=(None, 28, 28, 1), 
-                 name='VAE', **kwargs):
+                num_classes=10,
+                latent_dim=64, 
+                u_dim=64,
+                output_channel=3, 
+                depth=28,
+                width=2,
+                slope=0.1,
+                temperature=0.67,
+                sigmoid_coef=1,
+                activation='sigmoid',
+                input_dim=(None, 32, 32, 3), 
+                name='VAE', **kwargs):
         super(VAE, self).__init__(name=name, **kwargs)
         self.num_classes = num_classes
         self.latent_dim = latent_dim
-        self.hidden_dim = hidden_dim
+        self.hidden_dim = width * 64
         self.u_dim = u_dim
         self.input_dim = input_dim
         self.temperature = temperature
         self.sigmoid_coef = sigmoid_coef
         
-        self.feature_extractor = FeatureExtractor(self.hidden_dim)
+        self.feature_extractor = WideResNet(
+            depth=depth,
+            width=width,
+            slope=slope,
+            input_shape=input_dim
+        )
         
         self.z_mean_layer = layers.Dense(latent_dim, activation='linear')
         self.z_logvar_layer = layers.Dense(latent_dim, activation='linear')
@@ -115,7 +190,7 @@ class VAE(K.models.Model):
         self.u_mean_layer = layers.Dense(u_dim, activation='linear')
         self.u_logvar_layer = layers.Dense(u_dim, activation='linear')
         
-        self.decoder = Decoder(activation)
+        self.decoder = Decoder(output_channel, activation)
         
         self.u_prior_means = self.add_weight(shape=(num_classes, u_dim),
                                             initializer='random_normal',
@@ -164,7 +239,7 @@ class VAE(K.models.Model):
         hidden_a = hidden * a
         u_mean = self.u_mean_layer(hidden_a)
         u_logvar = self.u_logvar_layer(hidden_a)
-        epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.latent_dim))
+        epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.u_dim))
         u = u_mean + tf.math.exp(u_logvar / 2.) * epsilon 
         return z_mean, z_logvar, z, u_mean, u_logvar, u
     
@@ -193,9 +268,9 @@ class VAE(K.models.Model):
         return z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat
 #%%
 # model = VAE()
-# model.build((10, 28, 28, 1))
+# model.build((10, 32, 32, 3))
 # #%%
-# x = tf.random.normal((16, 28, 28, 1))
+# x = tf.random.normal((16, 32, 32, 3))
 # outputs = model(x)
 # [t.shape for t in outputs]
 # model.u_prior_means.shape
