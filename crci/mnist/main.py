@@ -72,9 +72,9 @@ def get_args():
     # parser.add_argument('--weight_decay', default=5e-4, type=float)
     
     parser.add_argument("--z_capacity", default=[0., 7., 100000, 15.], type=arg_as_list,
-                        help="controlled capacity")
+                        help="controlled capacity") # cap_min, cap_max, num_iters, gamma
     parser.add_argument("--u_capacity", default=[0., 7., 100000, 15.], type=arg_as_list,
-                        help="controlled capacity")
+                        help="controlled capacity") # cap_min, cap_max, num_iters, gamma
     parser.add_argument('--gamma_c', default=15, type=float,
                         help='weight of loss')
     parser.add_argument('--gamma_h', default=30, type=float,
