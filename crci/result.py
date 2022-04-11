@@ -217,3 +217,61 @@ for k in range(num_classes):
     plt.show()
     plt.close()
 #%%
+'''inception score'''
+# assumes images have any shape and pixels in [0,255]
+def calculate_inception_score(images, n_split=50, eps=1E-16):
+    # load inception v3 model
+    inception = K.applications.InceptionV3(include_top=True)
+    # enumerate splits of images/predictions
+    scores = list()
+    n_part = int(np.floor(images.shape[0] / n_split))
+    for i in tqdm.tqdm(range(n_split)):
+        # retrieve images
+        ix_start, ix_end = i * n_part, (i+1) * n_part
+        subset = images[ix_start:ix_end]
+        # convert from uint8 to float32
+        subset = subset.astype('float32')
+        # scale images to the required size
+        subset = tf.image.resize(subset, (299, 299), 'nearest')
+        # pre-process images, scale to [-1,1]
+        # alreay tanh activation = [-1, 1]
+        # subset = K.applications.inception_v3.preprocess_input(subset)
+        # predict p(y|x)
+        p_yx = inception.predict(subset)
+        # calculate p(y)
+        p_y = tf.expand_dims(p_yx.mean(axis=0), 0)
+        # calculate KL divergence using log probabilities
+        kl_d = p_yx * (np.log(p_yx + eps) - np.log(p_y + eps))
+        # sum over classes
+        sum_kl_d = kl_d.sum(axis=1)
+        # average over images
+        avg_kl_d = np.mean(sum_kl_d)
+        # undo the log
+        is_score = np.exp(avg_kl_d)
+        # store
+        scores.append(is_score)
+    # average across images
+    is_avg, is_std = np.mean(scores), np.std(scores)
+    return is_avg, is_std
+#%%
+# 10,000 generated images from sampled latent variables
+np.random.seed(1)
+generated_images = []
+for k in tqdm.tqdm(range(num_classes)):
+    for _ in range(10):
+        z_rand = np.random.normal(size=(100, args['z_dim']))
+        u_rand = np.random.multivariate_normal(mean=model.u_prior_means[k, :], 
+                                        cov=np.diag(tf.math.exp(model.u_prior_logvars[k, :])),
+                                        size=100)
+        images = model.decoder(tf.concat([z_rand, u_rand], axis=-1), training=False)
+        generated_images.extend(images)
+generated_images = np.array(generated_images)
+np.random.shuffle(generated_images)
+
+# calculate inception score
+is_avg, is_std = calculate_inception_score(generated_images)
+#%%
+with open('{}/result.txt'.format(model_path), "w") as file:
+    file.write('TEST classification error: {:.2f}%\n\n'.format(error_count / total_length * 100))
+    file.write('inception score | mean: {:.2f}, std: {:.2f}\n\n'.format(is_avg, is_std))
+#%%
