@@ -163,7 +163,7 @@ plt.figure(figsize=(10, 10))
 plt.tick_params(labelsize=30)    
 plt.locator_params(axis='y', nbins=8)
 plt.scatter(zmat[:, 0], zmat[:, 1], c=tf.argmax(labels, axis=1).numpy(), s=10, cmap=plt.cm.Reds, alpha=1)
-plt.savefig('./{}/latent_z.png'.format(model_path), 
+plt.savefig('./{}/test_dataset_conditional_sampled_latent_z.png'.format(model_path), 
             dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
@@ -173,8 +173,33 @@ plt.figure(figsize=(10, 10))
 plt.tick_params(labelsize=30)    
 plt.locator_params(axis='y', nbins=8)
 plt.scatter(umat[:, 0], umat[:, 1], c=tf.argmax(labels, axis=1).numpy(), s=10, cmap=plt.cm.Reds, alpha=1)
-plt.savefig('./{}/latent_u.png'.format(model_path), 
+plt.savefig('./{}/test_dataset_conditional_sampled_latent_u.png'.format(model_path), 
             dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
+'''prior distribution (learned)'''
+np.random.seed(1)
+samples = []
+color = []
+for i in range(model.u_prior_means.shape[0]):
+    samples.extend(np.random.multivariate_normal(mean=model.u_prior_means[i, :], 
+                                                cov=np.array([[tf.math.exp(model.u_prior_logvars[i, 0]), 0], 
+                                                            [0, tf.math.exp(model.u_prior_logvars[i, 1])]]), size=1000))
+    color.extend([i] * 1000)
+samples = np.array(samples)
+
+plt.figure(figsize=(8, 8))
+plt.tick_params(labelsize=25)   
+plt.scatter(samples[:, 0], samples[:, 1], s=9, c=color, cmap=plt.cm.Reds, alpha=1)
+plt.locator_params(axis='x', nbins=5)
+plt.locator_params(axis='y', nbins=5)
+for i in range(num_classes):
+    plt.text(model.u_prior_means[i, 0], model.u_prior_means[i, 1], "{}".format(i), fontsize=35)
+    if i in [6, 7, 8, 9]:
+        plt.text(model.u_prior_means[i, 0], model.u_prior_means[i, 1], "{}".format(i), fontsize=35, color='white')
+plt.savefig('./{}/prior_samples.png'.format(model_path),
+            bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
 #%%
@@ -187,20 +212,16 @@ for i in range(num_classes):
 test_posterior_mean = np.array(test_posterior_mean)
 test_posterior_var = np.array(test_posterior_var)
 #%%
-plt.plot(test_posterior_mean[:, 0], label="u posterior dim 1 mean")
-plt.plot(model.u_prior_means[:, 0], label="u prior dim 1 mean")
-plt.plot(test_posterior_mean[:, 1], label="u posterior dim 2 mean")
-plt.plot(model.u_prior_means[:, 1], label="u prior dim 2 mean")
+plt.plot(tf.math.abs(test_posterior_mean[:, 0] - model.u_prior_means[:, 0]), label="u dim 1 mean")
+plt.plot(tf.math.abs(test_posterior_mean[:, 1] - model.u_prior_means[:, 1]), label="u dim 2 mean")
 plt.legend()
 plt.savefig('./{}/u_prior_posterior_mean_gap.png'.format(model_path),
                 dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
 #%%
-plt.plot(test_posterior_var[:, 0], label="u posterior dim 1 var")
-plt.plot(tf.math.exp(model.u_prior_logvars)[:, 0], label="u prior dim 1 var")
-plt.plot(test_posterior_var[:, 1], label="u posterior dim 2 var")
-plt.plot(tf.math.exp(model.u_prior_logvars)[:, 1], label="u prior dim 2 var")
+plt.plot(tf.math.abs(test_posterior_var[:, 0] - tf.math.exp(model.u_prior_logvars)[:, 0]), label="u dim 1 var")
+plt.plot(tf.math.abs(test_posterior_var[:, 1] - tf.math.exp(model.u_prior_logvars)[:, 1]), label="u dim 2 var")
 plt.legend()
 plt.savefig('./{}/u_prior_posterior_var_gap.png'.format(model_path),
                 dpi=200, bbox_inches="tight", pad_inches=0.1)
@@ -225,7 +246,7 @@ for k in range(num_classes):
         plt.imshow(grid_output[i].reshape(28, 28), cmap='gray_r')    
         plt.axis('off')
         plt.tight_layout() 
-    plt.savefig('./{}/recon_zgrid_umean{}.png'.format(model_path, k),
+    plt.savefig('./{}/recon_z_grid_u{}_priormean.png'.format(model_path, k),
                 dpi=200, bbox_inches="tight", pad_inches=0.1)
     plt.show()
     plt.close()
@@ -247,7 +268,7 @@ for i in range(len(grid)):
     plt.imshow(grid_output[i].reshape(28, 28), cmap='gray_r')    
     plt.axis('off')
     plt.tight_layout() 
-plt.savefig('./{}/recon_zmean_ugrid.png'.format(model_path, k),
+plt.savefig('./{}/recon_z_priormean_u_grid.png'.format(model_path, k),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
