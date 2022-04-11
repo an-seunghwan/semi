@@ -1,2 +1,2 @@
 dataset: 'cifar10'
-z_dim: 128
+width: 4

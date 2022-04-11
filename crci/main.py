@@ -35,20 +35,20 @@ def get_args():
                         help='dataset used for training')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('--batch-size', default=64, type=int,
+    parser.add_argument('--batch-size', default=128, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
-    parser.add_argument('--labeled-batch-size', default=8, type=int,
+    parser.add_argument('--labeled-batch-size', default=32, type=int,
                         metavar='N', help='mini-batch size for labeled dataset (default: 32)')
 
     '''SSL VAE Train PreProcess Parameter'''
-    parser.add_argument('--epochs', default=80, type=int, 
+    parser.add_argument('--epochs', default=200, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
     parser.add_argument('--reconstruct_freq', '-rf', default=10, type=int,
                         metavar='N', help='reconstruct frequency (default: 10)')
-    parser.add_argument('--labeled_examples', type=int, default=100, 
-                        help='number labeled examples (default: 100), all labels are balanced')
+    parser.add_argument('--labeled_examples', type=int, default=4000, 
+                        help='number labeled examples (default: 4000), all labels are balanced')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
 
@@ -57,12 +57,18 @@ def get_args():
                         help="Do BCE Reconstruction")
 
     '''VAE parameters'''
-    parser.add_argument('--z_dim', default=6, type=int,
+    parser.add_argument('--z_dim', default=64, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
-    parser.add_argument('--u_dim', default=10, type=int,
+    parser.add_argument('--u_dim', default=64, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
+    parser.add_argument('--depth', type=int, default=28, 
+                        help='depth for WideResnet (default: 28)')
+    parser.add_argument('--width', type=int, default=2, 
+                        help='widen factor for WideResnet (default: 2)')
+    parser.add_argument('--slope', type=float, default=0.1, 
+                        help='slope parameter for LeakyReLU (default: 0.1)')
     
     '''Optimizer Parameters'''
     parser.add_argument('--learning_rate', default=5e-4, type=float,
@@ -135,7 +141,7 @@ def main():
     '''argparse to dictionary'''
     args = vars(get_args())
     # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/mnist_100.yaml']))
+    # args = vars(parser.parse_args(args=['--config_path', 'configs/cifar10_4000.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -147,10 +153,13 @@ def main():
     total_length = sum(1 for _ in datasetU)
     iteration = total_length // args['batch_size'] 
     
-    model = VAE(num_classes=num_classes,
-                latent_dim=args['z_dim'], 
-                u_dim=args['u_dim'])
-    model.build(input_shape=(None, 28, 28, 1))
+    model = VAE(
+        num_classes=num_classes,
+        latent_dim=args['z_dim'], 
+        u_dim=args['u_dim'],
+        depth=args['depth'], width=args['width'], slope=args['slope']
+    )
+    model.build(input_shape=(None, 32, 32, 3))
     model.summary()
     
     # buffer_model = VAE(num_classes=num_classes,
