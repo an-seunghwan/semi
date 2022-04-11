@@ -12,6 +12,7 @@ import tqdm
 import yaml
 import io
 import matplotlib.pyplot as plt
+from PIL import Image
 
 import datetime
 current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
@@ -122,226 +123,132 @@ model.summary()
 #%%
 autotune = tf.data.AUTOTUNE
 batch = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=False).prefetch(autotune)
-# iterator_test = iter(batch(test_dataset))
+iterator_test = iter(batch(test_dataset))
 total_length = sum(1 for _ in test_dataset)
 iteration = total_length // args['batch_size'] 
-
+#%%
 error_count = 0
 for x_test_batch, y_test_batch in batch(test_dataset):
     prob = model.classify(x_test_batch, training=False)
     error_count += np.sum(tf.argmax(prob, axis=-1).numpy() - tf.argmax(y_test_batch, axis=-1).numpy() != 0)
 print('TEST classification error: {:.2f}%'.format(error_count / total_length * 100))
 #%%
-'''test reconstruction'''
-(_, _), (x_test, y_test) = K.datasets.cifar10.load_data()
-x_test = x_test.astype('float32') / 255
-x = x_test[:49]
-
-prob = model.classify(x, training=False)
-label = tf.argmax(prob, axis=-1)
-label = tf.one_hot(label, depth=num_classes)
-
-_, _, _, xhat = model([x, label], training=False)
-
-plt.figure(figsize=(15, 15))
-for i in range(49):
-    plt.subplot(7, 7, i+1)
-    plt.imshow(xhat[i])
-    plt.axis('off')
-plt.tight_layout()
-plt.savefig('{}/test_recon.png'.format(model_path))
+z_means = []
+z_logvars = []
+u_means = []
+u_logvars = []
+labels = []
+zs = []
+us = []
+for i in tqdm.tqdm(range(iteration + 1)):
+    image, label = next(iterator_test)
+    z_mean, z_logvar, z, u_mean, u_logvar, u = model.encode(image, training=False)
+    z_means.extend(z_mean)
+    z_logvars.extend(z_logvar)
+    u_means.extend(u_mean)
+    u_logvars.extend(u_logvar)
+    labels.extend(label)
+    zs.extend(z)
+    us.extend(u)
+z_means = tf.stack(z_means, axis=0)
+z_logvars = tf.stack(z_logvars, axis=0)
+u_means = tf.stack(u_means, axis=0)
+u_logvars = tf.stack(u_logvars, axis=0)
+labels = tf.stack(labels, axis=0)
+zs = tf.stack(zs, axis=0)
+us = tf.stack(us, axis=0)
+#%%
+zmat = np.array(zs)
+plt.figure(figsize=(10, 10))
+plt.tick_params(labelsize=30)    
+plt.locator_params(axis='y', nbins=8)
+plt.scatter(zmat[:, 0], zmat[:, 1], c=tf.argmax(labels, axis=1).numpy(), s=10, cmap=plt.cm.Reds, alpha=1)
+plt.savefig('./{}/latent_z.png'.format(model_path), 
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
 #%%
-data_dir = r'D:\cifar10_{}'.format(5000)
-idx = np.arange(100)
-x = np.array([np.load(data_dir + '/x_{}.npy'.format(i)) for i in idx])
-y = np.array([np.load(data_dir + '/y_{}.npy'.format(i)) for i in idx])
-x = tf.cast(x, tf.float32) / 255.
-
-prob = model.classify(x, training=False)
-label = tf.argmax(prob, axis=-1)
-label = tf.one_hot(label, depth=num_classes)
-
-mean, logvar, z, xhat = model([x, label], training=False)
-#%%
-'''train reconstruction'''
-plt.figure(figsize=(15, 15))
-for i in range(49):
-    plt.subplot(7, 7, i+1)
-    plt.imshow(xhat[i])
-    plt.axis('off')
-plt.tight_layout()
-plt.savefig('{}/train_recon.png'.format(model_path))
+umat = np.array(us)
+plt.figure(figsize=(10, 10))
+plt.tick_params(labelsize=30)    
+plt.locator_params(axis='y', nbins=8)
+plt.scatter(umat[:, 0], umat[:, 1], c=tf.argmax(labels, axis=1).numpy(), s=10, cmap=plt.cm.Reds, alpha=1)
+plt.savefig('./{}/latent_u.png'.format(model_path), 
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
 #%%
-for idx in tqdm.tqdm(range(100)):
-    plt.figure(figsize=(20, 10))
-    plt.subplot(1, num_classes+1, 1)
-    plt.imshow(x[idx])
-    plt.title('original')
-    plt.axis('off')
-    
-    for i in range(num_classes):
-        label = np.zeros((1, num_classes))
-        label[:, i] = 1
-        label = tf.cast(label, tf.float32)
-        xhat = model.decode(z.numpy()[[idx]], label, training=False)
-
-        plt.subplot(1, num_classes+1, i+2)
-        plt.imshow(xhat[0])
-        plt.title('{}'.format(classdict.get(i)), fontsize=15)
-        plt.axis('off')
-    plt.savefig('{}/img{}.png'.format(model_path, idx),
+'''test dataset mean and logvar of posterior distribution'''
+test_posterior_mean = []
+test_posterior_var = []
+for i in range(num_classes):
+    test_posterior_mean.append(umat[tf.argmax(labels, axis=1) == i, :].mean(axis=0))
+    test_posterior_var.append(umat[tf.argmax(labels, axis=1) == i, :].var(axis=0))
+test_posterior_mean = np.array(test_posterior_mean)
+test_posterior_var = np.array(test_posterior_var)
+#%%
+plt.plot(test_posterior_mean[:, 0], label="u posterior dim 1 mean")
+plt.plot(model.u_prior_means[:, 0], label="u prior dim 1 mean")
+plt.plot(test_posterior_mean[:, 1], label="u posterior dim 2 mean")
+plt.plot(model.u_prior_means[:, 1], label="u prior dim 2 mean")
+plt.legend()
+plt.savefig('./{}/u_prior_posterior_mean_gap.png'.format(model_path),
                 dpi=200, bbox_inches="tight", pad_inches=0.1)
-    # plt.show()
+plt.show()
+plt.close()
+#%%
+plt.plot(test_posterior_var[:, 0], label="u posterior dim 1 var")
+plt.plot(tf.math.exp(model.u_prior_logvars)[:, 0], label="u prior dim 1 var")
+plt.plot(test_posterior_var[:, 1], label="u posterior dim 2 var")
+plt.plot(tf.math.exp(model.u_prior_logvars)[:, 1], label="u prior dim 2 var")
+plt.legend()
+plt.savefig('./{}/u_prior_posterior_var_gap.png'.format(model_path),
+                dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
+a = np.arange(-1, 1.1, 0.5)
+b = np.arange(-1, 1.1, 0.5)
+aa, bb = np.meshgrid(a, b, sparse=True)
+grid = []
+for b_ in reversed(bb[:, 0]):
+    for a_ in aa[0, :]:
+        grid.append(np.array([a_, b_]))
+#%%
+for k in range(num_classes):
+    grid_output = model.decoder(tf.concat([tf.cast(np.array(grid), tf.float32),
+                                        tf.tile(model.u_prior_means.numpy()[[k], :], (len(grid), 1))], axis=-1), training=False)
+    grid_output = grid_output.numpy()
+    plt.figure(figsize=(4, 4))
+    for i in range(len(grid)):
+        plt.subplot(len(b), len(a), i+1)
+        plt.imshow(grid_output[i].reshape(28, 28), cmap='gray_r')    
+        plt.axis('off')
+        plt.tight_layout() 
+    plt.savefig('./{}/recon_zgrid_umean{}.png'.format(model_path, k),
+                dpi=200, bbox_inches="tight", pad_inches=0.1)
+    plt.show()
     plt.close()
 #%%
-'''style transfer'''
-style = []
-# for idx in [1, 17, 21, 31, 32, 48, 58, 68, 81, 84]:
-for idx in [11, 3, 15, 23, 34, 81]:
-    style.append(Image.open('{}/img{}.png'.format(model_path, idx)))
-    
-fig, axes = plt.subplots(6, 1, figsize=(10, 6))
-for i in range(len(style)):
-    axes.flatten()[i].imshow(style[i])
-    axes.flatten()[i].axis('off')
-plt.tight_layout()
-plt.savefig('{}/style_transfer.png'.format(model_path),
-            dpi=200, bbox_inches="tight", pad_inches=0.1)
-plt.show()
-plt.close()
-#%%
-'''interpolation'''
-pairs = [[11, 25], [11, 15], [11, 53]]
-fig, axes = plt.subplots(3, 10, figsize=(10, 3))
-for k in range(len(pairs)):
-    z_interpolation = np.squeeze(np.linspace(z.numpy()[[pairs[k][0]], :], 
-                                            z.numpy()[[pairs[k][1]], :], 8))
+a = np.arange(-0, 4.1, 0.4)
+b = np.arange(-2, 2.1, 0.4)
+aa, bb = np.meshgrid(a, b, sparse=True)
+grid = []
+for b_ in reversed(bb[:, 0]):
+    for a_ in aa[0, :]:
+        grid.append(np.array([a_, b_]))
 
-    label = np.zeros((z_interpolation.shape[0], num_classes))
-    label[:, 1] = 1 # automobile
-    xhat_ = model.decode(z_interpolation, label, training=False)
-
-    axes[k][0].imshow(x[pairs[k][0]])
-    axes[k][0].axis('off')
-    for i in range(len(z_interpolation)):
-        axes[k][i+1].imshow(xhat_[i])
-        axes[k][i+1].axis('off')
-    axes[k][-1].imshow(x[pairs[k][1]])
-    axes[k][-1].axis('off')
-
-plt.tight_layout()
-plt.savefig('{}/style_interpolation.png'.format(model_path),
-            dpi=200, bbox_inches="tight", pad_inches=0.1)
-plt.show()
-plt.close()
-#%%
-'''manipulation'''
-idx = [11, 3, 15, 23, 34, 81]
-plt.figure(figsize=(10, 6))
-for j in range(len(idx)):
-    z_ = z.numpy()[[idx[j]]]
-    p = np.linspace(1, 0, 11)
-    num1 = 1 # automobile
-    num2 = 7 # horse
-
-    plt.subplot(len(idx), len(p)+1, (len(p)+1) * j + 1)
-    plt.imshow(x[idx[j]])
-    plt.title('original')
+grid_output = model.decoder(tf.concat([tf.cast(tf.tile([[0, 0]], (len(grid), 1)), tf.float32),
+                                        tf.cast(np.array(grid), tf.float32)], axis=-1), training=False)
+grid_output = grid_output.numpy()
+plt.figure(figsize=(10, 10))
+for i in range(len(grid)):
+    plt.subplot(len(b), len(a), i+1)
+    plt.imshow(grid_output[i].reshape(28, 28), cmap='gray_r')    
     plt.axis('off')
-    for i in range(len(p)):
-        attr = np.zeros((1, num_classes))
-        attr[:, num1] = p[i]
-        attr[:, num2] = 1 - p[i]
-        attr = tf.cast(attr, tf.float32)
-        xhat = model.decode(z_, attr, training=False)
-
-        plt.subplot(len(idx), len(p)+1, (len(p)+1) * j + i + 2)
-        plt.imshow(xhat[0])
-        plt.title('{}:{:.1f}'.format(classdict.get(num1)[:4], p[i]), fontsize=12)
-        plt.axis('off')
-plt.tight_layout()
-plt.savefig('{}/manipulation.png'.format(model_path),
+    plt.tight_layout() 
+plt.savefig('./{}/recon_zmean_ugrid.png'.format(model_path, k),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
-#%%
-'''style latent random sampling of z'''
-tf.random.set_seed(10)
-z_sampling = tf.random.normal(shape=(100, args['latent_dim']))
-pi = np.zeros((len(z_sampling), num_classes))
-pi[:, 1] = 1 # automobile
-pi = tf.cast(pi, tf.float32)
-xhat = model.decode(z, pi, training=False)
-
-fig, axes = plt.subplots(10, 10, figsize=(15, 15))
-for i in range(100):
-    axes.flatten()[i].imshow(xhat[i])
-    axes.flatten()[i].axis('off')
-plt.tight_layout()
-plt.savefig('{}/z_sampling_{}.png'.format(model_path, classdict.get(1)),
-            dpi=200, bbox_inches="tight", pad_inches=0.1)
-plt.show()
-plt.close()
-#%%
-'''inception score'''
-# assumes images have any shape and pixels in [0,255]
-def calculate_inception_score(images, n_split=50, eps=1E-16):
-    # load inception v3 model
-    inception = K.applications.InceptionV3(include_top=True)
-    # enumerate splits of images/predictions
-    scores = list()
-    n_part = int(np.floor(images.shape[0] / n_split))
-    for i in tqdm.tqdm(range(n_split)):
-        # retrieve images
-        ix_start, ix_end = i * n_part, (i+1) * n_part
-        subset = images[ix_start:ix_end]
-        # convert from uint8 to float32
-        subset = subset.astype('float32')
-        # scale images to the required size
-        subset = tf.image.resize(subset, (299, 299), 'nearest')
-        # pre-process images, scale to [-1,1]
-        subset = 2. * subset - 1.
-        # subset = K.applications.inception_v3.preprocess_input(subset)
-        # predict p(y|x)
-        p_yx = inception.predict(subset)
-        # calculate p(y)
-        p_y = tf.expand_dims(p_yx.mean(axis=0), 0)
-        # calculate KL divergence using log probabilities
-        kl_d = p_yx * (np.log(p_yx + eps) - np.log(p_y + eps))
-        # sum over classes
-        sum_kl_d = kl_d.sum(axis=1)
-        # average over images
-        avg_kl_d = np.mean(sum_kl_d)
-        # undo the log
-        is_score = np.exp(avg_kl_d)
-        # store
-        scores.append(is_score)
-    # average across images
-    is_avg, is_std = np.mean(scores), np.std(scores)
-    return is_avg, is_std
-#%%
-# 10,000 generated images from sampled latent variables
-np.random.seed(1)
-generated_images = []
-for i in tqdm.tqdm(range(num_classes)):
-    for _ in range(10):
-        latents = np.random.normal(size=(100, args['latent_dim']))
-        y_ = np.zeros((100, num_classes))
-        y_[:, i] = 1.
-        images = model.decode(latents, y_, training=False)
-        generated_images.extend(images)
-generated_images = np.array(generated_images)
-np.random.shuffle(generated_images)
-#%%
-# calculate inception score
-is_avg, is_std = calculate_inception_score(generated_images)
-print('inception score | mean: {:.2f}, std: {:.2f}'.format(is_avg, is_std))
-#%%
-with open('{}/result.txt'.format(model_path), "w") as file:
-    file.write('TEST classification error: {:.2f}%\n\n'.format(error_count / total_length * 100))
-    file.write('inception score | mean: {:.2f}, std: {:.2f}\n\n'.format(is_avg, is_std))
 #%%
