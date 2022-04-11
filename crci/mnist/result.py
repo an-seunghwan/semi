@@ -111,7 +111,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220408-140712'
+model_path = log_path + '/20220411-163934'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 
 model = VAE(num_classes=num_classes,
