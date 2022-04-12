@@ -8,6 +8,7 @@
 pi/logs/cifar10_4000/etc
 lp/logs/cifar10_4000/etc
 vat/logs/cifar10_4000/etc
+shotvae/logs/cifar10_4000/etc
 proposal
 semi
 full

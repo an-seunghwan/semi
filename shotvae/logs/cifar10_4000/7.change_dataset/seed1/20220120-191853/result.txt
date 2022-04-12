@@ -1,1 +1,0 @@
-inception score | mean: 1.75, std: 0.05
