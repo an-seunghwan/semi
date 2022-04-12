@@ -107,3 +107,7 @@ class WideResNet(K.models.Model):
         h = self.dense(h)
         return h
 #%%
+# model = WideResNet(num_classes=10, width=2)
+# model.build((None, 32, 32, 3))
+# model.summary()
+#%%
