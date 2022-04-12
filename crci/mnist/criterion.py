@@ -50,7 +50,7 @@ def ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, mod
     u_var = tf.math.exp(model.u_prior_logvars)
     avg_u_var = 0.5 * (u_var[tf.newaxis, ...] + u_var[:, tf.newaxis, :])
     inv_avg_u_var = 1. / (avg_u_var + 1e-8)
-    diff_mean = model.u_prior_means[tf.newaxis, ...] + model.u_prior_means[:, tf.newaxis, :]
+    diff_mean = model.u_prior_means[tf.newaxis, ...] - model.u_prior_means[:, tf.newaxis, :]
     D = 1/8 * tf.reduce_sum(diff_mean * inv_avg_u_var * diff_mean, axis=-1)
     D += 0.5 * tf.reduce_sum(tf.math.log(avg_u_var + 1e-8), axis=-1)
     D += - 0.25 * (tf.reduce_sum(model.u_prior_logvars, axis=-1)[tf.newaxis, ...] + tf.reduce_sum(model.u_prior_logvars, axis=-1)[:, tf.newaxis])
