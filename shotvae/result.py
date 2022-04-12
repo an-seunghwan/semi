@@ -162,7 +162,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
 # model_path = r'D:\semi\shotvae\logs\cifar10_4000\7.change_dataset\seed1\20220120-191853'
-model_path = r'D:\semi\shotvae\logs\cifar10_4000\20220317-200202'
+model_path = r'D:\semi\shotvae\logs\cifar10_4000\20220411-190056'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(num_classes=num_classes, depth=args['depth'], width=args['width'], slope=args['slope'],
             latent_dim=args['ldc'], temperature=args['temperature'])

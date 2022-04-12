@@ -173,7 +173,7 @@ def generate_and_save_images(model, image, num_classes):
     buf = io.BytesIO()
     figure = plt.figure(figsize=(10, 2))
     plt.subplot(1, num_classes+1, 1)
-    plt.imshow((image[0] + 1) / 2)
+    plt.imshow(image[0])
     plt.title('original')
     plt.axis('off')
     for i in range(num_classes):
@@ -181,7 +181,7 @@ def generate_and_save_images(model, image, num_classes):
         label[:, i] = 1
         xhat = model.decode_sample(z, label, training=False)
         plt.subplot(1, num_classes+1, i+2)
-        plt.imshow((xhat[0] + 1) / 2)
+        plt.imshow(xhat[0])
         plt.title('{}'.format(i))
         plt.axis('off')
     plt.savefig(buf, format='png')
