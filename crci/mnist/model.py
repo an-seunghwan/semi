@@ -137,7 +137,7 @@ class VAE(K.models.Model):
         if training:
             y = tf.nn.softmax(y / self.temperature)
         else:
-            y = tf.cast(tf.equal(y, tf.math.reduce_max(y, aixs=1, keepdims=True)), y.dtype)
+            y = tf.cast(tf.equal(y, tf.math.reduce_max(y, axis=1, keepdims=True)), y.dtype)
         return y
     
     def _sigmoid(self, x, training=True):

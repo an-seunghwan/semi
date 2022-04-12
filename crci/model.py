@@ -207,9 +207,12 @@ class VAE(K.models.Model):
         U = tf.random.uniform(shape, minval=0, maxval=1)
         return -tf.math.log(-tf.math.log(U + 1e-8) + 1e-8)
 
-    def gumbel_softmax_sample(self, log_prob): 
+    def gumbel_softmax_sample(self, log_prob, training=True): 
         y = log_prob + self.sample_gumbel(tf.shape(log_prob))
-        y = tf.nn.softmax(y / self.temperature)
+        if training:
+            y = tf.nn.softmax(y / self.temperature)
+        else:
+            y = tf.cast(tf.equal(y, tf.math.reduce_max(y, axis=1, keepdims=True)), y.dtype)
         return y
     
     def _sigmoid(self, x, training=True):
