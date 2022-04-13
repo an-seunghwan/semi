@@ -387,7 +387,7 @@ with open('{}/result.txt'.format(model_path), "w") as file:
     file.write('TEST classification error: {:.2f}%\n\n'.format(error_count / total_length * 100))
     file.write('inception score | mean: {:.2f}, std: {:.2f}\n\n'.format(is_avg, is_std))
 #%%
-'''interpolation: different class (comparison)'''
+'''interpolation (comparison)'''
 data_dir = r'D:\cifar10_{}'.format(5000)
 idx = np.arange(100)
 x = np.array([np.load(data_dir + '/x_{}.npy'.format(i)) for i in idx])
