@@ -117,7 +117,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220413-102347'
+model_path = log_path + '/20220413-102330'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 
 model = VAE(
@@ -274,52 +274,55 @@ is_avg, is_std = calculate_inception_score(generated_images)
 with open('{}/result.txt'.format(model_path), "w") as file:
     file.write('TEST classification error: {:.2f}%\n\n'.format(error_count / total_length * 100))
     file.write('inception score | mean: {:.2f}, std: {:.2f}\n\n'.format(is_avg, is_std))
+    file.write('KL-divergence of u latent: {:.2f}\n\n'.format(u_kl.numpy()))
 #%%
-# '''interpolation (comparison)'''
-# data_dir = r'D:\cifar10_{}'.format(5000)
-# idx = np.arange(100)
-# x = np.array([np.load(data_dir + '/x_{}.npy'.format(i)) for i in idx])
-# y = np.array([np.load(data_dir + '/y_{}.npy'.format(i)) for i in idx])
-# x = tf.cast(x, tf.float32) / 255.
+'''interpolation (comparison)'''
+data_dir = r'D:\cifar10_{}'.format(5000)
+idx = np.arange(100)
+x = np.array([np.load(data_dir + '/x_{}.npy'.format(i)) for i in idx])
+y = np.array([np.load(data_dir + '/y_{}.npy'.format(i)) for i in idx])
+x = tf.cast(x, tf.float32) / 255.
 
-# _, _, z, _, _, u = model.encode(x, training=False)
-# #%%
-# fig, axes = plt.subplots(2, 10, figsize=(25, 5))
-# for idx, (class_idx, i, j) in enumerate([[1, 0, 5], [7, 0, 2]]):
-#     interpolation_idx = np.where(np.argmax(y, axis=-1) == class_idx)[0]
+_, _, z, _, _, u = model.encode(x, training=False)
+#%%
+fig, axes = plt.subplots(2, 10, figsize=(25, 5))
+for idx, (class_idx, i, j) in enumerate([[1, 0, 5], [7, 0, 2]]):
+    interpolation_idx = np.where(np.argmax(y, axis=-1) == class_idx)[0]
 
-#     inter = np.linspace(z[interpolation_idx[i]], z[interpolation_idx[j]], 8)
-#     inter_recon = model.decode(inter, training=False)
+    z_inter = np.linspace(z[interpolation_idx[i]], z[interpolation_idx[j]], 8)
+    u_inter = np.linspace(u[interpolation_idx[i]], u[interpolation_idx[j]], 8)
+    inter_recon = model.decoder(tf.concat([z_inter, u_inter], axis=-1), training=False)
 
-#     axes.flatten()[idx*10 + 0].imshow((x[interpolation_idx[i]] + 1.) / 2.)
-#     axes.flatten()[idx*10 + 0].axis('off')
-#     for i in range(8):
-#         axes.flatten()[idx*10 + i+1].imshow(inter_recon[i].numpy())
-#         axes.flatten()[idx*10 + i+1].axis('off')
-#     axes.flatten()[idx*10 + 9].imshow((x[interpolation_idx[j]] + 1.) / 2.)
-#     axes.flatten()[idx*10 + 9].axis('off')
-# plt.savefig('{}/partedvae_interpolation1.png'.format(model_path),
-#             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
-# plt.close()
-# #%%
-# fig, axes = plt.subplots(2, 10, figsize=(25, 5))
-# for idx, (class_idx1, class_idx2, i, j) in enumerate([[1, 0, 6, 4], [7, 8, 1, 2]]):
-#     interpolation_idx1 = np.where(np.argmax(y, axis=-1) == class_idx1)[0]
-#     interpolation_idx2 = np.where(np.argmax(y, axis=-1) == class_idx2)[0]
+    axes.flatten()[idx*10 + 0].imshow(x[interpolation_idx[i]])
+    axes.flatten()[idx*10 + 0].axis('off')
+    for i in range(8):
+        axes.flatten()[idx*10 + i+1].imshow(inter_recon[i].numpy())
+        axes.flatten()[idx*10 + i+1].axis('off')
+    axes.flatten()[idx*10 + 9].imshow(x[interpolation_idx[j]])
+    axes.flatten()[idx*10 + 9].axis('off')
+plt.savefig('{}/partedvae_interpolation1.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
+fig, axes = plt.subplots(2, 10, figsize=(25, 5))
+for idx, (class_idx1, class_idx2, i, j) in enumerate([[1, 0, 6, 4], [7, 8, 1, 2]]):
+    interpolation_idx1 = np.where(np.argmax(y, axis=-1) == class_idx1)[0]
+    interpolation_idx2 = np.where(np.argmax(y, axis=-1) == class_idx2)[0]
 
-#     inter = np.linspace(z[interpolation_idx1[i]], z[interpolation_idx2[j]], 8)
-#     inter_recon = model.decode(inter, training=False)
+    z_inter = np.linspace(z[interpolation_idx1[i]], z[interpolation_idx2[j]], 8)
+    u_inter = np.linspace(u[interpolation_idx1[i]], u[interpolation_idx2[j]], 8)
+    inter_recon = model.decoder(tf.concat([z_inter, u_inter], axis=-1), training=False)
 
-#     axes.flatten()[idx*10 + 0].imshow((x[interpolation_idx1[i]] + 1.) / 2.)
-#     axes.flatten()[idx*10 + 0].axis('off')
-#     for i in range(8):
-#         axes.flatten()[idx*10 + i+1].imshow(inter_recon[i].numpy())
-#         axes.flatten()[idx*10 + i+1].axis('off')
-#     axes.flatten()[idx*10 + 9].imshow((x[interpolation_idx2[j]] + 1.) / 2.)
-#     axes.flatten()[idx*10 + 9].axis('off')
-# plt.savefig('{}/partedvae_interpolation2.png'.format(model_path),
-#             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
-# plt.close()
-# #%%
+    axes.flatten()[idx*10 + 0].imshow(x[interpolation_idx1[i]])
+    axes.flatten()[idx*10 + 0].axis('off')
+    for i in range(8):
+        axes.flatten()[idx*10 + i+1].imshow(inter_recon[i].numpy())
+        axes.flatten()[idx*10 + i+1].axis('off')
+    axes.flatten()[idx*10 + 9].imshow(x[interpolation_idx2[j]])
+    axes.flatten()[idx*10 + 9].axis('off')
+plt.savefig('{}/partedvae_interpolation2.png'.format(model_path),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
