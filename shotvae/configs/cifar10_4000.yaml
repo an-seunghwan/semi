@@ -1,5 +1,5 @@
 seed: 2
 dmi: 2.3
-width: 4
+width: 3
 # epochs: 550
 # adjust_lr: [400, 500]
