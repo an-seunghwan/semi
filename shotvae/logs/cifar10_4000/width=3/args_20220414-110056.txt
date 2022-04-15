@@ -1,7 +1,7 @@
 dataset : cifar10
 seed : 2
 batch_size : 128
-epochs : 550
+epochs : 600
 start_epoch : 0
 reconstruct_freq : 50
 labeled_examples : 4000
@@ -27,7 +27,7 @@ pwm : 1
 apw : 200
 lr : 0.1
 beta1 : 0.9
-adjust_lr : [400, 500]
+adjust_lr : [400, 500, 550]
 wd : 0.0005
 epsilon : 0.1
 om : False
