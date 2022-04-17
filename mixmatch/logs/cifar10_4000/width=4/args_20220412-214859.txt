@@ -17,4 +17,4 @@ depth : 28
 width : 4
 slope : 0.1
 config_path : configs/cifar10_4000.yaml
-beta : <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=0.18960132>
+beta : <tf.Variable 'Variable:0' shape=() dtype=float32, numpy=0.9639944>
