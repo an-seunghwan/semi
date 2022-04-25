@@ -126,6 +126,32 @@ def generate_and_save_images2(model, image, step, save_dir):
     plt.savefig('{}/image_at_epoch_{}.png'.format(save_dir, step))
     # plt.show()
     plt.close()
+    
+def visualize_prior_distribution(model, num_classes, epoch, save_dir):
+    '''prior distribution (learned)'''
+    np.random.seed(1)
+    samples = []
+    color = []
+    for i in range(model.u_prior_means.shape[0]):
+        samples.extend(np.random.multivariate_normal(mean=model.u_prior_means[i, :], 
+                                                    cov=np.array([[tf.math.exp(model.u_prior_logvars[i, 0]), 0], 
+                                                                [0, tf.math.exp(model.u_prior_logvars[i, 1])]]), size=1000))
+        color.extend([i] * 1000)
+    samples = np.array(samples)
+
+    plt.figure(figsize=(8, 8))
+    plt.tick_params(labelsize=25)   
+    plt.scatter(samples[:, 0], samples[:, 1], s=9, c=color, cmap=plt.cm.Reds, alpha=1)
+    plt.locator_params(axis='x', nbins=5)
+    plt.locator_params(axis='y', nbins=5)
+    for i in range(num_classes):
+        plt.text(model.u_prior_means[i, 0], model.u_prior_means[i, 1], "{}".format(i), fontsize=35)
+        if i in [6, 7, 8, 9]:
+            plt.text(model.u_prior_means[i, 0], model.u_prior_means[i, 1], "{}".format(i), fontsize=35, color='white')
+    plt.savefig('{}/prior_samples_{}.png'.format(save_dir, epoch),
+                bbox_inches="tight", pad_inches=0.1)
+    # plt.show()
+    plt.close()
 #%%
 def main():
     '''argparse to dictionary'''
@@ -395,6 +421,8 @@ def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_
             'Test Accuracy': f'{test_accuracy_print:.3%}',
         })
     
+    visualize_prior_distribution(model, num_classes, epoch, f'logs/{args["dataset"]}_{args["labeled_examples"]}/{current_time}')
+    
     if epoch % args['reconstruct_freq'] == 0:
         sample_recon = generate_and_save_images1(model, xhat)
         generate_and_save_images2(model, xhat, epoch, f'logs/{args["dataset"]}_{args["labeled_examples"]}/{current_time}')
@@ -417,7 +445,7 @@ def validate(dataset, model, epoch, iteration, batch_num, BC_valid_mask, args, n
         z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat = model(image, training=False)
         prob = tf.nn.softmax(c_logit, axis=-1)
         recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss = ELBO_criterion(
-            xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args
+            xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, num_classes, args
         )
         loss = recon_loss + z_loss + c_loss + c_entropy_loss + u_loss + prior_intersection_loss
         
