@@ -335,9 +335,35 @@ def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_
         with tf.GradientTape(persistent=True) as tape:    
             z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat = model(image)
             
-            recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss = ELBO_criterion(
-                xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args
+            recon_loss, z_kl, agg_c_kl, c_entropy, u_kl, BC = ELBO_criterion(
+                xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, num_classes, args
             )
+            
+            '''KL-divergence of z'''
+            cap_min, cap_max, num_iters, gamma = args['z_capacity']
+            num_steps = epoch * iteration + batch_num
+            cap_current = (cap_max - cap_min) * (num_steps / num_iters) + cap_min
+            cap_current = tf.math.minimum(cap_current, cap_max)
+            z_loss = gamma * tf.math.abs(z_kl - cap_current)
+            
+            '''KL-divergence of c (marginal)'''
+            c_loss = args['gamma_c'] * agg_c_kl
+            
+            '''entropy of c'''
+            c_entropy_loss = args['gamma_h'] * c_entropy
+            
+            '''mixture KL-divergence of u'''
+            cap_min, cap_max, num_iters, gamma = args['u_capacity']
+            num_steps = epoch * iteration + batch_num
+            cap_current = (cap_max - cap_min) * (num_steps / num_iters) + cap_min
+            cap_current = tf.math.minimum(cap_current, cap_max)
+            u_loss = gamma * tf.math.abs(u_kl - cap_current)
+            
+            '''Bhattacharyya coefficient'''
+            valid_BC = BC * BC_valid_mask
+            valid_BC = tf.clip_by_value(valid_BC - args['bc_threshold'], 0., 1.)
+            # valid_BC = tf.math.maximum(BC - args['bc_threshold'], 0) * BC_valid_mask
+            prior_intersection_loss = args['gamma_bc'] * tf.reduce_sum(valid_BC)
             
             loss = recon_loss + z_loss + c_loss + c_entropy_loss + u_loss + prior_intersection_loss
             
