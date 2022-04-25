@@ -2,8 +2,8 @@
 import argparse
 import os
 
-# os.chdir(r'D:\semi\crci') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/crci') # main directory (repository)
+# os.chdir(r'D:\semi\partedvae') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/partedvae') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -75,7 +75,6 @@ def get_args():
                         metavar='LR', help='initial learning rate')
     parser.add_argument('--classifier_learning_rate', default=5e-4, type=float,
                         metavar='LR', help='initial learning rate for classifier')
-    # parser.add_argument('--weight_decay', default=5e-4, type=float)
     
     parser.add_argument("--z_capacity", default=[0., 7., 100000, 15.], type=arg_as_list,
                         help="controlled capacity") # cap_min, cap_max, num_iters, gamma
@@ -116,12 +115,9 @@ def generate_and_save_images1(model, image):
         plt.imshow(image[i])
         plt.axis('off')
     plt.savefig(buf, format='png')
-    # Closing the figure prevents it from being displayed directly inside the notebook.
     plt.close(figure)
     buf.seek(0)
-    # Convert PNG buffer to TF image
     image = tf.image.decode_png(buf.getvalue(), channels=1)
-    # Add the batch dimension
     image = tf.expand_dims(image, 0)
     return image
 
@@ -161,12 +157,6 @@ def main():
     )
     model.build(input_shape=(None, 32, 32, 3))
     model.summary()
-    
-    # buffer_model = VAE(num_classes=num_classes,
-    #             latent_dim=args['z_dim'], 
-    #             u_dim=args['u_dim'])
-    # buffer_model.build(input_shape=(None, 28, 28, 1))
-    # buffer_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
     optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
@@ -209,11 +199,19 @@ def main():
         )
 
         if epoch % args['reconstruct_freq'] == 0:
-            ce_loss, loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print)
+            ce_loss, loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy, sample_recon = train(
+                datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print
+            )
         else:
-            ce_loss, loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy = train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print)
-        val_loss, val_recon_loss, val_z_loss, val_c_loss, val_c_entropy_loss, val_u_loss, val_prior_intersection_loss, val_accuracy = validate(val_dataset, model, epoch, iteration, iteration, BC_valid_mask, args, num_classes, split='Validation')
-        test_loss, test_recon_loss, test_z_loss, test_c_loss, test_c_entropy_loss, test_u_loss, test_prior_intersection_loss, test_accuracy = validate(test_dataset, model, epoch, iteration, iteration, BC_valid_mask, args, num_classes, split='Test')
+            ce_loss, loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy = train(
+                datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print
+            )
+        val_loss, val_recon_loss, val_z_loss, val_c_loss, val_c_entropy_loss, val_u_loss, val_prior_intersection_loss, val_accuracy = validate(
+            val_dataset, model, epoch, iteration, iteration, BC_valid_mask, args, num_classes, split='Validation'
+        )
+        test_loss, test_recon_loss, test_z_loss, test_c_loss, test_c_entropy_loss, test_u_loss, test_prior_intersection_loss, test_accuracy = validate(
+            test_dataset, model, epoch, iteration, iteration, BC_valid_mask, args, num_classes, split='Test'
+        )
         
         with train_writer.as_default():
             tf.summary.scalar('ce_loss', ce_loss.result(), step=epoch)
@@ -333,10 +331,6 @@ def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_
         
         image = tf.concat([imageL, imageU], axis=0)
         
-        # if args['augment']:
-        #     imageL_aug = augment(imageL)
-        #     imageU_aug = augment(imageU)
-        
         '''1. classifier training (warm-up)'''
         with tf.GradientTape(persistent=True) as tape:    
             prob = model.classify(imageL)
@@ -350,14 +344,40 @@ def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_
         with tf.GradientTape(persistent=True) as tape:    
             z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat = model(image)
             
-            recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss = ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args)
+            recon_loss, z_kl, agg_c_kl, c_entropy, u_kl, BC = ELBO_criterion(
+                xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, num_classes, args
+            )
+            
+            '''KL-divergence of z'''
+            cap_min, cap_max, num_iters, gamma = args['z_capacity']
+            num_steps = epoch * iteration + batch_num
+            cap_current = (cap_max - cap_min) * (num_steps / num_iters) + cap_min
+            cap_current = tf.math.minimum(cap_current, cap_max)
+            z_loss = gamma * tf.math.abs(z_kl - cap_current)
+            
+            '''KL-divergence of c (marginal)'''
+            c_loss = args['gamma_c'] * agg_c_kl
+            
+            '''entropy of c'''
+            c_entropy_loss = args['gamma_h'] * c_entropy
+            
+            '''mixture KL-divergence of u'''
+            cap_min, cap_max, num_iters, gamma = args['u_capacity']
+            num_steps = epoch * iteration + batch_num
+            cap_current = (cap_max - cap_min) * (num_steps / num_iters) + cap_min
+            cap_current = tf.math.minimum(cap_current, cap_max)
+            u_loss = gamma * tf.math.abs(u_kl - cap_current)
+            
+            '''Bhattacharyya coefficient'''
+            valid_BC = BC * BC_valid_mask
+            valid_BC = tf.clip_by_value(valid_BC - args['bc_threshold'], 0., 1.)
+            # valid_BC = tf.math.maximum(BC - args['bc_threshold'], 0) * BC_valid_mask
+            prior_intersection_loss = args['gamma_bc'] * tf.reduce_sum(valid_BC)
             
             loss = recon_loss + z_loss + c_loss + c_entropy_loss + u_loss + prior_intersection_loss
             
         grads = tape.gradient(loss, model.trainable_variables) 
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
-        # '''decoupled weight decay'''
-        # weight_decay_decoupled(model.trainable_variables, buffer_model.trainable_variables, decay_rate=args['weight_decay'] * optimizer.lr)
         
         ce_loss_avg(ce_loss)    
         loss_avg(loss)
@@ -403,7 +423,15 @@ def validate(dataset, model, epoch, iteration, batch_num, BC_valid_mask, args, n
     for image, label in dataset:
         z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat = model(image, training=False)
         prob = tf.nn.softmax(c_logit, axis=-1)
-        recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss = ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args)
+        recon_loss, z_kl, agg_c_kl, c_entropy, u_kl, BC = ELBO_criterion(
+            xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, num_classes, args
+        )
+        z_loss = z_kl
+        c_loss = agg_c_kl
+        c_entropy_loss = c_entropy
+        u_loss = u_kl
+        valid_BC = BC * BC_valid_mask
+        prior_intersection_loss = tf.reduce_sum(valid_BC)
         loss = recon_loss + z_loss + c_loss + c_entropy_loss + u_loss + prior_intersection_loss
         
         loss_avg(loss)

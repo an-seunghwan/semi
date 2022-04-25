@@ -126,6 +126,32 @@ def generate_and_save_images2(model, image, step, save_dir):
     plt.savefig('{}/image_at_epoch_{}.png'.format(save_dir, step))
     # plt.show()
     plt.close()
+    
+def visualize_prior_distribution(model, num_classes, epoch, save_dir):
+    '''prior distribution (learned)'''
+    np.random.seed(1)
+    samples = []
+    color = []
+    for i in range(model.u_prior_means.shape[0]):
+        samples.extend(np.random.multivariate_normal(mean=model.u_prior_means[i, :], 
+                                                    cov=np.array([[tf.math.exp(model.u_prior_logvars[i, 0]), 0], 
+                                                                [0, tf.math.exp(model.u_prior_logvars[i, 1])]]), size=1000))
+        color.extend([i] * 1000)
+    samples = np.array(samples)
+
+    plt.figure(figsize=(8, 8))
+    plt.tick_params(labelsize=25)   
+    plt.scatter(samples[:, 0], samples[:, 1], s=9, c=color, cmap=plt.cm.Reds, alpha=1)
+    plt.locator_params(axis='x', nbins=5)
+    plt.locator_params(axis='y', nbins=5)
+    for i in range(num_classes):
+        plt.text(model.u_prior_means[i, 0], model.u_prior_means[i, 1], "{}".format(i), fontsize=35)
+        if i in [6, 7, 8, 9]:
+            plt.text(model.u_prior_means[i, 0], model.u_prior_means[i, 1], "{}".format(i), fontsize=35, color='white')
+    plt.savefig('{}/prior_samples_{}.png'.format(save_dir, epoch),
+                bbox_inches="tight", pad_inches=0.1)
+    # plt.show()
+    plt.close()
 #%%
 def main():
     '''argparse to dictionary'''
@@ -335,16 +361,40 @@ def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_
         with tf.GradientTape(persistent=True) as tape:    
             z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat = model(image)
             
-            recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss = ELBO_criterion(
-                xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args
+            recon_loss, z_kl, agg_c_kl, c_entropy, u_kl, BC = ELBO_criterion(
+                xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, num_classes, args
             )
+            
+            '''KL-divergence of z'''
+            cap_min, cap_max, num_iters, gamma = args['z_capacity']
+            num_steps = epoch * iteration + batch_num
+            cap_current = (cap_max - cap_min) * (num_steps / num_iters) + cap_min
+            cap_current = tf.math.minimum(cap_current, cap_max)
+            z_loss = gamma * tf.math.abs(z_kl - cap_current)
+            
+            '''KL-divergence of c (marginal)'''
+            c_loss = args['gamma_c'] * agg_c_kl
+            
+            '''entropy of c'''
+            c_entropy_loss = args['gamma_h'] * c_entropy
+            
+            '''mixture KL-divergence of u'''
+            cap_min, cap_max, num_iters, gamma = args['u_capacity']
+            num_steps = epoch * iteration + batch_num
+            cap_current = (cap_max - cap_min) * (num_steps / num_iters) + cap_min
+            cap_current = tf.math.minimum(cap_current, cap_max)
+            u_loss = gamma * tf.math.abs(u_kl - cap_current)
+            
+            '''Bhattacharyya coefficient'''
+            valid_BC = BC * BC_valid_mask
+            valid_BC = tf.clip_by_value(valid_BC - args['bc_threshold'], 0., 1.)
+            # valid_BC = tf.math.maximum(BC - args['bc_threshold'], 0) * BC_valid_mask
+            prior_intersection_loss = args['gamma_bc'] * tf.reduce_sum(valid_BC)
             
             loss = recon_loss + z_loss + c_loss + c_entropy_loss + u_loss + prior_intersection_loss
             
         grads = tape.gradient(loss, model.trainable_variables) 
         optimizer.apply_gradients(zip(grads, model.trainable_variables))
-        # '''decoupled weight decay'''
-        # weight_decay_decoupled(model.trainable_variables, buffer_model.trainable_variables, decay_rate=args['weight_decay'] * optimizer.lr)
         
         ce_loss_avg(ce_loss)    
         loss_avg(loss)
@@ -370,6 +420,7 @@ def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_
         })
     
     if epoch % args['reconstruct_freq'] == 0:
+        visualize_prior_distribution(model, num_classes, epoch, f'logs/{args["dataset"]}_{args["labeled_examples"]}/{current_time}')
         sample_recon = generate_and_save_images1(model, xhat)
         generate_and_save_images2(model, xhat, epoch, f'logs/{args["dataset"]}_{args["labeled_examples"]}/{current_time}')
         return ce_loss_avg, loss_avg, recon_loss_avg, z_loss_avg, c_loss_avg, c_entropy_loss_avg, u_loss_avg, prior_intersection_loss_avg, accuracy, sample_recon
@@ -390,9 +441,16 @@ def validate(dataset, model, epoch, iteration, batch_num, BC_valid_mask, args, n
     for image, label in dataset:
         z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat = model(image, training=False)
         prob = tf.nn.softmax(c_logit, axis=-1)
-        recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss = ELBO_criterion(
-            xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args
+        recon_loss, z_kl, agg_c_kl, c_entropy, u_kl, BC = ELBO_criterion(
+            xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, num_classes, args
         )
+        z_loss = z_kl
+        c_loss = agg_c_kl
+        c_entropy_loss = c_entropy
+        u_loss = u_kl
+        valid_BC = BC * BC_valid_mask
+        prior_intersection_loss = tf.reduce_sum(valid_BC)
+        
         loss = recon_loss + z_loss + c_loss + c_entropy_loss + u_loss + prior_intersection_loss
         
         loss_avg(loss)

@@ -57,13 +57,10 @@ class ResidualBlock(K.layers.Layer):
         units = []
         for i in range(n_units):
             units.append(unit(filter_in if i == 0 else filter_out, filter_out, strides if i == 0 else 1))
-        # return units
         return K.models.Sequential(units)
     
     @tf.function
     def call(self, x, training=True):
-        # for unit in self.units:
-        #     x = unit(x, training=training)
         x = self.units(x, training=training)
         return x
 #%%
@@ -230,13 +227,15 @@ class VAE(K.models.Model):
     def encode(self, x, training=True):
         hidden = self.feature_extractor(x, training=training)
         
+        # class independent
         z_mean = self.z_mean_layer(hidden)
         z_logvar = self.z_logvar_layer(hidden)
         epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.latent_dim))
         z = z_mean + tf.math.exp(z_logvar / 2.) * epsilon 
         
+        # class related
         c_logit = self.h_to_c_logit(hidden)
-        onehot_c = self.gumbel_softmax_sample(c_logit)
+        onehot_c = self.gumbel_softmax_sample(c_logit, training=training)
         a_logit = self.c_to_a_logit(onehot_c)
         a = self._sigmoid(a_logit)
         hidden_a = hidden * a
@@ -258,7 +257,7 @@ class VAE(K.models.Model):
         
         # class related
         c_logit = self.h_to_c_logit(hidden)
-        onehot_c = self.gumbel_softmax_sample(c_logit)
+        onehot_c = self.gumbel_softmax_sample(c_logit, training=training)
         a_logit = self.c_to_a_logit(onehot_c)
         a = self._sigmoid(a_logit)
         hidden_a = hidden * a

@@ -12,6 +12,7 @@ mixmatch/logs/cifar10_4000/etc
 shotvae/logs/cifar10_4000/etc
 partedvae/logs/cifar10_4000/etc
 partedvae/logs/mnist_100/etc
+partedvae/mnist/etc
 proposal
 semi
 full
