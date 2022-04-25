@@ -276,20 +276,22 @@ def main():
         test_prior_intersection_loss.reset_states()
         test_accuracy.reset_states()
         
-    '''model & configurations save'''        
-    # weight name for saving
-    for i, w in enumerate(model.variables):
-        split_name = w.name.split('/')
-        if len(split_name) == 1:
-            new_name = split_name[0] + '_' + str(i)    
-        else:
-            new_name = split_name[0] + '_' + str(i) + '/' + split_name[1] + '_' + str(i)
-        model.variables[i]._handle_name = new_name
+    # '''model & configurations save'''        
+    # # weight name for saving
+    # for i, w in enumerate(model.variables):
+    #     w = model.variables[-1]
+    #     split_name = w.name.split('/')
+    #     if len(split_name) == 1:
+    #         new_name = split_name[0] + '_' + str(i)    
+    #     else:
+    #         new_name = split_name[0] + '_' + str(i) + '/' + split_name[1] + '_' + str(i)
+    #     model.variables[i]._handle_name = new_name
     
     model_path = f'{log_path}/{current_time}'
     if not os.path.exists(model_path):
         os.makedirs(model_path)
-    model.save_weights(model_path + '/model_{}.h5'.format(current_time), save_format="h5")
+    model.save(model_path + '/model')
+    # model.save_weights(model_path + '/model_{}.h5'.format(current_time), save_format="h5")
 
     with open(model_path + '/args_{}.txt'.format(current_time), "w") as f:
         for key, value, in args.items():
