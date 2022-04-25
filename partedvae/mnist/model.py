@@ -107,10 +107,12 @@ class VAE(K.models.Model):
         
         self.u_prior_means = self.add_weight(shape=(num_classes, u_dim),
                                             initializer='random_normal',
-                                            trainable=True)
+                                            trainable=True,
+                                            name='u_prior_means')
         self.u_prior_logvars_before_tanh = self.add_weight(shape=(num_classes, u_dim),
                                                             initializer='random_normal',
-                                                            trainable=True)
+                                                            trainable=True,
+                                                            name='u_prior_logvars_before_tanh')
     
     @property
     def u_prior_logvars(self):

@@ -447,9 +447,6 @@ def validate(dataset, model, epoch, iteration, batch_num, BC_valid_mask, args, n
     
     return loss_avg, recon_loss_avg, z_loss_avg, c_loss_avg, c_entropy_loss_avg, u_loss_avg, prior_intersection_loss_avg, accuracy
 #%%
-# def weight_schedule(epoch, epochs, weight_max):
-#     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
-#%%
 if __name__ == '__main__':
     main()
 #%%
