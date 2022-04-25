@@ -19,8 +19,6 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
 from model import VAE
-from criterion import ELBO_criterion
-from utils import CustomReduceLRoP
 #%%
 import ast
 def arg_as_list(s):
@@ -110,7 +108,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220425-163138'
+model_path = log_path + '/20220425-200535'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 
 model = VAE(num_classes=num_classes,
@@ -146,7 +144,16 @@ D += - 0.25 * (tf.reduce_sum(model.u_prior_logvars, axis=-1)[tf.newaxis, ...] + 
 BC = tf.math.exp(- D)
 valid_BC = BC * BC_valid_mask
 valid_BC = tf.clip_by_value(valid_BC - args['bc_threshold'], 0., 1.)
-tf.reduce_sum(valid_BC)
+BC_loss = tf.reduce_sum(valid_BC)
+print('Bhattacharyya coefficient: {:.3f}%'.format(BC_loss))
+#%%
+with open("{}/result.txt".format(model_path), "w") as file:
+    file.write(
+        "TEST classification error: {:.2f}%\n\n".format(
+            error_count / total_length * 100
+        )
+    )
+    file.write('Bhattacharyya coefficient: {:.3f}'.format(BC_loss))
 #%%
 z_means = []
 z_logvars = []
@@ -218,30 +225,30 @@ plt.savefig('./{}/prior_samples.png'.format(model_path),
 plt.show()
 plt.close()
 #%%
-'''test dataset mean and logvar of posterior distribution'''
-test_posterior_mean = []
-test_posterior_var = []
-for i in range(num_classes):
-    test_posterior_mean.append(umat[tf.argmax(labels, axis=1) == i, :].mean(axis=0))
-    test_posterior_var.append(umat[tf.argmax(labels, axis=1) == i, :].var(axis=0))
-test_posterior_mean = np.array(test_posterior_mean)
-test_posterior_var = np.array(test_posterior_var)
-#%%
-plt.plot(tf.math.abs(test_posterior_mean[:, 0] - model.u_prior_means[:, 0]), label="u dim 1 mean")
-plt.plot(tf.math.abs(test_posterior_mean[:, 1] - model.u_prior_means[:, 1]), label="u dim 2 mean")
-plt.legend()
-plt.savefig('./{}/u_prior_posterior_mean_gap.png'.format(model_path),
-                dpi=200, bbox_inches="tight", pad_inches=0.1)
-plt.show()
-plt.close()
-#%%
-plt.plot(tf.math.abs(test_posterior_var[:, 0] - tf.math.exp(model.u_prior_logvars)[:, 0]), label="u dim 1 var")
-plt.plot(tf.math.abs(test_posterior_var[:, 1] - tf.math.exp(model.u_prior_logvars)[:, 1]), label="u dim 2 var")
-plt.legend()
-plt.savefig('./{}/u_prior_posterior_var_gap.png'.format(model_path),
-                dpi=200, bbox_inches="tight", pad_inches=0.1)
-plt.show()
-plt.close()
+# '''test dataset mean and logvar of posterior distribution'''
+# test_posterior_mean = []
+# test_posterior_var = []
+# for i in range(num_classes):
+#     test_posterior_mean.append(umat[tf.argmax(labels, axis=1) == i, :].mean(axis=0))
+#     test_posterior_var.append(umat[tf.argmax(labels, axis=1) == i, :].var(axis=0))
+# test_posterior_mean = np.array(test_posterior_mean)
+# test_posterior_var = np.array(test_posterior_var)
+# #%%
+# plt.plot(tf.math.abs(test_posterior_mean[:, 0] - model.u_prior_means[:, 0]), label="u dim 1 mean")
+# plt.plot(tf.math.abs(test_posterior_mean[:, 1] - model.u_prior_means[:, 1]), label="u dim 2 mean")
+# plt.legend()
+# plt.savefig('./{}/u_prior_posterior_mean_gap.png'.format(model_path),
+#                 dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+# plt.close()
+# #%%
+# plt.plot(tf.math.abs(test_posterior_var[:, 0] - tf.math.exp(model.u_prior_logvars)[:, 0]), label="u dim 1 var")
+# plt.plot(tf.math.abs(test_posterior_var[:, 1] - tf.math.exp(model.u_prior_logvars)[:, 1]), label="u dim 2 var")
+# plt.legend()
+# plt.savefig('./{}/u_prior_posterior_var_gap.png'.format(model_path),
+#                 dpi=200, bbox_inches="tight", pad_inches=0.1)
+# plt.show()
+# plt.close()
 #%%
 a = np.arange(-1, 1.1, 0.5)
 b = np.arange(-1, 1.1, 0.5)
@@ -285,6 +292,61 @@ for i in range(len(grid)):
     plt.tight_layout() 
 plt.savefig('./{}/recon_z_priormean_u_grid.png'.format(model_path, k),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
+'''interpolation on latent space'''
+z_inter = (model.u_prior_means.numpy()[0], model.u_prior_means.numpy()[1])    
+np.random.seed(1)
+samples = []
+color = []
+for i in range(num_classes):
+    samples.extend(np.random.multivariate_normal(mean=model.u_prior_means.numpy()[i, :], 
+                                                cov=np.array([[model.u_prior_logvars.numpy()[i, 0], 0], 
+                                                    [0, model.u_prior_logvars.numpy()[i, 0]]]), size=1000))
+    color.extend([i] * 1000)
+samples = np.array(samples)
+plt.figure(figsize=(10, 10))
+plt.tick_params(labelsize=30)    
+plt.locator_params(axis='y', nbins=8)
+plt.scatter(zmat[:, 0], zmat[:, 1], c=tf.argmax(labels, axis=1).numpy(), s=10, cmap=plt.cm.Reds, alpha=1)
+plt.locator_params(axis='x', nbins=5)
+plt.locator_params(axis='y', nbins=5)
+plt.scatter(z_inter[0][0], z_inter[0][1], color='blue', s=100)
+plt.annotate('A', (z_inter[0][0], z_inter[0][1]), fontsize=30)
+plt.scatter(z_inter[1][0], z_inter[1][1], color='blue', s=100)
+plt.annotate('B', (z_inter[1][0], z_inter[1][1]), fontsize=30)
+plt.plot((z_inter[0][0], z_inter[1][0]), (z_inter[0][1], z_inter[1][1]), color='black', linewidth=2, linestyle='--')
+plt.xlabel("$z_0$", fontsize=30)
+plt.ylabel("$z_1$", fontsize=30)
+plt.savefig('./{}/interpolation_path.png'.format(model_path), 
+            dpi=100, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
+'''interpolation'''
+inter = np.linspace(z_inter[0], z_inter[1], 10)
+inter_recon = model.decoder(tf.concat([np.zeros((10, args['z_dim'])), inter], axis=-1))
+figure = plt.figure(figsize=(10, 2))
+for i in range(10):
+    plt.subplot(1, 10+1, i+1)
+    plt.imshow(inter_recon[i].numpy().reshape(28, 28), cmap='gray_r')
+    plt.axis('off')
+plt.savefig('./{}/interpolation_path_recon.png'.format(model_path), 
+            dpi=100, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+#%%
+'''path: interpolation path and reconstruction'''
+img = [Image.open('./{}/interpolation_path.png'.format(model_path)),
+        Image.open('./{}/interpolation_path_recon.png'.format(model_path))]
+f, (a0, a1) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [2, 0.25]})
+a0.imshow(img[0])    
+a0.axis('off')
+a1.imshow(img[1])    
+a1.axis('off')
+plt.tight_layout() 
+plt.savefig('./{}/interpolation_path_and_recon.png'.format(model_path),
+            dpi=100, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
 #%%
