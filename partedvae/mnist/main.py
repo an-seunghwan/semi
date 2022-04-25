@@ -190,11 +190,19 @@ def main():
         )
 
         if epoch % args['reconstruct_freq'] == 0:
-            ce_loss, loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print)
+            ce_loss, loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy, sample_recon = train(
+                datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print
+            )
         else:
-            ce_loss, loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy = train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print)
-        val_loss, val_recon_loss, val_z_loss, val_c_loss, val_c_entropy_loss, val_u_loss, val_prior_intersection_loss, val_accuracy = validate(val_dataset, model, epoch, iteration, iteration, BC_valid_mask, args, num_classes, split='Validation')
-        test_loss, test_recon_loss, test_z_loss, test_c_loss, test_c_entropy_loss, test_u_loss, test_prior_intersection_loss, test_accuracy = validate(test_dataset, model, epoch, iteration, iteration, BC_valid_mask, args, num_classes, split='Test')
+            ce_loss, loss, recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss, accuracy = train(
+                datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_valid_mask, args, num_classes, iteration, test_accuracy_print
+            )
+        val_loss, val_recon_loss, val_z_loss, val_c_loss, val_c_entropy_loss, val_u_loss, val_prior_intersection_loss, val_accuracy = validate(
+            val_dataset, model, epoch, iteration, iteration, BC_valid_mask, args, num_classes, split='Validation'
+        )
+        test_loss, test_recon_loss, test_z_loss, test_c_loss, test_c_entropy_loss, test_u_loss, test_prior_intersection_loss, test_accuracy = validate(
+            test_dataset, model, epoch, iteration, iteration, BC_valid_mask, args, num_classes, split='Test'
+        )
         
         with train_writer.as_default():
             tf.summary.scalar('ce_loss', ce_loss.result(), step=epoch)
@@ -327,7 +335,9 @@ def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_
         with tf.GradientTape(persistent=True) as tape:    
             z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat = model(image)
             
-            recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss = ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args)
+            recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss = ELBO_criterion(
+                xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args
+            )
             
             loss = recon_loss + z_loss + c_loss + c_entropy_loss + u_loss + prior_intersection_loss
             
@@ -380,7 +390,9 @@ def validate(dataset, model, epoch, iteration, batch_num, BC_valid_mask, args, n
     for image, label in dataset:
         z_mean, z_logvar, z, c_logit, u_mean, u_logvar, u, xhat = model(image, training=False)
         prob = tf.nn.softmax(c_logit, axis=-1)
-        recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss = ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args)
+        recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss = ELBO_criterion(
+            xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args
+        )
         loss = recon_loss + z_loss + c_loss + c_entropy_loss + u_loss + prior_intersection_loss
         
         loss_avg(loss)

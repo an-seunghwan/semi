@@ -20,7 +20,6 @@ def ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, mod
     z_loss = gamma * tf.math.abs(z_kl - cap_current)
     
     '''KL-divergence of c (marginal)'''
-    # log_qc = tf.math.reduce_logsumexp(c_logit, axis=0) - tf.math.log(tf.cast(tf.shape(image)[0], tf.float32))
     qc_x = tf.nn.softmax(c_logit, axis=-1)
     qc = tf.reduce_mean(qc_x, axis=0)
     agg_c_kl = tf.reduce_sum(qc * (tf.math.log(tf.clip_by_value(qc, 1e-10, 1.)) - tf.math.log(1. / num_classes)))
@@ -55,7 +54,9 @@ def ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, mod
     D += 0.5 * tf.reduce_sum(tf.math.log(avg_u_var + 1e-8), axis=-1)
     D += - 0.25 * (tf.reduce_sum(model.u_prior_logvars, axis=-1)[tf.newaxis, ...] + tf.reduce_sum(model.u_prior_logvars, axis=-1)[:, tf.newaxis])
     BC = tf.math.exp(- D)
-    valid_BC = tf.math.maximum(BC - args['bc_threshold'], 0) * BC_valid_mask
+    valid_BC = BC * BC_valid_mask
+    valid_BC = tf.clip_by_value(valid_BC - args['bc_threshold'], 0., 1.)
+    # valid_BC = tf.math.maximum(BC - args['bc_threshold'], 0) * BC_valid_mask
     prior_intersection_loss = args['gamma_bc'] * tf.reduce_sum(valid_BC)
     
     return recon_loss, z_loss, c_loss, c_entropy_loss, u_loss, prior_intersection_loss
