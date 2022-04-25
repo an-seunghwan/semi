@@ -2,8 +2,8 @@
 import argparse
 import os
 
-# os.chdir(r'D:\semi\crci') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/crci') # main directory (repository)
+os.chdir(r'D:\semi\partedvae') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/partedvae') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -69,7 +69,6 @@ def get_args():
                         metavar='LR', help='initial learning rate')
     parser.add_argument('--classifier_learning_rate', default=5e-4, type=float,
                         metavar='LR', help='initial learning rate for classifier')
-    # parser.add_argument('--weight_decay', default=5e-4, type=float)
     
     parser.add_argument("--z_capacity", default=[0., 7., 100000, 15.], type=arg_as_list,
                         help="controlled capacity") # cap_min, cap_max, num_iters, gamma
@@ -110,12 +109,9 @@ def generate_and_save_images1(model, image):
         plt.imshow(image[i])
         plt.axis('off')
     plt.savefig(buf, format='png')
-    # Closing the figure prevents it from being displayed directly inside the notebook.
     plt.close(figure)
     buf.seek(0)
-    # Convert PNG buffer to TF image
     image = tf.image.decode_png(buf.getvalue(), channels=1)
-    # Add the batch dimension
     image = tf.expand_dims(image, 0)
     return image
 
@@ -152,12 +148,6 @@ def main():
                 u_dim=args['u_dim'])
     model.build(input_shape=(None, 28, 28, 1))
     model.summary()
-    
-    # buffer_model = VAE(num_classes=num_classes,
-    #             latent_dim=args['z_dim'], 
-    #             u_dim=args['u_dim'])
-    # buffer_model.build(input_shape=(None, 28, 28, 1))
-    # buffer_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
     optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
@@ -323,10 +313,6 @@ def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_
             imageU, _ = next(iteratorU)
         
         image = tf.concat([imageL, imageU], axis=0)
-        
-        # if args['augment']:
-        #     imageL_aug = augment(imageL)
-        #     imageU_aug = augment(imageU)
         
         '''1. classifier training (warm-up)'''
         with tf.GradientTape(persistent=True) as tape:    

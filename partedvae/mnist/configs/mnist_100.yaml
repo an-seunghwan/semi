@@ -1,4 +1,3 @@
 dataset: 'mnist'
 z_dim: 2
 u_dim: 2
-# bc_threshold: 0.5

@@ -2,7 +2,6 @@
 import tensorflow as tf
 import tensorflow.keras as K
 from tensorflow.keras import layers
-import numpy as np
 #%%
 class FeatureExtractor(K.models.Model):
     def __init__(self, hidden_dim, name="FeatureExtractor", **kwargs):
@@ -12,21 +11,17 @@ class FeatureExtractor(K.models.Model):
         
         self.net = K.Sequential(
             [
-                layers.Conv2D(filters=self.nChannels[0], kernel_size=4, strides=2, padding='same'), 
-                # layers.BatchNormalization(),
+                layers.Conv2D(filters=self.nChannels[0], kernel_size=4, strides=2, padding='same'), # 14x14
                 layers.ReLU(),
                 
-                layers.Conv2D(filters=self.nChannels[1], kernel_size=4, strides=2, padding='same'), 
-                # layers.BatchNormalization(),
+                layers.Conv2D(filters=self.nChannels[1], kernel_size=4, strides=2, padding='same'), # 7x7
                 layers.ReLU(),
                 
-                layers.Conv2D(filters=self.nChannels[2], kernel_size=4, strides=2, padding='same'), 
-                # layers.BatchNormalization(),
+                layers.Conv2D(filters=self.nChannels[2], kernel_size=4, strides=2, padding='same'), # 4x4
                 layers.LeakyReLU(alpha=0.1),
                 
                 layers.Flatten(),
                 layers.Dense(self.hidden_dim),
-                # layers.BatchNormalization(),
                 layers.LeakyReLU(alpha=0.1),
             ]
         )
@@ -41,36 +36,27 @@ class FeatureExtractor(K.models.Model):
 # e.net.summary()
 #%%
 class Decoder(K.models.Model):
-    def __init__(self, activation, name="Decoder", **kwargs):
+    def __init__(self, hidden_dim, activation, channel, name="Decoder", **kwargs):
         super(Decoder, self).__init__(name=name, **kwargs)
-        # self.nChannels = [32, 32]
+        self.hidden_dim = hidden_dim
+        self.nChannels = [32, 32]
         
         self.net = K.Sequential(
             [
-                layers.Dense(128, activation='linear'),
+                layers.Dense(hidden_dim),
                 layers.ReLU(),
-                layers.Dense(256, activation='linear'),
+                
+                layers.Dense(7 * 7 * 64),
                 layers.ReLU(),
-                layers.Dense(784, activation=activation),
-                layers.Reshape((28, 28, 1)),
+                layers.Reshape((7, 7, 64)),
                 
-                # layers.Dense(hidden_dim),
-                # # layers.BatchNormalization(),
-                # layers.ReLU(),
-                # layers.Dense(4 * 4 * 64),
-                # # layers.BatchNormalization(),
-                # layers.ReLU(),
-                # layers.Reshape((4, 4, 64)),
+                layers.Conv2DTranspose(filters=self.nChannels[0], kernel_size=4, strides=2, padding='same'),
+                layers.ReLU(),
                 
-                # layers.Conv2DTranspose(filters=self.nChannels[0], kernel_size=4, strides=2, padding='same'),
-                # # layers.BatchNormalization(),
-                # layers.ReLU(),
+                layers.Conv2DTranspose(filters=self.nChannels[1], kernel_size=4, strides=2, padding='same'),
+                layers.ReLU(),
                 
-                # layers.Conv2DTranspose(filters=self.nChannels[1], kernel_size=4, strides=2, padding='same'),
-                # # layers.BatchNormalization(),
-                # layers.ReLU(),
-                
-                # layers.Conv2DTranspose(filters=channel, kernel_size=4, strides=2, padding='same', activation=activation)
+                layers.Conv2DTranspose(filters=channel, kernel_size=4, strides=1, padding='same', activation=activation)
             ]
         )
     
@@ -79,8 +65,8 @@ class Decoder(K.models.Model):
         h = self.net(x, training=training)
         return h
 #%%
-# e = Decoder(1, 'sigmoid', 256)
-# e.build((10, 12))
+# e = Decoder(256, 'sigmoid', 1)
+# e.build((10, 4))
 # e.net.summary()
 #%%
 class VAE(K.models.Model):
@@ -100,9 +86,11 @@ class VAE(K.models.Model):
         self.latent_dim = latent_dim
         self.hidden_dim = hidden_dim
         self.u_dim = u_dim
+        self.output_channel = output_channel
         self.input_dim = input_dim
         self.temperature = temperature
         self.sigmoid_coef = sigmoid_coef
+        self.activation = activation
         
         self.feature_extractor = FeatureExtractor(self.hidden_dim)
         
@@ -115,7 +103,7 @@ class VAE(K.models.Model):
         self.u_mean_layer = layers.Dense(u_dim, activation='linear')
         self.u_logvar_layer = layers.Dense(u_dim, activation='linear')
         
-        self.decoder = Decoder(activation)
+        self.decoder = Decoder(self.hidden_dim, self.activation, self.output_channel)
         
         self.u_prior_means = self.add_weight(shape=(num_classes, u_dim),
                                             initializer='random_normal',
@@ -143,7 +131,7 @@ class VAE(K.models.Model):
     def _sigmoid(self, x, training=True):
         if not training or self.sigmoid_coef > 8.:
             return tf.nn.sigmoid(8. * x)
-        if self.sigmoid_coef < 8:
+        if self.sigmoid_coef < 8.:
             self.sigmoid_coef += 2e-4
         return tf.nn.sigmoid(self.sigmoid_coef * x)
     
@@ -155,13 +143,15 @@ class VAE(K.models.Model):
     def encode(self, x, training=True):
         hidden = self.feature_extractor(x, training=training)
         
+        # class independent
         z_mean = self.z_mean_layer(hidden)
         z_logvar = self.z_logvar_layer(hidden)
         epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.latent_dim))
         z = z_mean + tf.math.exp(z_logvar / 2.) * epsilon 
         
+        # class related
         c_logit = self.h_to_c_logit(hidden)
-        onehot_c = self.gumbel_softmax_sample(c_logit)
+        onehot_c = self.gumbel_softmax_sample(c_logit, training=training)
         a_logit = self.c_to_a_logit(onehot_c)
         a = self._sigmoid(a_logit)
         hidden_a = hidden * a
@@ -197,7 +187,7 @@ class VAE(K.models.Model):
 #%%
 # model = VAE()
 # model.build((10, 28, 28, 1))
-# #%%
+# %%
 # x = tf.random.normal((16, 28, 28, 1))
 # outputs = model(x)
 # [t.shape for t in outputs]
