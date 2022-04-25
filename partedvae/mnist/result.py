@@ -2,8 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\crci') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/crci') # main directory (repository)
+os.chdir(r'D:\semi\partedvae') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/partedvae') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -70,12 +70,11 @@ def get_args():
                         metavar='LR', help='initial learning rate')
     parser.add_argument('--classifier_learning_rate', default=5e-4, type=float,
                         metavar='LR', help='initial learning rate for classifier')
-    # parser.add_argument('--weight_decay', default=5e-4, type=float)
     
     parser.add_argument("--z_capacity", default=[0., 7., 100000, 15.], type=arg_as_list,
-                        help="controlled capacity")
+                        help="controlled capacity") # cap_min, cap_max, num_iters, gamma
     parser.add_argument("--u_capacity", default=[0., 7., 100000, 15.], type=arg_as_list,
-                        help="controlled capacity")
+                        help="controlled capacity") # cap_min, cap_max, num_iters, gamma
     parser.add_argument('--gamma_c', default=15, type=float,
                         help='weight of loss')
     parser.add_argument('--gamma_h', default=30, type=float,
@@ -111,7 +110,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220412-234659'
+model_path = log_path + '/20220425-163138'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 
 model = VAE(num_classes=num_classes,
@@ -132,6 +131,22 @@ for x_test_batch, y_test_batch in batch(test_dataset):
     prob = model.classify(x_test_batch, training=False)
     error_count += np.sum(tf.argmax(prob, axis=-1).numpy() - tf.argmax(y_test_batch, axis=-1).numpy() != 0)
 print('TEST classification error: {:.2f}%'.format(error_count / total_length * 100))
+#%%
+'''Bhattacharyya coefficient'''
+BC_valid_mask = np.ones((num_classes, num_classes))
+BC_valid_mask = tf.constant(np.tril(BC_valid_mask, k=-1), tf.float32)
+    
+u_var = tf.math.exp(model.u_prior_logvars)
+avg_u_var = 0.5 * (u_var[tf.newaxis, ...] + u_var[:, tf.newaxis, :])
+inv_avg_u_var = 1. / (avg_u_var + 1e-8)
+diff_mean = model.u_prior_means[tf.newaxis, ...] - model.u_prior_means[:, tf.newaxis, :]
+D = 1/8 * tf.reduce_sum(diff_mean * inv_avg_u_var * diff_mean, axis=-1)
+D += 0.5 * tf.reduce_sum(tf.math.log(avg_u_var + 1e-8), axis=-1)
+D += - 0.25 * (tf.reduce_sum(model.u_prior_logvars, axis=-1)[tf.newaxis, ...] + tf.reduce_sum(model.u_prior_logvars, axis=-1)[:, tf.newaxis])
+BC = tf.math.exp(- D)
+valid_BC = BC * BC_valid_mask
+valid_BC = tf.clip_by_value(valid_BC - args['bc_threshold'], 0., 1.)
+tf.reduce_sum(valid_BC)
 #%%
 z_means = []
 z_logvars = []
