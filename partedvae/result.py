@@ -2,8 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\crci') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/crci') # main directory (repository)
+os.chdir(r'D:\semi\partedvae') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/partedvae') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -30,7 +30,7 @@ def arg_as_list(s):
 def get_args():
     parser = argparse.ArgumentParser('parameters')
 
-    parser.add_argument('--dataset', type=str, default='mnist',
+    parser.add_argument('--dataset', type=str, default='cifar10',
                         help='dataset used for training')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
@@ -115,7 +115,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/{}'.format('20220425-221739')
+model_path = log_path + '/{}'.format('20220426-102008')
 model_ = K.models.load_model(model_path + '/model')
 model = VAE(
     num_classes=num_classes,
