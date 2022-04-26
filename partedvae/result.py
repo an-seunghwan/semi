@@ -115,7 +115,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/{}'.format('20220426-102008')
+model_path = log_path + '/{}'.format('20220426-154532')
 model_ = K.models.load_model(model_path + '/model')
 model = VAE(
     num_classes=num_classes,
