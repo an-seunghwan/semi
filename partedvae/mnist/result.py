@@ -218,7 +218,7 @@ for i in range(num_classes):
     plt.text(model.u_prior_means[i, 0], model.u_prior_means[i, 1], "{}".format(i), fontsize=35)
     if i in [6, 7, 8, 9]:
         plt.text(model.u_prior_means[i, 0], model.u_prior_means[i, 1], "{}".format(i), fontsize=35, color='white')
-plt.savefig('./{}/prior_samples.png'.format(model_path),
+plt.savefig('./{}/partedvae_prior_samples.png'.format(model_path),
             bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
@@ -275,24 +275,25 @@ samples = []
 color = []
 for i in range(num_classes):
     samples.extend(np.random.multivariate_normal(mean=model.u_prior_means.numpy()[i, :], 
-                                                cov=np.array([[model.u_prior_logvars.numpy()[i, 0], 0], 
-                                                            [0, model.u_prior_logvars.numpy()[i, 0]]]), size=1000))
+                                                cov=np.array([[tf.math.exp(model.u_prior_logvars.numpy()[i, 0]), 0], 
+                                                            [0, tf.math.exp(model.u_prior_logvars.numpy()[i, 0])]]), size=1000))
     color.extend([i] * 1000)
 samples = np.array(samples)
+
 plt.figure(figsize=(10, 10))
-plt.tick_params(labelsize=30)    
+plt.tick_params(labelsize=40)    
 plt.locator_params(axis='y', nbins=8)
-plt.scatter(umat[:, 0], umat[:, 1], c=tf.argmax(labels, axis=1).numpy(), s=10, cmap=plt.cm.Reds, alpha=1)
+plt.scatter(samples[:, 0], samples[:, 1], c=color, s=10, cmap=plt.cm.Reds, alpha=1)
 plt.locator_params(axis='x', nbins=5)
 plt.locator_params(axis='y', nbins=5)
-plt.scatter(u_inter[0][0], u_inter[0][1], color='blue', s=100)
-plt.annotate('A', (u_inter[0][0], u_inter[0][1]), fontsize=30)
-plt.scatter(u_inter[1][0], u_inter[1][1], color='blue', s=100)
-plt.annotate('B', (u_inter[1][0], u_inter[1][1]), fontsize=30)
-plt.plot((u_inter[0][0], u_inter[1][0]), (u_inter[0][1], u_inter[1][1]), color='black', linewidth=2, linestyle='--')
-plt.xlabel("$z_0$", fontsize=30)
-plt.ylabel("$z_1$", fontsize=30)
-plt.savefig('./{}/interpolation_path.png'.format(model_path), 
+plt.scatter(u_inter[0][0], u_inter[0][1], color='blue', s=500)
+plt.annotate('A', (u_inter[0][0], u_inter[0][1]), fontsize=50)
+plt.scatter(u_inter[1][0], u_inter[1][1], color='blue', s=500)
+plt.annotate('B', (u_inter[1][0], u_inter[1][1]), fontsize=50)
+plt.plot((u_inter[0][0], u_inter[1][0]), (u_inter[0][1], u_inter[1][1]), color='black', linewidth=5, linestyle='--')
+plt.xlabel("$z_0$", fontsize=40)
+plt.ylabel("$z_1$", fontsize=40)
+plt.savefig('./{}/partedvae_interpolation_path.png'.format(model_path), 
             dpi=100, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
@@ -305,20 +306,20 @@ for i in range(10):
     plt.subplot(1, 10+1, i+1)
     plt.imshow(inter_recon[i].numpy().reshape(28, 28), cmap='gray_r')
     plt.axis('off')
-plt.savefig('./{}/interpolation_path_recon.png'.format(model_path), 
+plt.savefig('./{}/partedvae_interpolation_path_recon.png'.format(model_path), 
             dpi=100, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 #%%
 '''path: interpolation path and reconstruction'''
-img = [Image.open('./{}/interpolation_path.png'.format(model_path)),
-        Image.open('./{}/interpolation_path_recon.png'.format(model_path))]
+img = [Image.open('./{}/partedvae_interpolation_path.png'.format(model_path)),
+        Image.open('./{}/partedvae_interpolation_path_recon.png'.format(model_path))]
 f, (a0, a1) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [2, 0.25]})
 a0.imshow(img[0])    
 a0.axis('off')
 a1.imshow(img[1])    
 a1.axis('off')
 plt.tight_layout() 
-plt.savefig('./{}/interpolation_path_and_recon.png'.format(model_path),
+plt.savefig('./{}/partedvae_interpolation_path_and_recon.png'.format(model_path),
             dpi=100, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
