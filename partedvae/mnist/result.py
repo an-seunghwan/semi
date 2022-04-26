@@ -108,21 +108,14 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '{}/model'.format('20220425-220507')
-model = K.models.load_model(model_path)
+model_path = log_path + '/{}'.format('20220425-221739')
+model_ = K.models.load_model(model_path + '/model')
+model = VAE(num_classes=num_classes,
+            latent_dim=args['z_dim'], 
+            u_dim=args['u_dim'])
+model.build(input_shape=(None, 28, 28, 1))
+model.set_weights(model_.get_weights()) 
 model.summary()
-# model_path = log_path + '/20220425-200535'
-# model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
-# model = VAE(num_classes=num_classes,
-#             latent_dim=args['z_dim'], 
-#             u_dim=args['u_dim'])
-# model.build(input_shape=(None, 28, 28, 1))
-# model.load_weights(model_path + '/' + model_name)
-# model.summary()
-#%%
-'''prior distributions'''
-u_prior_means = model.u_prior_means
-u_prior_logvars = 2. * tf.nn.tanh(model.u_prior_logvars_before_tanh) - 1.
 #%%
 autotune = tf.data.AUTOTUNE
 batch = lambda dataset: dataset.batch(batch_size=args['batch_size'], drop_remainder=False).prefetch(autotune)
@@ -140,18 +133,17 @@ print('TEST classification error: {:.2f}%'.format(error_count / total_length * 1
 BC_valid_mask = np.ones((num_classes, num_classes))
 BC_valid_mask = tf.constant(np.tril(BC_valid_mask, k=-1), tf.float32)
 
-u_var = tf.math.exp(u_prior_logvars)
+u_var = tf.math.exp(model.u_prior_logvars)
 avg_u_var = 0.5 * (u_var[tf.newaxis, ...] + u_var[:, tf.newaxis, :])
 inv_avg_u_var = 1. / (avg_u_var + 1e-8)
-diff_mean = u_prior_means[tf.newaxis, ...] - u_prior_means[:, tf.newaxis, :]
+diff_mean = model.u_prior_means[tf.newaxis, ...] - model.u_prior_means[:, tf.newaxis, :]
 D = 1/8 * tf.reduce_sum(diff_mean * inv_avg_u_var * diff_mean, axis=-1)
 D += 0.5 * tf.reduce_sum(tf.math.log(avg_u_var + 1e-8), axis=-1)
-D += - 0.25 * (tf.reduce_sum(u_prior_logvars, axis=-1)[tf.newaxis, ...] + tf.reduce_sum(u_prior_logvars, axis=-1)[:, tf.newaxis])
+D += - 0.25 * (tf.reduce_sum(model.u_prior_logvars, axis=-1)[tf.newaxis, ...] + tf.reduce_sum(model.u_prior_logvars, axis=-1)[:, tf.newaxis])
 BC = tf.math.exp(- D)
 valid_BC = BC * BC_valid_mask
-valid_BC = tf.clip_by_value(valid_BC - args['bc_threshold'], 0., 1.)
 BC_loss = tf.reduce_sum(valid_BC)
-print('Bhattacharyya coefficient: {:.3f}%'.format(BC_loss))
+print('Bhattacharyya coefficient: {:.3f}'.format(BC_loss))
 #%%
 with open("{}/result.txt".format(model_path), "w") as file:
     file.write(
@@ -210,10 +202,10 @@ plt.close()
 np.random.seed(1)
 samples = []
 color = []
-for i in range(u_prior_means.shape[0]):
-    samples.extend(np.random.multivariate_normal(mean=u_prior_means[i, :], 
-                                                cov=np.array([[tf.math.exp(u_prior_logvars[i, 0]), 0], 
-                                                            [0, tf.math.exp(u_prior_logvars[i, 1])]]), size=1000))
+for i in range(model.u_prior_means.shape[0]):
+    samples.extend(np.random.multivariate_normal(mean=model.u_prior_means[i, :], 
+                                                cov=np.array([[tf.math.exp(model.u_prior_logvars[i, 0]), 0], 
+                                                            [0, tf.math.exp(model.u_prior_logvars[i, 1])]]), size=1000))
     color.extend([i] * 1000)
 samples = np.array(samples)
 
@@ -223,11 +215,111 @@ plt.scatter(samples[:, 0], samples[:, 1], s=9, c=color, cmap=plt.cm.Reds, alpha=
 plt.locator_params(axis='x', nbins=5)
 plt.locator_params(axis='y', nbins=5)
 for i in range(num_classes):
-    plt.text(u_prior_means[i, 0], u_prior_means[i, 1], "{}".format(i), fontsize=35)
+    plt.text(model.u_prior_means[i, 0], model.u_prior_means[i, 1], "{}".format(i), fontsize=35)
     if i in [6, 7, 8, 9]:
-        plt.text(u_prior_means[i, 0], u_prior_means[i, 1], "{}".format(i), fontsize=35, color='white')
+        plt.text(model.u_prior_means[i, 0], model.u_prior_means[i, 1], "{}".format(i), fontsize=35, color='white')
 plt.savefig('./{}/prior_samples.png'.format(model_path),
             bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
+a = np.arange(-1, 1.1, 0.5)
+b = np.arange(-1, 1.1, 0.5)
+aa, bb = np.meshgrid(a, b, sparse=True)
+grid = []
+for b_ in reversed(bb[:, 0]):
+    for a_ in aa[0, :]:
+        grid.append(np.array([a_, b_]))
+#%%
+for k in range(num_classes):
+    grid_output = model.decoder(tf.concat([tf.cast(np.array(grid), tf.float32),
+                                        tf.tile(model.u_prior_means.numpy()[[k], :], (len(grid), 1))], axis=-1), training=False)
+    grid_output = grid_output.numpy()
+    plt.figure(figsize=(4, 4))
+    for i in range(len(grid)):
+        plt.subplot(len(b), len(a), i+1)
+        plt.imshow(grid_output[i].reshape(28, 28), cmap='gray_r')    
+        plt.axis('off')
+        plt.tight_layout() 
+    plt.savefig('./{}/recon_z_grid_u{}_priormean.png'.format(model_path, k),
+                dpi=200, bbox_inches="tight", pad_inches=0.1)
+    plt.show()
+    plt.close()
+#%%
+a = np.arange(-3, 3.1, 0.5)
+b = np.arange(-3, 3.1, 0.5)
+aa, bb = np.meshgrid(a, b, sparse=True)
+grid = []
+for b_ in reversed(bb[:, 0]):
+    for a_ in aa[0, :]:
+        grid.append(np.array([a_, b_]))
+
+grid_output = model.decoder(tf.concat([tf.cast(tf.tile([[0, 0]], (len(grid), 1)), tf.float32),
+                                        tf.cast(np.array(grid), tf.float32)], axis=-1), training=False)
+grid_output = grid_output.numpy()
+plt.figure(figsize=(10, 10))
+for i in range(len(grid)):
+    plt.subplot(len(b), len(a), i+1)
+    plt.imshow(grid_output[i].reshape(28, 28), cmap='gray_r')    
+    plt.axis('off')
+    plt.tight_layout() 
+plt.savefig('./{}/recon_z_priormean_u_grid.png'.format(model_path, k),
+            dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
+'''interpolation on latent space'''
+u_inter = (model.u_prior_means.numpy()[0], model.u_prior_means.numpy()[1])    
+np.random.seed(1)
+samples = []
+color = []
+for i in range(num_classes):
+    samples.extend(np.random.multivariate_normal(mean=model.u_prior_means.numpy()[i, :], 
+                                                cov=np.array([[model.u_prior_logvars.numpy()[i, 0], 0], 
+                                                            [0, model.u_prior_logvars.numpy()[i, 0]]]), size=1000))
+    color.extend([i] * 1000)
+samples = np.array(samples)
+plt.figure(figsize=(10, 10))
+plt.tick_params(labelsize=30)    
+plt.locator_params(axis='y', nbins=8)
+plt.scatter(umat[:, 0], umat[:, 1], c=tf.argmax(labels, axis=1).numpy(), s=10, cmap=plt.cm.Reds, alpha=1)
+plt.locator_params(axis='x', nbins=5)
+plt.locator_params(axis='y', nbins=5)
+plt.scatter(u_inter[0][0], u_inter[0][1], color='blue', s=100)
+plt.annotate('A', (u_inter[0][0], u_inter[0][1]), fontsize=30)
+plt.scatter(u_inter[1][0], u_inter[1][1], color='blue', s=100)
+plt.annotate('B', (u_inter[1][0], u_inter[1][1]), fontsize=30)
+plt.plot((u_inter[0][0], u_inter[1][0]), (u_inter[0][1], u_inter[1][1]), color='black', linewidth=2, linestyle='--')
+plt.xlabel("$z_0$", fontsize=30)
+plt.ylabel("$z_1$", fontsize=30)
+plt.savefig('./{}/interpolation_path.png'.format(model_path), 
+            dpi=100, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+plt.close()
+#%%
+'''interpolation'''
+inter = np.linspace(u_inter[0], u_inter[1], 10)
+inter_recon = model.decoder(tf.concat([np.zeros((10, args['z_dim'])), inter], axis=-1))
+figure = plt.figure(figsize=(10, 2))
+for i in range(10):
+    plt.subplot(1, 10+1, i+1)
+    plt.imshow(inter_recon[i].numpy().reshape(28, 28), cmap='gray_r')
+    plt.axis('off')
+plt.savefig('./{}/interpolation_path_recon.png'.format(model_path), 
+            dpi=100, bbox_inches="tight", pad_inches=0.1)
+plt.show()
+#%%
+'''path: interpolation path and reconstruction'''
+img = [Image.open('./{}/interpolation_path.png'.format(model_path)),
+        Image.open('./{}/interpolation_path_recon.png'.format(model_path))]
+f, (a0, a1) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [2, 0.25]})
+a0.imshow(img[0])    
+a0.axis('off')
+a1.imshow(img[1])    
+a1.axis('off')
+plt.tight_layout() 
+plt.savefig('./{}/interpolation_path_and_recon.png'.format(model_path),
+            dpi=100, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
 #%%
@@ -255,104 +347,4 @@ plt.close()
 #                 dpi=200, bbox_inches="tight", pad_inches=0.1)
 # plt.show()
 # plt.close()
-#%%
-a = np.arange(-1, 1.1, 0.5)
-b = np.arange(-1, 1.1, 0.5)
-aa, bb = np.meshgrid(a, b, sparse=True)
-grid = []
-for b_ in reversed(bb[:, 0]):
-    for a_ in aa[0, :]:
-        grid.append(np.array([a_, b_]))
-#%%
-for k in range(num_classes):
-    grid_output = model.decoder(tf.concat([tf.cast(np.array(grid), tf.float32),
-                                        tf.tile(u_prior_means.numpy()[[k], :], (len(grid), 1))], axis=-1), training=False)
-    grid_output = grid_output.numpy()
-    plt.figure(figsize=(4, 4))
-    for i in range(len(grid)):
-        plt.subplot(len(b), len(a), i+1)
-        plt.imshow(grid_output[i].reshape(28, 28), cmap='gray_r')    
-        plt.axis('off')
-        plt.tight_layout() 
-    plt.savefig('./{}/recon_z_grid_u{}_priormean.png'.format(model_path, k),
-                dpi=200, bbox_inches="tight", pad_inches=0.1)
-    plt.show()
-    plt.close()
-#%%
-a = np.arange(-0, 4.1, 0.4)
-b = np.arange(-2, 2.1, 0.4)
-aa, bb = np.meshgrid(a, b, sparse=True)
-grid = []
-for b_ in reversed(bb[:, 0]):
-    for a_ in aa[0, :]:
-        grid.append(np.array([a_, b_]))
-
-grid_output = model.decoder(tf.concat([tf.cast(tf.tile([[0, 0]], (len(grid), 1)), tf.float32),
-                                        tf.cast(np.array(grid), tf.float32)], axis=-1), training=False)
-grid_output = grid_output.numpy()
-plt.figure(figsize=(10, 10))
-for i in range(len(grid)):
-    plt.subplot(len(b), len(a), i+1)
-    plt.imshow(grid_output[i].reshape(28, 28), cmap='gray_r')    
-    plt.axis('off')
-    plt.tight_layout() 
-plt.savefig('./{}/recon_z_priormean_u_grid.png'.format(model_path, k),
-            dpi=200, bbox_inches="tight", pad_inches=0.1)
-plt.show()
-plt.close()
-#%%
-'''interpolation on latent space'''
-z_inter = (u_prior_means.numpy()[0], u_prior_means.numpy()[1])    
-np.random.seed(1)
-samples = []
-color = []
-for i in range(num_classes):
-    samples.extend(np.random.multivariate_normal(mean=u_prior_means.numpy()[i, :], 
-                                                cov=np.array([[u_prior_logvars.numpy()[i, 0], 0], 
-                                                            [0, u_prior_logvars.numpy()[i, 0]]]), size=1000))
-    color.extend([i] * 1000)
-samples = np.array(samples)
-plt.figure(figsize=(10, 10))
-plt.tick_params(labelsize=30)    
-plt.locator_params(axis='y', nbins=8)
-plt.scatter(zmat[:, 0], zmat[:, 1], c=tf.argmax(labels, axis=1).numpy(), s=10, cmap=plt.cm.Reds, alpha=1)
-plt.locator_params(axis='x', nbins=5)
-plt.locator_params(axis='y', nbins=5)
-plt.scatter(z_inter[0][0], z_inter[0][1], color='blue', s=100)
-plt.annotate('A', (z_inter[0][0], z_inter[0][1]), fontsize=30)
-plt.scatter(z_inter[1][0], z_inter[1][1], color='blue', s=100)
-plt.annotate('B', (z_inter[1][0], z_inter[1][1]), fontsize=30)
-plt.plot((z_inter[0][0], z_inter[1][0]), (z_inter[0][1], z_inter[1][1]), color='black', linewidth=2, linestyle='--')
-plt.xlabel("$z_0$", fontsize=30)
-plt.ylabel("$z_1$", fontsize=30)
-plt.savefig('./{}/interpolation_path.png'.format(model_path), 
-            dpi=100, bbox_inches="tight", pad_inches=0.1)
-plt.show()
-plt.close()
-#%%
-'''interpolation'''
-inter = np.linspace(z_inter[0], z_inter[1], 10)
-inter_recon = model.decoder(tf.concat([np.zeros((10, args['z_dim'])), inter], axis=-1))
-figure = plt.figure(figsize=(10, 2))
-for i in range(10):
-    plt.subplot(1, 10+1, i+1)
-    plt.imshow(inter_recon[i].numpy().reshape(28, 28), cmap='gray_r')
-    plt.axis('off')
-plt.savefig('./{}/interpolation_path_recon.png'.format(model_path), 
-            dpi=100, bbox_inches="tight", pad_inches=0.1)
-plt.show()
-#%%
-'''path: interpolation path and reconstruction'''
-img = [Image.open('./{}/interpolation_path.png'.format(model_path)),
-        Image.open('./{}/interpolation_path_recon.png'.format(model_path))]
-f, (a0, a1) = plt.subplots(2, 1, gridspec_kw={'height_ratios': [2, 0.25]})
-a0.imshow(img[0])    
-a0.axis('off')
-a1.imshow(img[1])    
-a1.axis('off')
-plt.tight_layout() 
-plt.savefig('./{}/interpolation_path_and_recon.png'.format(model_path),
-            dpi=100, bbox_inches="tight", pad_inches=0.1)
-plt.show()
-plt.close()
 #%%

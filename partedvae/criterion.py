@@ -2,7 +2,7 @@
 import numpy as np
 import tensorflow as tf
 #%%
-def ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, epoch, iteration, batch_num, BC_valid_mask, num_classes, args):
+def ELBO_criterion(xhat, image, z_mean, z_logvar, c_logit, u_mean, u_logvar, model, num_classes, args):
     '''reconstruction'''
     if args['bce_reconstruction']:
         recon_loss = - tf.reduce_mean(tf.reduce_sum(image * tf.math.log(tf.clip_by_value(xhat, 1e-10, 1.)) + 

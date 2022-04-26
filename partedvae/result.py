@@ -19,8 +19,6 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
 from model import VAE
-from criterion import ELBO_criterion
-from utils import CustomReduceLRoP
 #%%
 import ast
 def arg_as_list(s):
@@ -117,9 +115,8 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-model_path = log_path + '/20220413-102330'
-model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
-
+model_path = log_path + '/{}'.format('20220425-221739')
+model_ = K.models.load_model(model_path + '/model')
 model = VAE(
     num_classes=num_classes,
     latent_dim=args['z_dim'], 
@@ -127,7 +124,7 @@ model = VAE(
     depth=args['depth'], width=args['width'], slope=args['slope']
 )
 model.build(input_shape=(None, 32, 32, 3))
-model.load_weights(model_path + '/' + model_name)
+model.set_weights(model_.get_weights()) 
 model.summary()
 #%%
 autotune = tf.data.AUTOTUNE
@@ -141,6 +138,22 @@ for x_test_batch, y_test_batch in batch(test_dataset):
     prob = model.classify(x_test_batch, training=False)
     error_count += np.sum(tf.argmax(prob, axis=-1).numpy() - tf.argmax(y_test_batch, axis=-1).numpy() != 0)
 print('TEST classification error: {:.2f}%'.format(error_count / total_length * 100))
+#%%
+'''Bhattacharyya coefficient'''
+BC_valid_mask = np.ones((num_classes, num_classes))
+BC_valid_mask = tf.constant(np.tril(BC_valid_mask, k=-1), tf.float32)
+
+u_var = tf.math.exp(model.u_prior_logvars)
+avg_u_var = 0.5 * (u_var[tf.newaxis, ...] + u_var[:, tf.newaxis, :])
+inv_avg_u_var = 1. / (avg_u_var + 1e-8)
+diff_mean = model.u_prior_means[tf.newaxis, ...] - model.u_prior_means[:, tf.newaxis, :]
+D = 1/8 * tf.reduce_sum(diff_mean * inv_avg_u_var * diff_mean, axis=-1)
+D += 0.5 * tf.reduce_sum(tf.math.log(avg_u_var + 1e-8), axis=-1)
+D += - 0.25 * (tf.reduce_sum(model.u_prior_logvars, axis=-1)[tf.newaxis, ...] + tf.reduce_sum(model.u_prior_logvars, axis=-1)[:, tf.newaxis])
+BC = tf.math.exp(- D)
+valid_BC = BC * BC_valid_mask
+BC_loss = tf.reduce_sum(valid_BC)
+print('Bhattacharyya coefficient: {:.3f}'.format(BC_loss))
 #%%
 z_means = []
 z_logvars = []
