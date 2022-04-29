@@ -1,20 +1,20 @@
 # Semi-Supervised Learning Methods
 
-This repository is the official implementation of following papers with Tensorflow 2.0. 
+This repository is the official implementation of following papers with Tensorflow 2.0. The corresponding folder name is written in parenthesis.
 
 - Variational AutoEncoder:
-  - [Semi-supervised Learning with Deep Generative Models](https://proceedings.neurips.cc/paper/2014/hash/d523773c6b194f37b938d340d5d02232-Abstract.html)
-  - [Auxiliary deep generative models](http://proceedings.mlr.press/v48/maaloe16.html)
-  - [Ladder variational autoencoders](https://proceedings.neurips.cc/paper/2016/file/6ae07dcb33ec3b7c814df797cbda0f87-Paper.pdf)
-  - [Semi-supervised disentanglement of class-related and class-independent factors in vae](https://arxiv.org/pdf/2102.00892.pdf)
-  - [SHOT-VAE: semi-supervised deep generative models with label-aware ELBO approximations](https://www.aaai.org/AAAI21Papers/AAAI-260.FengHZ.pdf)
+  - [Semi-supervised Learning with Deep Generative Models](https://proceedings.neurips.cc/paper/2014/hash/d523773c6b194f37b938d340d5d02232-Abstract.html) (`dgm`)
+  - [Auxiliary deep generative models](http://proceedings.mlr.press/v48/maaloe16.html) (`adgm`)
+  - [Ladder variational autoencoders](https://proceedings.neurips.cc/paper/2016/file/6ae07dcb33ec3b7c814df797cbda0f87-Paper.pdf) (`ladder`)
+  - [Semi-supervised disentanglement of class-related and class-independent factors in vae](https://arxiv.org/pdf/2102.00892.pdf) (`partedvae`)
+  - [SHOT-VAE: semi-supervised deep generative models with label-aware ELBO approximations](https://www.aaai.org/AAAI21Papers/AAAI-260.FengHZ.pdf) (`shotvae`)
 
 - Classification models:
-  - [Temporal ensembling for semi-supervised learning](https://arxiv.org/pdf/1610.02242.pdf?ref=https://githubhelp.com)
-  - [Virtual adversarial training: a regularization method for supervised and semi-supervised learning](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=8417973)
-  - [Label propagation for deep semi-supervised learning](https://openaccess.thecvf.com/content_CVPR_2019/papers/Iscen_Label_Propagation_for_Deep_Semi-Supervised_Learning_CVPR_2019_paper.pdf)
-  - [Mixmatch: A holistic approach to semi-supervised learning](https://proceedings.neurips.cc/paper/2019/file/1cd138d0499a68f4bb72bee04bbec2d7-Paper.pdf)
-  - [Pseudo-labeling and confirmation bias in deep semi-supervised learning](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=9207304)
+  - [Temporal ensembling for semi-supervised learning](https://arxiv.org/pdf/1610.02242.pdf?ref=https://githubhelp.com) (`pi`)
+  - [Virtual adversarial training: a regularization method for supervised and semi-supervised learning](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=8417973) (`vat`)
+  - [Label propagation for deep semi-supervised learning](https://openaccess.thecvf.com/content_CVPR_2019/papers/Iscen_Label_Propagation_for_Deep_Semi-Supervised_Learning_CVPR_2019_paper.pdf) (`lp`)
+  - [Mixmatch: A holistic approach to semi-supervised learning](https://proceedings.neurips.cc/paper/2019/file/1cd138d0499a68f4bb72bee04bbec2d7-Paper.pdf) (`mixmatch`)
+  - [Pseudo-labeling and confirmation bias in deep semi-supervised learning](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=9207304) (`plcb`)
 
 ## Package Dependencies
 
