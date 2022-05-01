@@ -60,9 +60,6 @@ def get_args():
     '''VAE parameters'''
     parser.add_argument('--z_dims', default=[32, 8, 2], type=arg_as_list,
                         help="dimensions for continuous latent variable")
-    # parser.add_argument('--latent_dim', "--latent_dim_continuous", default=2, type=int,
-    #                     metavar='Latent Dim For Continuous Variable',
-    #                     help='feature dimension in latent space for continuous variable')
     
     '''Optimizer Parameters'''
     parser.add_argument('--learning_rate', default=3e-4, type=float,
@@ -95,12 +92,9 @@ def generate_and_save_images1(model, image):
         plt.imshow(image[i][..., 0])
         plt.axis('off')
     plt.savefig(buf, format='png')
-    # Closing the figure prevents it from being displayed directly inside the notebook.
     plt.close(figure)
     buf.seek(0)
-    # Convert PNG buffer to TF image
     image = tf.image.decode_png(buf.getvalue(), channels=1)
-    # Add the batch dimension
     image = tf.expand_dims(image, 0)
     return image
 
@@ -168,12 +162,19 @@ def main():
             optimizer.lr = optimizer.lr * lr_gamma
             
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(
+                datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print
+            )
         else:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
-        # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
-        val_recon_loss, val_kl_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, beta, args, num_classes, split='Validation')
-        test_recon_loss, test_kl_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, beta, args, num_classes, split='Test')
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(
+                datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print
+            )
+        val_recon_loss, val_kl_loss, val_elbo_loss, val_accuracy = validate(
+            val_dataset, model, epoch, beta, args, num_classes, split='Validation'
+        )
+        test_recon_loss, test_kl_loss, test_elbo_loss, test_accuracy = validate(
+            test_dataset, model, epoch, beta, args, num_classes, split='Test'
+        )
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
@@ -269,10 +270,6 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
             iteratorU = iter(shuffle_and_batchU(datasetU))
             imageU, _ = next(iteratorU)
         
-        # if args['augment']:
-        #     imageL_aug = augment(imageL)
-        #     imageU_aug = augment(imageU)
-            
         with tf.GradientTape(persistent=True) as tape:    
             '''labeled'''
             posterior, prior, xhat = model([imageL, labelL])
@@ -359,9 +356,6 @@ def validate(dataset, model, epoch, beta, args, num_classes, split):
     print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, Recon: {recon_loss_avg.result():.4f}, KL: {kl_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
     return recon_loss_avg, kl_loss_avg, elbo_loss_avg, accuracy
-#%%
-# def weight_schedule(epoch, epochs, weight_max):
-#     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
 #%%
 if __name__ == '__main__':
     main()

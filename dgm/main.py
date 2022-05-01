@@ -20,7 +20,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 from preprocess import fetch_dataset
 from model import DGM
 from criterion import ELBO_criterion
-from utils import augment, weight_decay_decoupled
+from utils import weight_decay_decoupled
 #%%
 import ast
 def arg_as_list(s):
@@ -95,12 +95,9 @@ def generate_and_save_images1(model, image):
         plt.imshow(image[i])
         plt.axis('off')
     plt.savefig(buf, format='png')
-    # Closing the figure prevents it from being displayed directly inside the notebook.
     plt.close(figure)
     buf.seek(0)
-    # Convert PNG buffer to TF image
     image = tf.image.decode_png(buf.getvalue(), channels=1)
-    # Add the batch dimension
     image = tf.expand_dims(image, 0)
     return image
 
@@ -146,20 +143,6 @@ def main():
     '''optimizer'''
     optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
     optimizer_classifier = K.optimizers.Adam(learning_rate=args['learning_rate'])
-    # '''Gradient Cetralized optimizer'''
-    # class GCAdam(K.optimizers.Adam):
-    #     def get_gradients(self, loss, params):
-    #         grads = []
-    #         gradients = super().get_gradients()
-    #         for grad in gradients:
-    #             grad_len = len(grad.shape)
-    #             if grad_len > 1:
-    #                 axis = list(range(grad_len - 1))
-    #                 grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
-    #             grads.append(grad)
-    #         return grads
-    # optimizer = GCAdam(learning_rate=args['lr'])
-    # optimizer_classifier = GCAdam(learning_rate=args['lr'])
 
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -177,18 +160,20 @@ def main():
         if epoch % 5 == 0:
             optimizer_classifier.lr = optimizer_classifier.lr * lr_gamma
             
-        # '''classifier: learning rate schedule'''
-        # if epoch >= args['rampdown_epoch']:
-        #     optimizer_classifier.lr = args['lr'] * tf.math.exp(-5 * (1. - (args['epochs'] - epoch) / args['epochs']) ** 2)
-        #     optimizer_classifier.beta_1 = 0.5
-            
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(
+                datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print
+            )
         else:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print)
-        # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
-        val_recon_loss, val_kl_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, beta, args, num_classes, split='Validation')
-        test_recon_loss, test_kl_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, beta, args, num_classes, split='Test')
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(
+                datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifier, epoch, args, beta, num_classes, total_length, test_accuracy_print
+            )
+        val_recon_loss, val_kl_loss, val_elbo_loss, val_accuracy = validate(
+            val_dataset, model, epoch, beta, args, num_classes, split='Validation'
+        )
+        test_recon_loss, test_kl_loss, test_elbo_loss, test_accuracy = validate(
+            test_dataset, model, epoch, beta, args, num_classes, split='Test'
+        )
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
@@ -283,10 +268,6 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_classifi
             iteratorU = iter(shuffle_and_batchU(datasetU))
             imageU, _ = next(iteratorU)
         
-        # if args['augment']:
-        #     imageL_aug = augment(imageL)
-        #     imageU_aug = augment(imageU)
-            
         with tf.GradientTape(persistent=True) as tape:    
             '''labeled'''
             mean, logvar, z, xhat = model([imageL, labelL])
@@ -377,9 +358,6 @@ def validate(dataset, model, epoch, beta, args, num_classes, split):
     print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, Recon: {recon_loss_avg.result():.4f}, KL: {kl_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
     return recon_loss_avg, kl_loss_avg, elbo_loss_avg, accuracy
-#%%
-# def weight_schedule(epoch, epochs, weight_max):
-#     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
 #%%
 if __name__ == '__main__':
     main()

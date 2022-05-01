@@ -36,7 +36,7 @@ def get_args():
                         help='dataset used for training')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('-b', '--batch-size', default=100, type=int,
+    parser.add_argument('--batch-size', default=100, type=int,
                         metavar='N', help='mini-batch size (default: 100)')
     parser.add_argument('--labeled-batch-size', default=100, type=int,
                         metavar='N', help='mini-batch size of labeled dataset')
@@ -69,11 +69,10 @@ def get_args():
                         help='weight of KL-divergence')
     
     '''Optimizer Parameters'''
-    parser.add_argument('--lr', '--learning_rate', default=3e-4, type=float,
+    parser.add_argument('--learning_rate', default=3e-4, type=float,
                         metavar='LR', help='initial learning rate')
-    parser.add_argument('--wd', '--weight_decay', default=1, type=float)
+    parser.add_argument('--weight_decay', default=1, type=float)
     parser.add_argument('--clipvalue', default=1, type=float)
-    # parser.add_argument('--clipnorm', default=5, type=float)
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -154,7 +153,7 @@ def main():
     buffer_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
-    optimizer = K.optimizers.Adam(learning_rate=args['lr'],
+    optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'],
                                   clipvalue=args['clipvalue'])
 
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
@@ -170,19 +169,27 @@ def main():
         
         '''learning rate schedule'''
         lr_gamma = 0.8
-        min_lr = args['lr'] * 0.1
+        min_lr = args['learning_rate'] * 0.1
         if optimizer.lr * lr_gamma < min_lr:
             optimizer.lr = min_lr
         elif epoch % 35 == 0:
             optimizer.lr = optimizer.lr * lr_gamma
             
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy, sample_recon = train(
+                datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print
+            )
         else:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy = train(
+                datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print
+            )
         # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
-        val_recon_loss, val_kl_loss, val_kl_aux_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, beta, args, num_classes, split='Validation')
-        test_recon_loss, test_kl_loss, test_kl_aux_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, beta, args, num_classes, split='Test')
+        val_recon_loss, val_kl_loss, val_kl_aux_loss, val_elbo_loss, val_accuracy = validate(
+            val_dataset, model, epoch, beta, args, num_classes, split='Validation'
+        )
+        test_recon_loss, test_kl_loss, test_kl_aux_loss, test_elbo_loss, test_accuracy = validate(
+            test_dataset, model, epoch, beta, args, num_classes, split='Test'
+        )
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
@@ -283,10 +290,6 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
             iteratorU = iter(shuffle_and_batchU(datasetU))
             imageU, _ = next(iteratorU)
         
-        # if args['augment']:
-        #     imageL_aug = augment(imageL)
-        #     imageU_aug = augment(imageU)
-            
         with tf.GradientTape(persistent=True) as tape:    
             '''labeled'''
             mean, logvar, z, xhat, a, qa_mean, qa_logvar, pa_mean, pa_logvar = model([imageL, labelL])
@@ -329,7 +332,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
         grads = tape.gradient(loss, model.trainable_variables) 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
         '''decoupled weight decay'''
-        weight_decay_decoupled(model, buffer_model, decay_rate=args['wd'] * optimizer.lr)
+        weight_decay_decoupled(model, buffer_model, decay_rate=args['weight_decay'] * optimizer.lr)
         
         loss_avg(loss)
         elboL_loss_avg(elboL)
@@ -383,9 +386,6 @@ def validate(dataset, model, epoch, beta, args, num_classes, split):
     print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, Recon: {recon_loss_avg.result():.4f}, KL: {kl_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
     return recon_loss_avg, kl_loss_avg, kl_aux_loss_avg, elbo_loss_avg, accuracy
-#%%
-# def weight_schedule(epoch, epochs, weight_max):
-#     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
 #%%
 if __name__ == '__main__':
     main()
