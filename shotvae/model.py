@@ -56,13 +56,10 @@ class ResidualBlock(K.layers.Layer):
         units = []
         for i in range(n_units):
             units.append(unit(filter_in if i == 0 else filter_out, filter_out, strides if i == 0 else 1))
-        # return units
         return K.models.Sequential(units)
     
     @tf.function
     def call(self, x, training=True):
-        # for unit in self.units:
-        #     x = unit(x, training=training)
         x = self.units(x, training=training)
         return x
 #%%
@@ -128,8 +125,6 @@ class Decoder(K.models.Model):
     @tf.function
     def call(self, x, training=True):
         h = x[:, tf.newaxis, tf.newaxis, :]
-        # for i in range(len(self.model)):
-        #     h = self.model[i](h, training=training)    
         h = self.units(h, training=training)
         return h
 #%%

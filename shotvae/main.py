@@ -1,19 +1,4 @@
 #%%
-'''
-custom SGD + weight decay ver.2
-
-211222: lr schedule -> modify lr manually, instead of tensorflow function
-211227: tf.abs -> tf.math.abs
-211229: convert dmi -> tf.cast(dmi, tf.float32)
-220101: convert dmi -> tf.constant(dmi, dtype=tf.float32)
-220104: convert dmi -> tf.convert_to_tensor(dmi, dtype=tf.float32)
-220104: monitoring KL-divergence and its absolute value
-220107: decoupled weight decay https://arxiv.org/pdf/1711.05101.pdf
-220110: modify mixup shuffle & optimal matching argument
-220113: modify weight decay factor = weight decay * scheduled lr
-220120: use seed in spliting dataset
-'''
-#%%
 import argparse
 import os
 
@@ -33,23 +18,8 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
 from model import VAE
-from criterion2 import ELBO_criterion
+from criterion import ELBO_criterion
 from mixup import augment, optimal_match_mix, weight_decay_decoupled, label_smoothing 
-#%%
-# config = tf.compat.v1.ConfigProto()
-# '''
-# GPU 메모리를 전부 할당하지 않고, 아주 적은 비율만 할당되어 시작됨
-# 프로세스의 메모리 수요에 따라 자동적으로 증가
-# but
-# GPU 메모리를 처음부터 전체 비율을 사용하지 않음
-# '''
-# config.gpu_options.allow_growth = True
-
-# '''
-# 분산 학습 설정
-# '''
-# strategy = tf.distribute.MirroredStrategy()
-# session = tf.compat.v1.InteractiveSession(config=config)
 #%%
 import ast
 def arg_as_list(s):
@@ -61,35 +31,26 @@ def arg_as_list(s):
 def get_args():
     parser = argparse.ArgumentParser('parameters')
 
-    # parser.add_argument('-bp', '--base_path', default=".")
     parser.add_argument('--dataset', type=str, default='cifar10',
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    # parser.add_argument('-is', "--image-size", default=[32, 32], type=arg_as_list,
-    #                     metavar='Image Size List', help='the size of h * w for image')
-    parser.add_argument('-b', '--batch-size', default=128, type=int,
+    parser.add_argument('--batch-size', default=128, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
 
     '''SSL VAE Train PreProcess Parameter'''
-    # parser.add_argument('-t', '--train-time', default=1, type=int,
-    #                     metavar='N', help='the x-th time of training')
     parser.add_argument('--epochs', default=600, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start-epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    # parser.add_argument('--print-freq', '-p', default=3, type=int,
-    #                     metavar='N', help='print frequency (default: 10)')
     parser.add_argument('--reconstruct-freq', '-rf', default=50, type=int,
                         metavar='N', help='reconstruct frequency (default: 50)')
-    # parser.add_argument('--annotated-ratio', default=0.1, type=float, help='The ratio for semi-supervised annotation')
     parser.add_argument('--labeled_examples', type=int, default=4000, 
                         help='number labeled examples (default: 4000')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
 
     '''Deep VAE Model Parameters'''
-    # parser.add_argument('--net-name', default="wideresnet-28-2", type=str, help="the name for network to use")
     parser.add_argument('--depth', type=int, default=28, 
                         help='depth for WideResnet (default: 28)')
     parser.add_argument('--width', type=int, default=2, 
@@ -115,8 +76,6 @@ def get_args():
                         help='The mutual information bounding between x and the discrete variable z')
 
     '''VAE Loss Function Parameters'''
-    # parser.add_argument("-ei", "--evaluate-inference", action='store_true',
-    #                     help='Calculate the inference accuracy for unlabeled dataset')
     parser.add_argument('--kbmc', '--kl-beta-max-continuous', default=1e-3, type=float, 
                         metavar='KL Beta', help='the epoch to linear adjust kl beta')
     parser.add_argument('--kbmd', '--kl-beta-max-discrete', default=1e-3, type=float, 
@@ -184,13 +143,9 @@ def generate_and_save_images(model, image, num_classes):
         plt.title('{}'.format(i))
         plt.axis('off')
     plt.savefig(buf, format='png')
-    # Closing the figure prevents it from being displayed directly inside the notebook.
     plt.close(figure)
     buf.seek(0)
-    # Convert PNG buffer to TF image
-    # Convert PNG buffer to TF image
     image = tf.image.decode_png(buf.getvalue(), channels=4)
-    # Add the batch dimension
     image = tf.expand_dims(image, 0)
     return image
 #%%
@@ -240,17 +195,23 @@ def main():
     optimizer = K.optimizers.SGD(learning_rate=args['lr'],
                                 momentum=args['beta1'])
 
-    # learning_rate_fn = K.optimizers.schedules.PiecewiseConstantDecay(
-    #     args['adjust_lr'], 
-    #     [args['lr'] * t for t in [1., 0.1, 0.01, 0.001]]
-    # )
-    
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
     test_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/test')
 
     for epoch in range(args['start_epoch'], args['epochs']):
         
+        '''learning rate schedule'''
+        if epoch == 0:
+            '''warm-up'''
+            optimizer.lr = args['lr'] * 0.2
+        elif epoch < args['adjust_lr'][0]:
+            optimizer.lr = args['lr']
+        elif epoch < args['adjust_lr'][1]:
+            optimizer.lr = args['lr'] * 0.1
+        else:
+            optimizer.lr = args['lr'] * 0.01
+            
         # '''learning rate schedule'''
         # if epoch == 0:
         #     '''warm-up'''
@@ -263,25 +224,21 @@ def main():
         #     optimizer.lr = args['lr'] * 0.01
         # else:
         #     optimizer.lr = args['lr'] * 0.001
-        #     # optimizer.lr = learning_rate_fn(epoch)
-        
-        '''learning rate schedule'''
-        if epoch == 0:
-            '''warm-up'''
-            optimizer.lr = args['lr'] * 0.2
-        elif epoch < args['adjust_lr'][0]:
-            optimizer.lr = args['lr']
-        elif epoch < args['adjust_lr'][1]:
-            optimizer.lr = args['lr'] * 0.1
-        else:
-            optimizer.lr = args['lr'] * 0.01
         
         if epoch % args['reconstruct_freq'] == 0:
-            labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
+            labeled_loss, unlabeled_loss, kl_y_loss, accuracy, sample_recon = train(
+                datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length
+            )
         else:
-            labeled_loss, unlabeled_loss, kl_y_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
-        val_z_kl_loss, val_y_kl_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, args, num_classes, split='Validation')
-        test_z_kl_loss, test_y_kl_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, args, num_classes, split='Test')
+            labeled_loss, unlabeled_loss, kl_y_loss, accuracy = train(
+                datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_classes, total_length
+            )
+        val_z_kl_loss, val_y_kl_loss, val_recon_loss, val_elbo_loss, val_accuracy = validate(
+            val_dataset, model, epoch, args, num_classes, split='Validation'
+        )
+        test_z_kl_loss, test_y_kl_loss, test_recon_loss, test_elbo_loss, test_accuracy = validate(
+            test_dataset, model, epoch, args, num_classes, split='Test'
+        )
         
         with train_writer.as_default():
             tf.summary.scalar('labeled_loss', labeled_loss.result(), step=epoch)
@@ -344,7 +301,6 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     '''mutual information'''
-    # dmi = tf.constant(weight_schedule(epoch, args['akb'], args['dmi']), dtype=tf.float32)
     dmi = tf.convert_to_tensor(weight_schedule(epoch, args['akb'], args['dmi']), dtype=tf.float32)
     '''elbo part weight'''
     ew = weight_schedule(epoch, args['aew'], args['ewm'])
@@ -360,7 +316,6 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
     iteratorL = iter(shuffle_and_batch(datasetL))
     iteratorU = iter(shuffle_and_batch(datasetU))
     
-    # iteration = (50000 - args['validation_examples']) // args['batch_size'] 
     iteration = total_length // args['batch_size'] 
     
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
@@ -388,7 +343,7 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, num_c
             prior_klL = (kl_beta_z * kl_zL) + (kl_beta_y * tf.math.abs(kl_yL - dmi))
             elbo_lossL = recon_lossL + prior_klL
             
-            '''mix-up''' # instead of KL-divergence?
+            '''mix-up''' 
             with tape.stop_recording():
                 image_mixL, label_shuffleL, mean_mixL, sigma_mixL = label_smoothing(imageL, labelL, meanL, log_sigmaL, mix_weight[0])
             smoothed_meanL, smoothed_log_sigmaL, smoothed_log_probL, _, _, _ = model([image_mixL, label_shuffleL])

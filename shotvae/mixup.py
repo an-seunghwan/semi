@@ -74,8 +74,4 @@ def weight_decay_decoupled(model, buffer_model, decay_rate):
     # update buffer model
     for var, buffer_var in zip(model.variables, buffer_model.variables):
         buffer_var.assign(var)
-        
-def weight_decay(model, decay_rate):
-    for var in model.trainable_variables:
-        var.assign(var * (1. - decay_rate))
 #%%

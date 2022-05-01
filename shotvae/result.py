@@ -46,35 +46,26 @@ def arg_as_list(s):
 def get_args():
     parser = argparse.ArgumentParser('parameters')
 
-    # parser.add_argument('-bp', '--base_path', default=".")
     parser.add_argument('--dataset', type=str, default='cifar10',
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    # parser.add_argument('-is', "--image-size", default=[32, 32], type=arg_as_list,
-    #                     metavar='Image Size List', help='the size of h * w for image')
     parser.add_argument('-b', '--batch-size', default=128, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
 
     '''SSL VAE Train PreProcess Parameter'''
-    # parser.add_argument('-t', '--train-time', default=1, type=int,
-    #                     metavar='N', help='the x-th time of training')
     parser.add_argument('--epochs', default=600, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start-epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
-    # parser.add_argument('--print-freq', '-p', default=3, type=int,
-    #                     metavar='N', help='print frequency (default: 10)')
     parser.add_argument('--reconstruct-freq', '-rf', default=50, type=int,
                         metavar='N', help='reconstruct frequency (default: 50)')
-    # parser.add_argument('--annotated-ratio', default=0.1, type=float, help='The ratio for semi-supervised annotation')
     parser.add_argument('--labeled_examples', type=int, default=4000, 
                         help='number labeled examples (default: 4000')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
 
     '''Deep VAE Model Parameters'''
-    # parser.add_argument('--net-name', default="wideresnet-28-2", type=str, help="the name for network to use")
     parser.add_argument('--depth', type=int, default=28, 
                         help='depth for WideResnet (default: 28)')
     parser.add_argument('--width', type=int, default=2, 
@@ -100,8 +91,6 @@ def get_args():
                         help='The mutual information bounding between x and the discrete variable z')
 
     '''VAE Loss Function Parameters'''
-    # parser.add_argument("-ei", "--evaluate-inference", action='store_true',
-    #                     help='Calculate the inference accuracy for unlabeled dataset')
     parser.add_argument('--kbmc', '--kl-beta-max-continuous', default=1e-3, type=float, 
                         metavar='KL Beta', help='the epoch to linear adjust kl beta')
     parser.add_argument('--kbmd', '--kl-beta-max-discrete', default=1e-3, type=float, 
