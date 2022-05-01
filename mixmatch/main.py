@@ -17,21 +17,6 @@ from preprocess import fetch_dataset
 from model import WideResNet
 from mixmatch import mixmatch, semi_loss, linear_rampup, interleave, weight_decay, ema
 #%%
-# config = tf.compat.v1.ConfigProto()
-# '''
-# GPU 메모리를 전부 할당하지 않고, 아주 적은 비율만 할당되어 시작됨
-# 프로세스의 메모리 수요에 따라 자동적으로 증가
-# but
-# GPU 메모리를 처음부터 전체 비율을 사용하지 않음
-# '''
-# config.gpu_options.allow_growth = True
-
-# '''
-# 분산 학습 설정
-# '''
-# strategy = tf.distribute.MirroredStrategy()
-# session = tf.compat.v1.InteractiveSession(config=config)
-#%%
 def get_args():
     parser = argparse.ArgumentParser('parameters')
 
@@ -77,10 +62,6 @@ def get_args():
 
     parser.add_argument('--config_path', type=str, default=None, 
                         help='path to yaml config file, overwrites args')
-    # parser.add_argument('--tensorboard', action='store_false', 
-    #                     help='enable tensorboard visualization')
-    # parser.add_argument('--resume', action='store_true', 
-    #                     help='whether to restore from previous training runs')
 
     return parser.parse_args()
 #%%

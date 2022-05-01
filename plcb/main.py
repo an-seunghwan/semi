@@ -66,10 +66,6 @@ def get_args():
     parser.add_argument("--M", default=[250, 350], type=arg_as_list,
                         help="The milestone list for adjust learning rate")
     parser.add_argument('--lr_gamma', default=0.1, type=float)
-    # parser.add_argument('--swa', type=str, default='True', help='Apply SWA')
-    # parser.add_argument('--swa_start', type=int, default=350, help='Start SWA')
-    # parser.add_argument('--swa_freq', type=float, default=5, help='Frequency')
-    # parser.add_argument('--swa_lr', type=float, default=-0.01, help='LR')
     
     parser.add_argument('--Mixup_Alpha', type=float, default=1, 
                         help='Alpha value for the beta dist from mixup')
@@ -132,8 +128,6 @@ def main():
     pslab_model.set_weights(model.get_weights()) # weight initialization
     
     '''optimizer'''
-    # optimizer = K.optimizers.SGD(learning_rate=args['learning_rate'],
-    #                             momentum=args['momentum'])
     optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
@@ -278,7 +272,6 @@ def train(datasetL, datasetU, model, buffer_model, pslab_model, optimizer, epoch
             
             prob_avg = tf.reduce_mean(prob, axis=0)
             prob_avg = tf.clip_by_value(prob_avg, 1e-10, 1.0)
-            # RegA = tf.reduce_sum(1./num_classes * (tf.math.log(tf.clip_by_value(1./num_classes, 1e-10, 1.0)) - tf.math.log(tf.clip_by_value(prob_avg, 1e-10, 1.0))))
             RegA = - tf.reduce_sum(1./num_classes * tf.math.log(prob_avg))
             RegB = - tf.reduce_mean(tf.reduce_sum(prob * tf.math.log(prob), axis=-1))
             
@@ -329,7 +322,6 @@ def validate(dataset, model, epoch, args, num_classes, split):
         ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(prob), axis=-1))
         prob_avg = tf.reduce_mean(prob, axis=0)
         prob_avg = tf.clip_by_value(prob_avg, 1e-10, 1.0)
-        # RegA = tf.reduce_sum(1./num_classes * (tf.math.log(tf.clip_by_value(1./num_classes, 1e-10, 1.0)) - tf.math.log(tf.clip_by_value(prob_avg, 1e-10, 1.0))))
         RegA = - tf.reduce_sum(1./num_classes * tf.math.log(prob_avg))
         RegB = - tf.reduce_mean(tf.reduce_sum(prob * tf.math.log(prob), axis=-1))
         

@@ -34,7 +34,7 @@ def get_args():
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra, cmnist)')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results (ex. generating color MNIST)')
-    parser.add_argument('-b', '--batch-size', default=128, type=int,
+    parser.add_argument('--batch-size', default=128, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
 
     '''SSL Train PreProcess Parameter'''
@@ -53,7 +53,7 @@ def get_args():
                         help="adversarial attack norm restriction")
     
     '''Optimizer Parameters'''
-    parser.add_argument('--lr', '--learning_rate', default=0.001, type=float,
+    parser.add_argument('--learning_rate', default=0.001, type=float,
                         metavar='LR', help='initial learning rate')
     parser.add_argument("--epoch_decay_start", default=80, type=int,
                         help="The milestone list for adjust learning rate")
@@ -95,7 +95,7 @@ def main():
     # model.summary()
     
     '''optimizer'''
-    optimizer = K.optimizers.Adam(learning_rate=args['lr'])
+    optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -175,8 +175,6 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
     iteratorL = iter(shuffle_and_batch2(datasetL))
     iteratorU = iter(shuffle_and_batch(datasetU))
         
-    # iteration = (50000 - args['validation_examples']) // args['batch_size'] 
-    # iteration = total_length // args['batch_size'] 
     iteration = args['iteration']
     
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')

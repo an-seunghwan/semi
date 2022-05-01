@@ -78,7 +78,3 @@ class CNN(K.models.Model):
         h = tf.nn.softmax(h, axis=-1)
         return h
 #%%
-# model = VAT(10)
-# model.build(input_shape=(None, 32, 32, 3))
-# model.units.summary()
-#%%

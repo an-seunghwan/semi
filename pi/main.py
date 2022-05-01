@@ -50,7 +50,7 @@ def get_args():
                         help='number validation examples (default: 5000')
     
     '''Optimizer Parameters'''
-    parser.add_argument('--lr', '--learning_rate', default=0.003, type=float,
+    parser.add_argument('--learning_rate', default=0.003, type=float,
                         metavar='LR', help='initial learning rate')
     parser.add_argument('--initial_beta1', default=0.9, type=float, 
                         help='initial beta_1 value of optimizer')
@@ -63,8 +63,6 @@ def get_args():
     parser.add_argument('--weight_max', default=100, type=float, 
                         help='related to unsupervised loss component')
     
-    # parser.add_argument('--weight_norm_flag', default=True, type=bool,
-    #                     help='Weight normalization is applied. Otherwise Batch normalization is applied')
     parser.add_argument('--augmentation_flag', default=True, type=bool, 
                         help='Data augmentation')
     parser.add_argument('--trans_range', default=2, type=int, 
@@ -106,7 +104,7 @@ def main():
     model.summary()
     
     '''optimizer'''
-    optimizer = K.optimizers.Adam(learning_rate=args['lr'])
+    optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -225,7 +223,6 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_cl
             # supervised
             predL = tf.gather(pred1, tf.range(args['labeled_batch_size']))
             ce_loss = - tf.reduce_mean(tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1))
-            # ce_loss /= args['batch_size']
             
             # unsupervised
             u_loss = tf.reduce_mean(tf.reduce_sum(tf.math.square(pred1 - pred2), axis=-1))

@@ -77,7 +77,7 @@ class VAT(K.models.Model):
             h = self.bn(h)
         return h
 #%%
-model = VAT(10)
-model.build(input_shape=(None, 32, 32, 3))
-model.units.summary()
+# model = VAT(10)
+# model.build(input_shape=(None, 32, 32, 3))
+# model.units.summary()
 #%%

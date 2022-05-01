@@ -63,20 +63,9 @@ def get_args():
                         help='Hyperparam for loss')
     parser.add_argument('--reg2', type=float, default=0.4, 
                         help='Hyperparam for loss')
-    # parser.add_argument("--M", default=[250, 350], type=arg_as_list,
-    #                     help="The milestone list for adjust learning rate")
-    # parser.add_argument('--lr_gamma', default=0.1, type=float)
-    # parser.add_argument('--swa', type=str, default='True', help='Apply SWA')
-    # parser.add_argument('--swa_start', type=int, default=350, help='Start SWA')
-    # parser.add_argument('--swa_freq', type=float, default=5, help='Frequency')
-    # parser.add_argument('--swa_lr', type=float, default=-0.01, help='LR')
     
     parser.add_argument('--Mixup_Alpha', type=float, default=1, 
                         help='Alpha value for the beta dist from mixup')
-    # parser.add_argument('--DApseudolab', type=bool, default=False, 
-    #                     help='Apply data augmentation when computing pseudolabels')
-    # parser.add_argument('--drop_extra_forward', type=bool, default=True, 
-    #                     help='Do an extra forward pass to compute the labels without dropout.')
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -119,18 +108,7 @@ def main():
     buffer_model.build(input_shape=(None, 32, 32, 3))
     buffer_model.set_weights(model.get_weights()) # weight initialization
     
-    # if args['drop_extra_forward']:
-    #     pslab_model = CNN(num_classes, 
-    #                     dropratio=0.0) # without dropout
-    # else:
-    #     pslab_model = CNN(num_classes, 
-    #                     dropratio=args['dropout']) # with dropout
-    # pslab_model.build(input_shape=(None, 32, 32, 3))
-    # pslab_model.set_weights(model.get_weights()) # weight initialization
-    
     '''optimizer'''
-    # optimizer = K.optimizers.SGD(learning_rate=args['learning_rate'],
-    #                             momentum=args['momentum'])
     optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
@@ -138,11 +116,6 @@ def main():
     test_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/test')
 
     for epoch in range(args['start_epoch'], args['epochs']):
-        
-        # for ad_num, ad_epoch in enumerate(args['M'] + [args['epochs']]):
-        #     if epoch < ad_epoch:
-        #         optimizer.lr = args['learning_rate'] * (args['lr_gamma'] ** ad_num)
-        #         break
         
         loss, mixup_loss, rega_loss, regb_loss, accuracy = train(datasetL, model, buffer_model, optimizer, epoch, args, num_classes, total_length)
         val_loss, val_ce_loss, val_rega_loss, val_regb_loss, val_accuracy = validate(val_dataset, model, epoch, args, num_classes, split='Validation')
@@ -184,9 +157,6 @@ def main():
         test_regb_loss.reset_states()
         test_accuracy.reset_states()
         
-        # '''update pseudo-label model for every epoch'''
-        # pslab_model.set_weights(model.get_weights())
-
     '''model & configurations save'''        
     # weight name for saving
     for i, w in enumerate(model.variables):
@@ -214,10 +184,8 @@ def train(datasetL, model, buffer_model, optimizer, epoch, args, num_classes, to
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
     shuffle_and_batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e4)).batch(batch_size=args['labeled_batch_size'], drop_remainder=True)
-    # shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
 
     iteratorL = iter(shuffle_and_batchL(datasetL))
-    # iteratorU = iter(shuffle_and_batchU(datasetU))
         
     iteration = total_length // args['batch_size'] 
     
@@ -229,27 +197,17 @@ def train(datasetL, model, buffer_model, optimizer, epoch, args, num_classes, to
         except:
             iteratorL = iter(shuffle_and_batchL(datasetL))
             imageL, labelL = next(iteratorL)
-        # try:
-        #     imageU, _ = next(iteratorU)
-        # except:
-        #     iteratorU = iter(shuffle_and_batchU(datasetU))
-        #     imageU, _ = next(iteratorU)
         
         imageL_aug = augment(imageL)
-        # imageU_aug = augment(imageU)
             
         '''normalization'''
         channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
                              std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         imageL -= channel_stats['mean']
         imageL /= channel_stats['std']
-        # imageU -= channel_stats['mean']
-        # imageU /= channel_stats['std']
         
         imageL_aug -= channel_stats['mean']
         imageL_aug /= channel_stats['std']
-        # imageU_aug -= channel_stats['mean']
-        # imageU_aug /= channel_stats['std']
         
         mix_weight = tf.constant(np.random.beta(args['Mixup_Alpha'], args['Mixup_Alpha']))
         
@@ -267,7 +225,6 @@ def train(datasetL, model, buffer_model, optimizer, epoch, args, num_classes, to
             
             prob_avg = tf.reduce_mean(prob, axis=0)
             prob_avg = tf.clip_by_value(prob_avg, 1e-10, 1.0)
-            # RegA = tf.reduce_sum(1./num_classes * (tf.math.log(tf.clip_by_value(1./num_classes, 1e-10, 1.0)) - tf.math.log(tf.clip_by_value(prob_avg, 1e-10, 1.0))))
             RegA = - tf.reduce_sum(1./num_classes * tf.math.log(prob_avg))
             RegB = - tf.reduce_mean(tf.reduce_sum(prob * tf.math.log(prob), axis=-1))
             
@@ -317,7 +274,6 @@ def validate(dataset, model, epoch, args, num_classes, split):
         
         prob_avg = tf.reduce_mean(prob, axis=0)
         prob_avg = tf.clip_by_value(prob_avg, 1e-10, 1.0)
-        # RegA = tf.reduce_sum(1./num_classes * (tf.math.log(tf.clip_by_value(1./num_classes, 1e-10, 1.0)) - tf.math.log(tf.clip_by_value(prob_avg, 1e-10, 1.0))))
         RegA = - tf.reduce_sum(1./num_classes * tf.math.log(prob_avg))
         RegB = - tf.reduce_mean(tf.reduce_sum(prob * tf.math.log(prob), axis=-1))
         
