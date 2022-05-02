@@ -36,11 +36,11 @@ def get_args():
                         help='seed for repeatable results (ex. generating color MNIST)')
     parser.add_argument('--batch-size', default=100, type=int,
                         metavar='N', help='mini-batch size (default: 100)')
-    parser.add_argument('--labeled-batch-size', default=32, type=int,
+    parser.add_argument('--labeled-batch-size', default=50, type=int,
                         metavar='N', help='mini-batch size of labeled dataset')
 
     '''SSL Train PreProcess Parameter'''
-    parser.add_argument('--epochs', default=300, type=int, 
+    parser.add_argument('--epochs', default=500, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
@@ -60,7 +60,7 @@ def get_args():
                         help='ramp-up period of loss function')
     parser.add_argument('--ramp_down_period', default=50, type=int, 
                         help='ramp-down period')
-    parser.add_argument('--weight_max', default=100, type=float, 
+    parser.add_argument('--weight_max', default=10, type=float, 
                         help='related to unsupervised loss component')
     
     parser.add_argument('--augmentation_flag', default=True, type=bool, 
@@ -87,8 +87,6 @@ def load_config(args):
 def main():
     '''argparse to dictionary'''
     args = vars(get_args())
-    # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/cifar10_4000.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -112,6 +110,7 @@ def main():
 
     for epoch in range(args['start_epoch'], args['epochs']):
         
+        '''learning rate schedule'''
         T = epoch / args['ramp_up_period']
         ramp_up = tf.math.exp(-5. * (tf.math.maximum(0., 1. - T)) ** 2)
         T = (args['epochs'] - epoch) / args['ramp_down_period']
@@ -124,8 +123,7 @@ def main():
             loss_weight = ramp_up * (args['weight_max'] * args['labeled_examples'] / 50000.)
         
         '''learning rate schedule'''
-        optimizer.lr = ramp_up * ramp_down * args['lr']
-        # optimizer.lr = ramp_down * args['lr']
+        optimizer.lr = ramp_up * ramp_down * args['learning_rate']
         optimizer.beta_1 = ramp_down * args['initial_beta1'] + (1. - ramp_down) * args['final_beta1']
         
         loss, ce_loss, u_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_classes, total_length)
@@ -200,9 +198,6 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, loss_weight, num_cl
         except:
             iteratorU = iter(shuffle_and_batch(datasetU))
             imageU, _ = next(iteratorU)
-        
-        # if args['whitening_flag']:
-            # zca whitening
         
         if args['augmentation_flag']:
             imageL = augment(imageL, args['trans_range'])
