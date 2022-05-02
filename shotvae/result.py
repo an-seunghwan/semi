@@ -33,8 +33,6 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
 from model import VAE
-from criterion2 import ELBO_criterion
-from mixup import augment, optimal_match_mix, weight_decay_decoupled, label_smoothing 
 #%%
 import ast
 def arg_as_list(s):
@@ -307,39 +305,25 @@ plt.show()
 plt.close()
 #%%
 '''inception score'''
-# assumes images have any shape and pixels in [0,255]
 def calculate_inception_score(images, n_split=50, eps=1E-16):
-    # load inception v3 model
     inception = K.applications.InceptionV3(include_top=True)
-    # enumerate splits of images/predictions
     scores = list()
     n_part = int(np.floor(images.shape[0] / n_split))
     for i in tqdm.tqdm(range(n_split)):
-        # retrieve images
         ix_start, ix_end = i * n_part, (i+1) * n_part
         subset = images[ix_start:ix_end]
-        # convert from uint8 to float32
         subset = subset.astype('float32')
         # scale images to the required size
         subset = tf.image.resize(subset, (299, 299), 'nearest')
         # pre-process images, scale to [-1,1]
         subset = 2. * subset - 1.
-        # subset = K.applications.inception_v3.preprocess_input(subset)
-        # predict p(y|x)
         p_yx = inception.predict(subset)
-        # calculate p(y)
         p_y = tf.expand_dims(p_yx.mean(axis=0), 0)
-        # calculate KL divergence using log probabilities
         kl_d = p_yx * (np.log(p_yx + eps) - np.log(p_y + eps))
-        # sum over classes
         sum_kl_d = kl_d.sum(axis=1)
-        # average over images
         avg_kl_d = np.mean(sum_kl_d)
-        # undo the log
         is_score = np.exp(avg_kl_d)
-        # store
         scores.append(is_score)
-    # average across images
     is_avg, is_std = np.mean(scores), np.std(scores)
     return is_avg, is_std
 #%%
@@ -404,7 +388,7 @@ plt.savefig('{}/shotvae_interpolation1.png'.format(model_path),
 plt.show()
 plt.close()
 #%%
-'''FID'''
+# '''FID'''
 # inception_model = K.applications.InceptionV3(include_top=False, weights="imagenet", pooling='avg')
 
 # autotune = tf.data.AUTOTUNE
