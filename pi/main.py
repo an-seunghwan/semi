@@ -2,8 +2,8 @@
 import argparse
 import os
 
-# os.chdir(r'D:\semi\pi') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/pi') # main directory (repository)
+os.chdir(r'D:\semi\pi') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/pi') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -60,7 +60,7 @@ def get_args():
                         help='ramp-up period of loss function')
     parser.add_argument('--ramp_down_period', default=50, type=int, 
                         help='ramp-down period')
-    parser.add_argument('--weight_max', default=10, type=float, 
+    parser.add_argument('--weight_max', default=100, type=float, 
                         help='related to unsupervised loss component')
     
     parser.add_argument('--augmentation_flag', default=True, type=bool, 
@@ -120,7 +120,7 @@ def main():
         if epoch == 0:
             loss_weight = 0
         else:
-            loss_weight = ramp_up * (args['weight_max'] * args['labeled_examples'] / 50000.)
+            loss_weight = ramp_up * ((args['weight_max'] * args['labeled_examples']) / (50000. * num_classes))
         
         '''learning rate schedule'''
         optimizer.lr = ramp_up * ramp_down * args['learning_rate']
