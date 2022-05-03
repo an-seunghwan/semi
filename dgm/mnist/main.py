@@ -20,7 +20,6 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 from preprocess import fetch_dataset
 from model import DGM
 from criterion import ELBO_criterion
-# from utils import augment, weight_decay_decoupled
 #%%
 import ast
 def arg_as_list(s):
@@ -36,7 +35,7 @@ def get_args():
                         help='dataset used for training')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results')
-    parser.add_argument('-b', '--batch-size', default=64, type=int,
+    parser.add_argument('--batch-size', default=64, type=int,
                         metavar='N', help='mini-batch size (default: 64)')
 
     '''SSL VAE Train PreProcess Parameter'''
@@ -52,7 +51,7 @@ def get_args():
                         help='number validation examples (default: 5000')
 
     '''Deep VAE Model Parameters'''
-    parser.add_argument('--bce', "--bce_reconstruction", default=True, type=bool,
+    parser.add_argument("--bce_reconstruction", default=True, type=bool,
                         help="Do BCE Reconstruction")
 
     '''VAE parameters'''
@@ -61,9 +60,8 @@ def get_args():
                         help='feature dimension in latent space for continuous variable')
     
     '''Optimizer Parameters'''
-    parser.add_argument('--lr', '--learning_rate', default=3e-4, type=float,
+    parser.add_argument('--learning_rate', default=3e-4, type=float,
                         metavar='LR', help='initial learning rate')
-    # parser.add_argument('--wd', '--weight_decay', default=5e-4, type=float)
 
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -91,12 +89,9 @@ def generate_and_save_images1(model, image):
         plt.imshow(image[i][..., 0])
         plt.axis('off')
     plt.savefig(buf, format='png')
-    # Closing the figure prevents it from being displayed directly inside the notebook.
     plt.close(figure)
     buf.seek(0)
-    # Convert PNG buffer to TF image
     image = tf.image.decode_png(buf.getvalue(), channels=1)
-    # Add the batch dimension
     image = tf.expand_dims(image, 0)
     return image
 
@@ -115,8 +110,6 @@ def generate_and_save_images2(model, image, step, save_dir):
 def main():
     '''argparse to dictionary'''
     args = vars(get_args())
-    # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/mnist_100.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -134,28 +127,8 @@ def main():
     model.build(input_shape=[(None, 28, 28, 1), (None, num_classes)])
     model.summary()
     
-    # buffer_model = DGM(args,
-    #                 num_classes,
-    #                 latent_dim=args['latent_dim'])
-    # buffer_model.build(input_shape=(None, 28, 28, 1))
-    # buffer_model.set_weights(model.get_weights()) # weight initialization
-    
     '''optimizer'''
-    # optimizer = K.optimizers.Adam(learning_rate=args['lr'])
-    '''Gradient Cetralized optimizer'''
-    class GCAdam(K.optimizers.Adam):
-        def get_gradients(self, loss, params):
-            grads = []
-            gradients = super().get_gradients()
-            for grad in gradients:
-                grad_len = len(grad.shape)
-                if grad_len > 1:
-                    axis = list(range(grad_len - 1))
-                    grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
-                grads.append(grad)
-            return grads
-    optimizer = GCAdam(learning_rate=args['lr'])
-    # optimizer_classifier = GCAdam(learning_rate=args['lr'])
+    optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
 
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -168,16 +141,14 @@ def main():
     
     for epoch in range(args['start_epoch'], args['epochs']):
         
-        # '''classifier: learning rate schedule'''
-        # if epoch >= args['rampdown_epoch']:
-        #     optimizer_classifier.lr = args['lr'] * tf.math.exp(-5 * (1. - (args['epochs'] - epoch) / args['epochs']) ** 2)
-        #     optimizer_classifier.beta_1 = 0.5
-            
         if epoch % args['reconstruct_freq'] == 0:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy, sample_recon = train(
+                datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print
+            )
         else:
-            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print)
-        # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
+            loss, recon_loss, elboL_loss, elboU_loss, kl_loss, accuracy = train(
+                datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print
+            )
         val_recon_loss, val_kl_loss, val_elbo_loss, val_accuracy = validate(val_dataset, model, epoch, beta, args, num_classes, split='Validation')
         test_recon_loss, test_kl_loss, test_elbo_loss, test_accuracy = validate(test_dataset, model, epoch, beta, args, num_classes, split='Test')
         
@@ -274,10 +245,6 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
             iteratorU = iter(shuffle_and_batchU(datasetU))
             imageU, _ = next(iteratorU)
         
-        # if args['augment']:
-        #     imageL_aug = augment(imageL)
-        #     imageU_aug = augment(imageU)
-            
         with tf.GradientTape(persistent=True) as tape:    
             '''labeled'''
             mean, logvar, z, xhat = model([imageL, labelL])
@@ -315,8 +282,6 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, beta, num_classes, 
             
         grads = tape.gradient(loss, model.trainable_variables) 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
-        # '''decoupled weight decay'''
-        # weight_decay_decoupled(model.classifier, buffer_model.classifier, decay_rate=args['wd'] * optimizer_classifier.lr)
         
         loss_avg(loss)
         elboL_loss_avg(elboL)
@@ -365,9 +330,6 @@ def validate(dataset, model, epoch, beta, args, num_classes, split):
     print(f'Epoch {epoch:04d}: {split} ELBO Loss: {elbo_loss_avg.result():.4f}, Recon: {recon_loss_avg.result():.4f}, KL: {kl_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
     return recon_loss_avg, kl_loss_avg, elbo_loss_avg, accuracy
-#%%
-# def weight_schedule(epoch, epochs, weight_max):
-#     return weight_max * tf.math.exp(-5. * (1. - min(1., epoch/epochs)) ** 2)
 #%%
 if __name__ == '__main__':
     main()

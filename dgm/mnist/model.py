@@ -26,23 +26,6 @@ class Encoder(K.models.Model):
         logvar = self.logvar_layer(h)
         return mean, logvar
 #%%
-# class Classifier(K.models.Model):
-#     def __init__(self, num_classes, name="Classifier", **kwargs):
-#         super(Classifier, self).__init__(name=name, **kwargs)
-#         self.net = K.Sequential(
-#             [
-#                 layers.Flatten(),
-#                 layers.Dense(256, activation='linear'),
-#                 layers.ReLU(),
-#                 layers.Dense(num_classes, activation='softmax'),
-#             ]
-#         )
-        
-#     # @tf.function
-#     def call(self, x, training=True):
-#         h = self.net(x, training=training)
-#         return h
-#%%
 class Classifier(K.models.Model):
     def __init__(self, num_classes, name="Classifier", **kwargs):
         super(Classifier, self).__init__(name=name, **kwargs)
@@ -144,8 +127,6 @@ class DGM(K.models.Model):
         mean, logvar = self.encoder(h, training=training)
         epsilon = tf.random.normal(shape=(tf.shape(x)[0], self.latent_dim))
         z = mean + tf.math.exp(logvar / 2.) * epsilon 
-        # assert z.shape == (tf.shape(x)[0], self.latent_dim)
         xhat = self.decoder(tf.concat([z, y], axis=-1), training=training) 
-        # assert xhat.shape == (tf.shape(x)[0], self.input_dim[1], self.input_dim[2], self.input_dim[3])
         return mean, logvar, z, xhat
 #%%

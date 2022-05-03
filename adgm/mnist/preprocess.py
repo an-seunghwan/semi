@@ -10,6 +10,8 @@ def download_dataset(dataset_name):
     train = None
     test = None
     
+    assert dataset_name == 'mnist'
+    
     dataset = tfds.load(name=dataset_name)
     train = dataset['train']
     test = dataset['test']

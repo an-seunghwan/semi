@@ -2,7 +2,6 @@
 import argparse
 import os
 
-# os.chdir(r'D:\EXoN_official') # main directory (repository)
 # os.chdir('/home1/prof/jeon/an/EXoN_official') # main directory (repository)
 os.chdir('/Users/anseunghwan/Documents/GitHub/semi/adgm')
 
@@ -54,14 +53,14 @@ def get_args():
                         help='number validation examples (default: 5000')
 
     '''Deep VAE Model Parameters'''
-    parser.add_argument('--bce', "--bce_reconstruction", default=True, type=bool,
+    parser.add_argument("--bce_reconstruction", default=True, type=bool,
                         help="Do BCE Reconstruction")
 
     '''VAE parameters'''
-    parser.add_argument('--latent_dim', "--latent_dim_continuous", default=32, type=int,
+    parser.add_argument('--latent_dim', default=32, type=int,
                         metavar='Latent Dim For Continuous Variable',
                         help='feature dimension in latent space for continuous variable')
-    parser.add_argument('--aux_dim', "--aux_dim_continuous", default=32, type=int,
+    parser.add_argument('--aux_dim', default=32, type=int,
                         metavar='Auxiliary Dim For Continuous Variable',
                         help='feature dimension in auxiliary latent space for continuous variable')
     parser.add_argument('--beta', default=0.1, type=float,
@@ -100,12 +99,9 @@ def generate_and_save_images1(model, image):
         plt.imshow(image[i][..., 0])
         plt.axis('off')
     plt.savefig(buf, format='png')
-    # Closing the figure prevents it from being displayed directly inside the notebook.
     plt.close(figure)
     buf.seek(0)
-    # Convert PNG buffer to TF image
     image = tf.image.decode_png(buf.getvalue(), channels=1)
-    # Add the batch dimension
     image = tf.expand_dims(image, 0)
     return image
 
@@ -124,8 +120,6 @@ def generate_and_save_images2(model, image, step, save_dir):
 def main():
     '''argparse to dictionary'''
     args = vars(get_args())
-    # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/mnist_100.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -183,7 +177,6 @@ def main():
             loss, recon_loss, elboL_loss, elboU_loss, kl_loss, kl_aux_loss, accuracy = train(
                 datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta, num_classes, total_length, test_accuracy_print
             )
-        # loss, recon_loss, info_loss, nf_loss, accuracy = train(datasetL, datasetU, model, buffer_model, optimizer, optimizer_nf, epoch, args, num_classes, total_length)
         val_recon_loss, val_kl_loss, val_kl_aux_loss, val_elbo_loss, val_accuracy = validate(
             val_dataset, model, epoch, beta, args, num_classes, split='Validation'
         )
@@ -268,8 +261,10 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
     alpha = tf.cast((total_length + args['labeled_examples']) / args['labeled_examples'], tf.float32)
     
     autotune = tf.data.AUTOTUNE
-    batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['labeled_batch_size'], drop_remainder=False).prefetch(autotune)
-    shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True).prefetch(autotune)
+    batchL = lambda dataset: dataset.shuffle(buffer_size=int(1e3)).batch(batch_size=args['labeled_batch_size'], 
+                                                                         drop_remainder=False).prefetch(autotune)
+    shuffle_and_batchU = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], 
+                                                                                     drop_remainder=True).prefetch(autotune)
 
     iteratorL = iter(batchL(datasetL))
     iteratorU = iter(shuffle_and_batchU(datasetU))
@@ -293,8 +288,9 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
         with tf.GradientTape(persistent=True) as tape:    
             '''labeled'''
             mean, logvar, z, xhat, a, qa_mean, qa_logvar, pa_mean, pa_logvar = model([imageL, labelL])
-            recon_loss, prior_y, pz, qz, pa, qa = ELBO_criterion(xhat, imageL, labelL, z, mean, logvar, num_classes, args,
-                                                                a, qa_mean, qa_logvar, pa_mean, pa_logvar)
+            recon_loss, prior_y, pz, qz, pa, qa = ELBO_criterion(
+                xhat, imageL, labelL, z, mean, logvar, num_classes, args, a, qa_mean, qa_logvar, pa_mean, pa_logvar
+            )
             elboL = tf.reduce_mean(recon_loss - prior_y + beta * (qz - pz) + beta * (qa - pa))
             
             '''unlabeled'''
@@ -307,8 +303,9 @@ def train(datasetL, datasetU, model, buffer_model, optimizer, epoch, args, beta,
             imageU_ = tf.reshape(tf.repeat(imageU_, num_classes, axis=1), (-1, 28, 28, 1))
             
             mean, logvar, z, xhat, a, qa_mean, qa_logvar, pa_mean, pa_logvar = model([imageU_, labelU])
-            recon_loss, prior_y, pz, qz, pa, qa = ELBO_criterion(xhat, imageU_, labelU, z, mean, logvar, num_classes, args,
-                                                                 a, qa_mean, qa_logvar, pa_mean, pa_logvar)
+            recon_loss, prior_y, pz, qz, pa, qa = ELBO_criterion(
+                xhat, imageU_, labelU, z, mean, logvar, num_classes, args, a, qa_mean, qa_logvar, pa_mean, pa_logvar
+            )
             
             recon_loss = tf.reshape(recon_loss, (tf.shape(imageU)[0], num_classes, -1))
             prior_y = tf.reshape(prior_y, (tf.shape(imageU)[0], num_classes, -1))
