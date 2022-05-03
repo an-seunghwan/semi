@@ -86,11 +86,6 @@ def build_pseudo_label(datasetL, datasetU, model, num_classes, args,
     labelsL = tf.concat(labelsL, axis=0)
     imagesU = tf.concat(imagesU, axis=0)
     
-    # shuffled_indices = tf.random.shuffle(tf.range(start=0, limit=len(embeddings), dtype=tf.int32))
-    # embeddings = tf.gather(embeddings, shuffled_indices)
-    # labels = tf.gather(labels, shuffled_indices)
-    # tf.where(tf.less(shuffled_indices, tf.shape(labelsL)[0]), tf.cast(shuffled_indices, tf.float32), -1.0)
-    
     '''update pseudo-labels'''
     alpha = 0.99
     gamma = 3

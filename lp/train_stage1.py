@@ -14,12 +14,11 @@ import io
 import matplotlib.pyplot as plt
 
 import datetime
-# current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 current_time = 'stage1'
 
 from preprocess import fetch_dataset
 from model import CNN
-from utils import weight_decay_decoupled, linear_rampup, cosine_rampdown, augment
+from utils import weight_decay_decoupled, augment
 #%%
 import ast
 def arg_as_list(s):
@@ -34,25 +33,14 @@ def get_args():
     parser.add_argument('--dataset', metavar='DATASET', default='cifar10')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results (ex. generating color MNIST)')
-    # parser.add_argument('--train-subdir', type=str, default='train+val',
-    #                     help='the subdirectory inside the data directory that contains the training data')
-    # parser.add_argument('--eval-subdir', type=str, default='test',
-    #                     help='the subdirectory inside the data directory that contains the evaluation data')
-    # parser.add_argument('--label-split', default=10, type=int, metavar='FILE',
-    #                     help='list of image labels (default: based on directory structure)')
-    # parser.add_argument('--exclude-unlabeled', default=False, type=bool,
-    #                     help='exclude unlabeled examples from the training set')
-    # parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
-    #                     help='number of data loading workers (default: 2)')
     parser.add_argument('--epochs', default=180, type=int, metavar='N',
                         help='number of total epochs to run')
     parser.add_argument('--start-epoch', default=0, type=int, metavar='N',
                         help='manual epoch number (useful on restarts)')
-    parser.add_argument('-b', '--batch-size', default=100, type=int,
+    parser.add_argument('--batch-size', default=100, type=int,
                         metavar='N', help='mini-batch size (default: 256)')
-    # parser.add_argument('--labeled-batch-size', default=None, type=int,
-    #                     metavar='N', help="labeled examples per minibatch (default: no constrain)")
-    parser.add_argument('--lr', '--learning-rate', default=0.001, type=float,
+    
+    parser.add_argument('--learning-rate', default=0.001, type=float,
                         metavar='LR', help='max learning rate')
     parser.add_argument('--initial-lr', default=0.0, type=float,
                         metavar='LR', help='initial learning rate when using linear rampup')
@@ -60,51 +48,17 @@ def get_args():
                         help='length of learning rate rampup in the beginning')
     parser.add_argument('--lr-rampdown-epochs', default=210, type=int, metavar='EPOCHS',
                         help='length of learning rate cosine rampdown (>= length of training)')
-    # parser.add_argument('--momentum', default=0.9, type=float, metavar='M',
-    #                     help='momentum')
-    # parser.add_argument('--nesterov', default=True, type=bool,
-    #                     help='use nesterov momentum')
-    parser.add_argument('--weight-decay', '--wd', default=2e-4, type=float,
+    parser.add_argument('--weight-decay', default=2e-4, type=float,
                         metavar='W', help='weight decay (default: 1e-4)')
-    # parser.add_argument('--ema-decay', default=0.999, type=float, metavar='ALPHA',
-    #                     help='ema variable decay rate (default: 0.999)')
-    # parser.add_argument('--consistency', default=None, type=float, metavar='WEIGHT',
-    #                     help='use consistency loss with given weight (default: None)')
-    # parser.add_argument('--consistency-type', default="mse", type=str, metavar='TYPE',
-    #                     choices=['mse', 'kl'],
-                        # help='consistency loss type to use')
-    # parser.add_argument('--consistency-rampup', default=5, type=int, metavar='EPOCHS',
-    #                     help='length of the consistency loss ramp-up')
-    # parser.add_argument('--logit-distance-cost', default=-1, type=float, metavar='WEIGHT',
-    #                     help='let the student model have two outputs and use an MSE loss between the logits with the given weight (default: only have one output)')
-    # parser.add_argument('--checkpoint-epochs', default=10, type=int,
-    #                     metavar='EPOCHS', help='checkpoint frequency in epochs, 0 to turn checkpointing off (default: 1)')
-    # parser.add_argument('--evaluation-epochs', default=1, type=int,
-    #                     metavar='EPOCHS', help='evaluation frequency in epochs, 0 to turn evaluation off (default: 1)')
-    # parser.add_argument('--print-freq', '-p', default=10, type=int,
-    #                     metavar='N', help='print frequency (default: 10)')
-    # parser.add_argument('--resume', default='', type=str, metavar=s'PATH',
-    #                     help='path to latest checkpoint (default: nssssone)')
-    # parser.add_argument('-e', '--evaluate', type=str2bool,
-    #                     help='evaluate model on evaluation set')
-    # parser.add_argument('--pretrained', dest='pretrained', action='store_true',
-    #                     help='use pre-trained model')
-    # parser.add_argument('--gpu-id', type=str, default='0',
-    #                     help='gpu id')
+    
     parser.add_argument('--dfs-k', type=int, default=50,
                         help='diffusion k')
-    # parser.add_argument('--fully-supervised', default=False, type=bool,
-    #                     help='is fully-supervised')
     parser.add_argument('--isL2', default=True, type=bool,
                         help='is l2 normalized features')
     parser.add_argument('--num-labeled', type=int, default=4000,
                         help='number of labeled instances')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
-    # parser.add_argument('--test-mode', type=str, default='',
-    #                     help='number of labeled instances')
-    # parser.add_argument('--isMT', default=False, type=str2bool, metavar='BOOL',
-    #                     help='is combined with mean teacher')
     
     '''Configuration'''
     parser.add_argument('--config_path', type=str, default=None, 
@@ -125,8 +79,6 @@ def load_config(args):
 def main():
     '''argparse to dictionary'''
     args = vars(get_args())
-    # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/cmnist_100.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -145,30 +97,8 @@ def main():
     buffer_model.build(input_shape=(None, 32, 32, 3))
     buffer_model.set_weights(model.get_weights()) # weight initialization
     
-    '''
-    <SGD + momentum + weight_decay>
-    lambda: weight_decay parameter
-    beta_1: momemtum
-    lr: learning rate
-    
-    v(0) = 0
-    for t in range(0, epochs):
-        v(t+1) = beta_1 * v(t) + grad(t+1) + lambda * weight(t)
-        weight(t+1) 
-        = weight(t) - lr * v(t+1)
-        = weight(t) - lr * (beta_1 * v(t) + grad(t+1) + lambda * weight(t))
-        = (weight(t) - lr * grad(t+1)) - lr * (beta_1 * v(t) + lambda * weight(t))
-        = (weight(t) - lr * (grad(t+1) + beta_1 * v(t)) - lr * lambda * weight(t))
-    
-    SGD : weight(t) - lr * grad(t+1)
-    weight_decay (+ momentum) : - lr * (beta_1 * v(t) + lambda * weight(t))
-    '''
-    
     '''optimizer'''
-    # optimizer = K.optimizers.SGD(learning_rate=args['lr'],
-    #                             momentum=args['momentum'],
-    #                             nesterov=args['nesterov'])
-    optimizer = K.optimizers.Adam(learning_rate=args['lr'])
+    optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/3M/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/3M/{current_time}/val')
@@ -225,18 +155,10 @@ def train(datasetL, model, buffer_model, optimizer, epoch, args, num_classes, to
 
     iteratorL = iter(shuffle_and_batch(datasetL))
         
-    # iteration = (50000 - args['validation_examples']) // args['batch_size'] 
     iteration = total_length // args['batch_size'] 
     
     progress_bar = tqdm.tqdm(range(iteration), unit='batch')
     for batch_num in progress_bar:
-        
-        # '''learning rate schedule'''
-        # epoch_ = epoch + batch_num / iteration
-        # lr = linear_rampup(epoch_, args['lr_rampup']) * (optimizer.lr - args['initial_lr']) + args['initial_lr']
-        # if args['lr_rampdown_epochs']:
-        #     lr *= cosine_rampdown(epoch_, args['lr_rampdown_epochs'])
-        # optimizer.lr = lr
         
         try:
             imageL, labelL = next(iteratorL)
