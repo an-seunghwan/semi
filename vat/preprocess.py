@@ -3,7 +3,6 @@ import os
 import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
-import cv2
 from tqdm import tqdm
 #%%
 def download_dataset(dataset_name):
@@ -30,61 +29,7 @@ def download_dataset(dataset_name):
         train = dataset['train']
         test = dataset['test']
         
-    elif dataset_name == 'cmnist':
-        dataset = tfds.load(name='mnist')
-        train = dataset['train']
-        test = dataset['test']
-    
     return  train, test
-#%%
-color_list = [
-    (255, 0, 0), # red 
-    # (255, 0, 128), # rose 
-    (255, 0, 255), # magenta 
-    # (128, 0, 255), # violet
-    (0, 0, 255), # blue 
-    # (0, 128, 255), # azure 
-    (0, 255, 255), # cyan 
-    # (0, 255, 128), # spring green 
-    (0, 255, 0), # green
-    # (128, 255, 0), # chartreuse 
-    (255, 255, 0), # yellow 
-    # (255, 128, 0), # orange
-]
-#%%
-def colored_mnist(image):
-    '''
-    color list: [
-        red, rose, magenta, violet,
-        blue, azure, cyan, spring green, green
-        chartreuse, yellow, orange
-    ]
-    '''
-    
-    image = tf.image.resize(image, [32, 32], method='nearest')
-    
-    # if tf.random.uniform((1, 1)) > 0.5:
-    # color
-    image = tf.cast(image, tf.float32) / 255.
-    # color = np.random.uniform(0., 1., 3)
-    # color = color / np.linalg.norm(color)
-    color = np.array(color_list[np.random.choice(range(len(color_list)), 1)[0]]) / 255.
-    image = image * color[tf.newaxis, tf.newaxis, :]
-    return image
-    # else:
-    #     # edge detection
-    #     image = cv2.Canny(image.numpy(), 10., 255.)
-    #     image[np.where(image > 0)] = 1.
-    #     image[np.where(image <= 0)] = 0.
-    #     # color
-    #     # color = np.random.uniform(0., 1., 3)
-    #     # color = color / np.linalg.norm(color)
-    #     color = np.array(color_list[np.random.choice(range(len(color_list)), 1)[0]]) / 255.
-    #     image = image[..., tf.newaxis] * color[tf.newaxis, tf.newaxis, :]
-    #     # width
-    #     kernel = np.ones((1, 1))
-    #     image = cv2.dilate(image, kernel)
-    #     return image
 #%%
 def _list_to_tf_dataset(dataset, args):
     def _dataset_gen():
@@ -92,7 +37,7 @@ def _list_to_tf_dataset(dataset, args):
             yield example
     return tf.data.Dataset.from_generator(
         _dataset_gen,
-        output_types={'image':tf.float32, 'label':tf.int64} if args['dataset'] == 'cmnist' else {'image':tf.uint8, 'label':tf.int64},
+        output_types={'image':tf.uint8, 'label':tf.int64},
         output_shapes={'image': (32, 32, 3), 'label': ()}
         # output_shapes={'image': (args['image_size'], args['image_size'], args['channel']), 'label': ()}
     )
@@ -112,54 +57,26 @@ def split_dataset(dataset, num_labeled, num_validations, num_classes, args):
     for example in tqdm(iter(dataset), desc='split_dataset'):
         label = int(example['label'])
         counter[label] += 1
-        if args['dataset'] == 'cmnist':
-            if counter[label] <= (num_validations / num_classes):
-                validation.append({
-                    'image': colored_mnist(example['image']),
-                    'label': example['label']
-                })
-            
-            if counter[label] <= (num_labeled / num_classes):
-                labeled.append({
-                    'image': colored_mnist(example['image']),
-                    'label': example['label']
-                })
-            else:
-                unlabeled.append({
-                    'image': colored_mnist(example['image']),
-                    'label': tf.convert_to_tensor(-1, dtype=tf.int64)
-                })
+        if counter[label] <= (num_validations / num_classes):
+            validation.append({
+                'image': example['image'],
+                'label': example['label']
+            })
+        
+        if counter[label] <= (num_labeled / num_classes):
+            labeled.append({
+                'image': example['image'],
+                'label': example['label']
+            })
         else:
-            if counter[label] <= (num_validations / num_classes):
-                validation.append({
-                    'image': example['image'],
-                    'label': example['label']
-                })
-            
-            if counter[label] <= (num_labeled / num_classes):
-                labeled.append({
-                    'image': example['image'],
-                    'label': example['label']
-                })
-            else:
-                unlabeled.append({
-                    'image': example['image'],
-                    'label': tf.convert_to_tensor(-1, dtype=tf.int64)
-                })
+            unlabeled.append({
+                'image': example['image'],
+                'label': tf.convert_to_tensor(-1, dtype=tf.int64)
+            })
     labeled = _list_to_tf_dataset(labeled, args)
     unlabeled = _list_to_tf_dataset(unlabeled, args)
     validation = _list_to_tf_dataset(validation, args)
     return labeled, unlabeled, validation
-#%%
-def cmnist_test_dataset(dataset, args):
-    test = []
-    for example in tqdm(iter(dataset), desc='cmnist_test_dataset'):
-        test.append({
-            'image': colored_mnist(example['image']),
-            'label': example['label']
-        })
-    test = _list_to_tf_dataset(test, args)
-    return test
 #%%
 def normalize_image(image):
     image = image / 255.
@@ -168,10 +85,7 @@ def normalize_image(image):
 def serialize_example(example, num_classes, args):
     image = example['image']
     label = example['label']
-    if args['dataset'] == 'cmnist':
-        image = image.astype(np.float32).tobytes()
-    else:
-        image = normalize_image(image.astype(np.float32)).tobytes()
+    image = normalize_image(image.astype(np.float32)).tobytes()
     label = np.eye(num_classes).astype(np.float32)[label].tobytes()
     example = tf.train.Example(features=tf.train.Features(feature={
         'image': tf.train.Feature(bytes_list=tf.train.BytesList(value=[image])),
@@ -204,10 +118,6 @@ def fetch_dataset(args, log_path):
                                                 num_classes=num_classes,
                                                 args=args)
         
-        if args['dataset'] == 'cmnist':
-            test = cmnist_test_dataset(dataset=test,
-                                       args=args)
-            
         for name, dataset in [('trainL', trainL), ('trainU', trainU), ('validation', validation), ('test', test)]:
             writer = tf.io.TFRecordWriter(f'{dataset_path}/{name}.tfrecord'.encode('utf-8'))
             for x in tfds.as_numpy(dataset):

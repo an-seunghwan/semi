@@ -2,8 +2,8 @@
 import argparse
 import os
 
-os.chdir(r'D:\semi\vat') # main directory (repository)
-# os.chdir('/home1/prof/jeon/an/semi/vat') # main directory (repository)
+# os.chdir(r'D:\semi\vat') # main directory (repository)
+os.chdir('/home1/prof/jeon/an/semi/vat') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -78,8 +78,6 @@ def load_config(args):
 def main():
     '''argparse to dictionary'''
     args = vars(get_args())
-    # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/cmnist_100.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -92,7 +90,7 @@ def main():
     
     model = VAT(num_classes, args['top_bn'])
     model.build(input_shape=(None, 32, 32, 3))
-    # model.summary()
+    model.summary()
     
     '''optimizer'''
     optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
