@@ -41,7 +41,7 @@ def get_args():
                         metavar='N', help='mini-batch size of labeled dataset')
 
     '''SSL VAE Train PreProcess Parameter'''
-    parser.add_argument('--epochs', default=30, type=int, 
+    parser.add_argument('--epochs', default=100, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
