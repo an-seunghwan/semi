@@ -16,9 +16,7 @@ import matplotlib.pyplot as plt
 from PIL import Image
 
 from preprocess import fetch_dataset
-from model2 import MixtureVAE
-from criterion1 import ELBO_criterion
-# from mixup import augment, label_smoothing, non_smooth_mixup, weight_decay_decoupled
+from model import MixtureVAE
 #%%
 import ast
 def arg_as_list(s):
