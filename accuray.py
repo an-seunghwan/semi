@@ -1,51 +1,27 @@
 #%%
+import tensorflow as tf
+from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 import tensorboard as tb
 import numpy as np
 import os
 #%%
-model = 'dgm'
-dir = '/Users/anseunghwan/Documents/GitHub/semi/{}/logs/cifar10_4000'.format(model)
-file_list = [x for x in os.listdir(dir) if x != '.DS_Store']
-#%%
-import traceback
-import pandas as pd
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-
-# Extraction function
-def tflog2pandas(path):
-    runlog_data = pd.DataFrame({"metric": [], "value": [], "step": []})
-    try:
+with open("accuracy.txt", "w") as file:
+    
+    model = 'dgm' # for loop
+    dir = 'D:/semi/{}/logs/cifar10_4000'.format(model)
+    # dir = '/Users/anseunghwan/Documents/GitHub/semi/{}/logs/cifar10_4000'.format(model)
+    file_list = [x for x in os.listdir(dir) if x not in ['.DS_Store', 'datasets']]
+    
+    acc = []
+    for i in range(len(file_list)):
+        path = dir + '/{}/test'.format(file_list[i])
         event_acc = EventAccumulator(path)
         event_acc.Reload()
-        tags = event_acc.Tags()["tensors"]
         tag = 'accuracy'
-        for tag in tags:
-            event_list = event_acc.Tensors(tag)
-            values = list(map(lambda x: x.value, event_list))
-            step = list(map(lambda x: x.step, event_list))
-            r = {"metric": [tag] * len(step), "value": values, "step": step}
-            r = pd.DataFrame(r)
-            runlog_data = pd.concat([runlog_data, r])
-    # Dirty catch of DataLossError
-    except Exception:
-        print("Event file possibly corrupt: {}".format(path))
-        traceback.print_exc()
-    return runlog_data
-#%%
-path = dir + '/{}/test'.format(file_list[0])
-df = tflog2pandas(path)
-#df=df[(df.metric != 'params/lr')&(df.metric != 'params/mm')&(df.metric != 'train/loss')] #delete the mentioned rows
-df.to_csv("output.csv")
-#%%
-experiment = tb.data.experimental.ExperimentFromDev(path)
-experiment.get_scalars()
+        event_list = event_acc.Tensors(tag)
+        value = tf.io.decode_raw(event_list[-1].tensor_proto.tensor_content, 
+                                 event_list[-1].tensor_proto.dtype)
+        acc.append(value.numpy()[0])
 
-#%%
-from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
-event_acc = EventAccumulator(path)
-event_acc.Reload()
-# Show all tags in the log file
-print(event_acc.Tags())
-
-w_times, step_nums, vals = zip(*event_acc.Scalars('tensors'))
+    file.write("{} | mean: {:.3f}, std: {:.3f}\n\n".format(model, np.mean(acc), np.std(acc)))
 #%%
