@@ -2,7 +2,6 @@
 import argparse
 import os
 
-# os.chdir(r'D:\semi\plcb') # main directory (repository)
 os.chdir('/home1/prof/jeon/an/semi/plcb') # main directory (repository)
 
 import numpy as np
@@ -34,9 +33,9 @@ def get_args():
                         help='dataset used for training (e.g. cifar10, cifar100, svhn, svhn+extra)')
     parser.add_argument('--seed', type=int, default=1, 
                         help='seed for repeatable results (ex. generating color MNIST)')
-    parser.add_argument('--batch-size', default=100, type=int,
-                        help='mini-batch size (default: 100)')
-    parser.add_argument('--labeled_batch_size', default=16, type=int, metavar='N', 
+    parser.add_argument('--batch-size', default=128, type=int,
+                        help='mini-batch size (default: 128)')
+    parser.add_argument('--labeled_batch_size', default=32, type=int, metavar='N', 
                         help="Labeled examples per minibatch (default: no constrain)")
 
     '''SSL Train PreProcess Parameter'''
@@ -53,10 +52,8 @@ def get_args():
                         help='CNN dropout')
     
     '''Optimizer Parameters'''
-    parser.add_argument('--learning_rate', default=0.1, type=float,
+    parser.add_argument('--learning_rate', default=0.001, type=float,
                         help='initial learning rate')
-    parser.add_argument('--momentum', default=0.9, type=float, 
-                        help='Momentum')
     parser.add_argument('--weight_decay', type=float, default=1e-4, 
                         help='Weight decay')
     parser.add_argument('--reg1', type=float, default=0.8, 
@@ -141,9 +138,15 @@ def main():
                 optimizer.lr = args['learning_rate'] * (args['lr_gamma'] ** ad_num)
                 break
         
-        loss, mixup_loss, rega_loss, regb_loss, accuracy = train(datasetL, datasetU, model, buffer_model, pslab_model, optimizer, epoch, args, num_classes, total_length)
-        val_loss, val_ce_loss, val_rega_loss, val_regb_loss, val_accuracy = validate(val_dataset, model, epoch, args, num_classes, split='Validation')
-        test_loss, test_ce_loss, test_rega_loss, test_regb_loss, test_accuracy = validate(test_dataset, model, epoch, args, num_classes, split='Test')
+        loss, mixup_loss, rega_loss, regb_loss, accuracy = train(
+            datasetL, datasetU, model, buffer_model, pslab_model, optimizer, epoch, args, num_classes, total_length
+        )
+        val_loss, val_ce_loss, val_rega_loss, val_regb_loss, val_accuracy = validate(
+            val_dataset, model, epoch, args, num_classes, split='Validation'
+        )
+        test_loss, test_ce_loss, test_rega_loss, test_regb_loss, test_accuracy = validate(
+            test_dataset, model, epoch, args, num_classes, split='Test'
+        )
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
