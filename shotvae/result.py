@@ -1,18 +1,4 @@
 #%%
-'''
-custom SGD + weight decay ver.2
-
-211222: lr schedule -> modify lr manually, instead of tensorflow function
-211227: tf.abs -> tf.math.abs
-211229: convert dmi -> tf.cast(dmi, tf.float32)
-220101: convert dmi -> tf.constant(dmi, dtype=tf.float32)
-220104: convert dmi -> tf.convert_to_tensor(dmi, dtype=tf.float32)
-220104: monitoring KL-divergence and its absolute value
-220107: decoupled weight decay https://arxiv.org/pdf/1711.05101.pdf
-220110: modify mixup shuffle & optimal matching argument
-220113: modify weight decay factor = weight decay * scheduled lr
-'''
-#%%
 import argparse
 import os
 
