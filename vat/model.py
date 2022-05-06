@@ -68,7 +68,8 @@ class VAT(K.models.Model):
                 layers.Dense(num_classes)
             ]
         )
-        self.bn = layers.BatchNormalization()
+        if self.top_bn: 
+            self.bn = layers.BatchNormalization()
     
     @tf.function
     def call(self, x, training=True):
