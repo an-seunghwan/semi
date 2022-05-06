@@ -136,8 +136,6 @@ def generate_and_save_images2(model, image, step, save_dir):
 def main():
     '''argparse to dictionary'''
     args = vars(get_args())
-    # '''argparse debugging'''
-    # args = vars(parser.parse_args(args=['--config_path', 'configs/cifar10_4000.yaml']))
 
     dir_path = os.path.dirname(os.path.realpath(__file__))
     if args['config_path'] is not None and os.path.exists(os.path.join(dir_path, args['config_path'])):
@@ -361,7 +359,6 @@ def train(datasetL, datasetU, model, optimizer, optimizer_classifier, epoch, BC_
             '''Bhattacharyya coefficient'''
             valid_BC = BC * BC_valid_mask
             valid_BC = tf.clip_by_value(valid_BC - args['bc_threshold'], 0., 1.)
-            # valid_BC = tf.math.maximum(BC - args['bc_threshold'], 0) * BC_valid_mask
             prior_intersection_loss = args['gamma_bc'] * tf.reduce_sum(valid_BC)
             
             loss = recon_loss + z_loss + c_loss + c_entropy_loss + u_loss + prior_intersection_loss
