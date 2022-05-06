@@ -1,6 +1,6 @@
 # Semi-Supervised Learning Methods
 
-This repository is the official implementation of following papers with Tensorflow 2.0. The corresponding folder name is written in parenthesis.
+This repository is unofficial implementation of following papers with Tensorflow 2.0. The corresponding folder name is written in parenthesis.
 
 - Variational AutoEncoder:
   - [Semi-supervised Learning with Deep Generative Models](https://proceedings.neurips.cc/paper/2014/hash/d523773c6b194f37b938d340d5d02232-Abstract.html) (`dgm`)
