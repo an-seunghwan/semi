@@ -21,7 +21,9 @@ def generate_virtual_adversarial_perturbation(model, x, y, xi=1e-6, eps=8.0, num
         with tf.GradientTape() as tape:
             r = xi * d 
             tape.watch(r)
-            yhat = model(x + r, training=False)
+            '''FIXME'''
+            yhat = model(x + r)
+            # yhat = model(x + r, training=False)
             dist = kl_with_logit(y, yhat)
         grad = tape.gradient(dist, [r])[0]
         d = _l2_normalize(tf.stop_gradient(grad))

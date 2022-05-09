@@ -38,7 +38,7 @@ def get_args():
                         metavar='N', help='mini-batch size (default: 128)')
 
     '''SSL Train PreProcess Parameter'''
-    parser.add_argument('--epochs', default=120, type=int, 
+    parser.add_argument('--epochs', default=1000, type=int, 
                         metavar='N', help='number of total epochs to run')
     parser.add_argument('--start_epoch', default=0, type=int, 
                         metavar='N', help='manual epoch number (useful on restarts)')
@@ -53,9 +53,9 @@ def get_args():
                         help="adversarial attack norm restriction")
     
     '''Optimizer Parameters'''
-    parser.add_argument('--learning_rate', default=0.001, type=float,
+    parser.add_argument('--learning_rate', default=0.01, type=float,
                         metavar='LR', help='initial learning rate')
-    parser.add_argument("--epoch_decay_start", default=80, type=int,
+    parser.add_argument("--epoch_decay_start", default=920, type=int,
                         help="The milestone list for adjust learning rate")
     parser.add_argument('--top_bn', default=True, type=bool)
 
@@ -109,8 +109,8 @@ def main():
             optimizer.beta_2 = 0.999
             
         loss, ce_loss, v_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length)
-        val_loss, val_ce_loss, val_v_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
-        test_loss, test_ce_loss, test_v_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
+        val_ce_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
+        test_ce_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
         with train_writer.as_default():
             tf.summary.scalar('loss', loss.result(), step=epoch)
@@ -118,14 +118,10 @@ def main():
             tf.summary.scalar('v_loss', v_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
         with val_writer.as_default():
-            tf.summary.scalar('loss', val_loss.result(), step=epoch)
             tf.summary.scalar('ce_loss', val_ce_loss.result(), step=epoch)
-            tf.summary.scalar('v_loss', val_v_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', val_accuracy.result(), step=epoch)
         with test_writer.as_default():
-            tf.summary.scalar('loss', test_loss.result(), step=epoch)
             tf.summary.scalar('ce_loss', test_ce_loss.result(), step=epoch)
-            tf.summary.scalar('v_loss', test_v_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', test_accuracy.result(), step=epoch)
 
         # Reset metrics every epoch
@@ -133,13 +129,9 @@ def main():
         ce_loss.reset_states()
         v_loss.reset_states()
         accuracy.reset_states()
-        val_loss.reset_states()
         val_ce_loss.reset_states()
-        val_v_loss.reset_states()
         val_accuracy.reset_states()
-        test_loss.reset_states()
         test_ce_loss.reset_states()
-        test_v_loss.reset_states()
         test_accuracy.reset_states()
 
     '''model & configurations save'''        
@@ -194,8 +186,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             predL = tf.nn.softmax(predL, axis=-1)
             ce_loss = - tf.reduce_mean(tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1))
             
-            predU = tf.stop_gradient(model(imageU, training=False))
             with tape.stop_recording():
+                predU = model(imageU, training=False)
                 r_vadv = generate_virtual_adversarial_perturbation(model, imageU, predU, eps=args['epsilon'])
             yhat = model(imageU + r_vadv)
             v_loss = kl_with_logit(predU, yhat)
@@ -222,29 +214,20 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
     return loss_avg, ce_loss_avg, v_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, args, split):
-    loss_avg = tf.keras.metrics.Mean()
     ce_loss_avg = tf.keras.metrics.Mean()
-    v_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.Accuracy()
 
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
-        pred = model(image)
+        pred = model(image, training=False)
         pred = tf.nn.softmax(pred, axis=-1)
         ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))
-        pred = tf.stop_gradient(model(image, training=False))
-        r_vadv = generate_virtual_adversarial_perturbation(model, image, pred, eps=args['epsilon'])
-        yhat = model(image + r_vadv, training=False)
-        v_loss = kl_with_logit(pred, yhat)
-        loss = ce_loss + v_loss
-        loss_avg(loss)
         ce_loss_avg(ce_loss)
-        v_loss_avg(v_loss)
         accuracy(tf.argmax(pred, axis=1, output_type=tf.int32), 
                  tf.argmax(label, axis=1, output_type=tf.int32))
-    print(f'Epoch {epoch:04d}: {split}, Loss: {loss_avg.result():.4f}, CE: {ce_loss_avg.result():.4f}, V: {v_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
+    print(f'Epoch {epoch:04d}: {split}, CE: {ce_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
-    return loss_avg, ce_loss_avg, v_loss_avg, accuracy
+    return ce_loss_avg, accuracy
 #%%
 if __name__ == '__main__':
     main()
