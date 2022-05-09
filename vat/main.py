@@ -214,7 +214,7 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             'Loss': f'{loss_avg.result():.4f}',
             'CE_Loss': f'{ce_loss_avg.result():.4f}',
             'V_Loss': f'{v_loss_avg.result():.4f}',
-            'Accuracy': f'{accuracy.result():.3%}'
+            'Accuracy': f'{accuracy.result():.3%}',
             'Test Accuracy': f'{test_accuracy_print:.3%}',
         })
         
