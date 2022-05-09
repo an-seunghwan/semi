@@ -99,6 +99,8 @@ def main():
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
     test_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/test')
 
+    test_accuracy_print = 0.
+
     for epoch in range(args['start_epoch'], args['epochs']):
         
         '''learning rate schedule'''
@@ -108,7 +110,7 @@ def main():
             optimizer.beta_1 = 0.5
             optimizer.beta_2 = 0.999
             
-        loss, ce_loss, v_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length)
+        loss, ce_loss, v_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length, test_accuracy_print)
         val_ce_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_ce_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
@@ -123,6 +125,8 @@ def main():
         with test_writer.as_default():
             tf.summary.scalar('ce_loss', test_ce_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', test_accuracy.result(), step=epoch)
+
+        test_accuracy_print = test_accuracy.result()
 
         # Reset metrics every epoch
         loss.reset_states()
@@ -153,7 +157,7 @@ def main():
         for key, value, in args.items():
             f.write(str(key) + ' : ' + str(value) + '\n')
 #%%
-def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length):
+def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length, test_accuracy_print):
     loss_avg = tf.keras.metrics.Mean()
     ce_loss_avg = tf.keras.metrics.Mean()
     v_loss_avg = tf.keras.metrics.Mean()
@@ -187,7 +191,9 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             ce_loss = - tf.reduce_mean(tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1))
             
             with tape.stop_recording():
-                predU = model(imageU, training=False)
+                '''FIXME'''
+                predU = model(imageU)
+                # predU = model(imageU, training=False)
                 r_vadv = generate_virtual_adversarial_perturbation(model, imageU, predU, eps=args['epsilon'])
             yhat = model(imageU + r_vadv)
             v_loss = kl_with_logit(predU, yhat)
@@ -209,6 +215,7 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             'CE_Loss': f'{ce_loss_avg.result():.4f}',
             'V_Loss': f'{v_loss_avg.result():.4f}',
             'Accuracy': f'{accuracy.result():.3%}'
+            'Test Accuracy': f'{test_accuracy_print:.3%}',
         })
         
     return loss_avg, ce_loss_avg, v_loss_avg, accuracy
