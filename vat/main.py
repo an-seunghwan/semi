@@ -2,8 +2,8 @@
 import argparse
 import os
 
-# os.chdir(r'D:\semi\vat') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/vat') # main directory (repository)
+os.chdir(r'D:\semi\vat') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/vat') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -18,7 +18,7 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 
 from preprocess import fetch_dataset
 from model import VAT
-from utils import generate_virtual_adversarial_perturbation, kl_with_logit
+from utils import generate_virtual_adversarial_perturbation, kl_with_logit, augment
 #%%
 import ast
 def arg_as_list(s):
@@ -36,6 +36,8 @@ def get_args():
                         help='seed for repeatable results (ex. generating color MNIST)')
     parser.add_argument('--batch-size', default=128, type=int,
                         metavar='N', help='mini-batch size (default: 128)')
+    parser.add_argument('--labeled-batch-size', default=32, type=int,
+                        metavar='N', help='mini-batch size of labeled dataset (default: 32)')
 
     '''SSL Train PreProcess Parameter'''
     parser.add_argument('--epochs', default=1000, type=int, 
@@ -48,12 +50,12 @@ def get_args():
                         help='number labeled examples (default: 4000')
     parser.add_argument('--validation_examples', type=int, default=5000, 
                         help='number validation examples (default: 5000')
-
+    parser.add_argument('--augment', default=True, type=bool)
     parser.add_argument('--epsilon', default=2.5, type=float,
                         help="adversarial attack norm restriction")
     
     '''Optimizer Parameters'''
-    parser.add_argument('--learning_rate', default=0.01, type=float,
+    parser.add_argument('--learning_rate', default=0.001, type=float,
                         metavar='LR', help='initial learning rate')
     parser.add_argument("--epoch_decay_start", default=920, type=int,
                         help="The milestone list for adjust learning rate")
@@ -110,7 +112,7 @@ def main():
             optimizer.beta_1 = 0.5
             optimizer.beta_2 = 0.999
             
-        loss, ce_loss, v_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length, test_accuracy_print)
+        loss, ce_loss, v_loss, ent_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length, test_accuracy_print)
         val_ce_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
         test_ce_loss, test_accuracy = validate(test_dataset, model, epoch, args, split='Test')
         
@@ -118,6 +120,7 @@ def main():
             tf.summary.scalar('loss', loss.result(), step=epoch)
             tf.summary.scalar('ce_loss', ce_loss.result(), step=epoch)
             tf.summary.scalar('v_loss', v_loss.result(), step=epoch)
+            tf.summary.scalar('ent_loss', ent_loss.result(), step=epoch)
             tf.summary.scalar('accuracy', accuracy.result(), step=epoch)
         with val_writer.as_default():
             tf.summary.scalar('ce_loss', val_ce_loss.result(), step=epoch)
@@ -132,6 +135,7 @@ def main():
         loss.reset_states()
         ce_loss.reset_states()
         v_loss.reset_states()
+        ent_loss.reset_states()
         accuracy.reset_states()
         val_ce_loss.reset_states()
         val_accuracy.reset_states()
@@ -161,9 +165,10 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
     loss_avg = tf.keras.metrics.Mean()
     ce_loss_avg = tf.keras.metrics.Mean()
     v_loss_avg = tf.keras.metrics.Mean()
+    ent_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.SparseCategoricalAccuracy()
     
-    shuffle_and_batch2 = lambda dataset: dataset.shuffle(buffer_size=int(1e4)).batch(batch_size=32, drop_remainder=True)
+    shuffle_and_batch2 = lambda dataset: dataset.shuffle(buffer_size=int(1e4)).batch(batch_size=args['labeled_batch_size'], drop_remainder=True)
     shuffle_and_batch = lambda dataset: dataset.shuffle(buffer_size=int(1e6)).batch(batch_size=args['batch_size'], drop_remainder=True)
 
     iteratorL = iter(shuffle_and_batch2(datasetL))
@@ -184,21 +189,40 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
         except:
             iteratorU = iter(shuffle_and_batch(datasetU))
             imageU, _ = next(iteratorU)
+        
+        if args['augment']:
+            imageL = augment(imageL)
+            imageU = augment(imageU)
+        
+        # normalize
+        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
+                             std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        imageL -= channel_stats['mean']
+        imageL /= channel_stats['std']
+        imageU -= channel_stats['mean']
+        imageU /= channel_stats['std']
             
         with tf.GradientTape(persistent=True) as tape:
+            '''labeled'''
             predL = model(imageL)
             predL = tf.nn.softmax(predL, axis=-1)
-            ce_loss = - tf.reduce_mean(tf.reduce_sum(labelL * tf.math.log(tf.clip_by_value(predL, 1e-10, 1.0)), axis=-1))
+            predL = tf.clip_by_value(predL, 1e-10, 1.0)
+            ce_loss = - tf.reduce_mean(tf.reduce_sum(labelL * tf.math.log(predL), axis=-1))
             
+            predU = model(imageU)
+            
+            '''virtual adversarial'''
             with tape.stop_recording():
-                '''FIXME'''
-                predU = model(imageU)
-                # predU = model(imageU, training=False)
                 r_vadv = generate_virtual_adversarial_perturbation(model, imageU, predU, eps=args['epsilon'])
             yhat = model(imageU + r_vadv)
             v_loss = kl_with_logit(predU, yhat)
             
-            loss = ce_loss + v_loss
+            '''entropy'''
+            predU = tf.nn.softmax(predU, axis=-1)
+            predU = tf.clip_by_value(predU, 1e-10, 1.0)
+            ent_loss = - tf.reduce_mean(tf.reduce_sum(predU * tf.math.log(predU), axis=-1))
+            
+            loss = ce_loss + v_loss + ent_loss
             
         grads = tape.gradient(loss, model.trainable_variables) 
         optimizer.apply_gradients(zip(grads, model.trainable_variables)) 
@@ -206,19 +230,20 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
         loss_avg(loss)
         ce_loss_avg(ce_loss)
         v_loss_avg(v_loss)
-        probL = tf.nn.softmax(model(imageL, training=False), axis=-1)
-        accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), probL)
+        ent_loss_avg(ent_loss)
+        accuracy(tf.argmax(labelL, axis=1, output_type=tf.int32), predL)
 
         progress_bar.set_postfix({
             'EPOCH': f'{epoch:04d}',
             'Loss': f'{loss_avg.result():.4f}',
             'CE_Loss': f'{ce_loss_avg.result():.4f}',
             'V_Loss': f'{v_loss_avg.result():.4f}',
+            'ENT_Loss': f'{ent_loss_avg.result():.4f}',
             'Accuracy': f'{accuracy.result():.3%}',
             'Test Accuracy': f'{test_accuracy_print:.3%}',
         })
         
-    return loss_avg, ce_loss_avg, v_loss_avg, accuracy
+    return loss_avg, ce_loss_avg, v_loss_avg, ent_loss_avg, accuracy
 #%%
 def validate(dataset, model, epoch, args, split):
     ce_loss_avg = tf.keras.metrics.Mean()
@@ -226,6 +251,11 @@ def validate(dataset, model, epoch, args, split):
 
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
+        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
+                             std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        image -= channel_stats['mean']
+        image /= channel_stats['std']
+        
         pred = model(image, training=False)
         pred = tf.nn.softmax(pred, axis=-1)
         ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))

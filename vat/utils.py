@@ -1,5 +1,18 @@
 #%%
+from multiprocessing import cpu_count
+
 import tensorflow as tf
+#%%
+@tf.function
+def augment(x, trans_range=2):
+    x = tf.image.random_flip_left_right(x)
+    x = tf.pad(x, paddings=[(0, 0),
+                            (trans_range, trans_range),
+                            (trans_range, trans_range), 
+                            (0, 0)], mode='REFLECT')
+    # x = tf.image.random_saturation(x, lower=0.6, upper=1.4)
+    x = tf.map_fn(lambda batch: tf.image.random_crop(batch, size=(32, 32, 3)), x, parallel_iterations=cpu_count())
+    return x
 #%%
 def kl_with_logit(q_logit, p_logit):
     q = tf.nn.softmax(q_logit, axis=-1)
@@ -16,16 +29,28 @@ def _l2_normalize(d):
     return d
 #%%
 def generate_virtual_adversarial_perturbation(model, x, y, xi=1e-6, eps=8.0, num_iters=1):
-    d = _l2_normalize(tf.random.normal(shape=(tf.shape(x)))) # unit vector
+    d = tf.random.normal(shape=(tf.shape(x))) # unit vector
+    d = _l2_normalize(d)
+    
     for i in range(num_iters):
         with tf.GradientTape() as tape:
-            r = xi * d 
-            tape.watch(r)
-            '''FIXME'''
-            yhat = model(x + r)
-            # yhat = model(x + r, training=False)
+            tape.watch(d)
+            yhat = model(x + xi * d)
             dist = kl_with_logit(y, yhat)
-        grad = tape.gradient(dist, [r])[0]
-        d = _l2_normalize(tf.stop_gradient(grad))
+        d = _l2_normalize(tape.gradient(dist, [d])[0])
     return eps * d
+#%%
+# def generate_virtual_adversarial_perturbation(model, x, y, xi=1e-6, eps=8.0, num_iters=1):
+#     d = _l2_normalize(tf.random.normal(shape=(tf.shape(x)))) # unit vector
+#     for i in range(num_iters):
+#         with tf.GradientTape() as tape:
+#             r = xi * d 
+#             tape.watch(r)
+#             # yhat = model(x + r, training=False)
+#             yhat = model(x + r)
+#             dist = kl_with_logit(y, yhat)
+#         grad = tape.gradient(dist, [r])[0]
+#         # d = _l2_normalize(tf.stop_gradient(grad))
+#         d = _l2_normalize(grad)
+#     return eps * d
 #%%
