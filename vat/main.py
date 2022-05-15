@@ -214,7 +214,7 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             '''virtual adversarial'''
             with tape.stop_recording():
                 r_vadv = generate_virtual_adversarial_perturbation(model, imageU, predU, eps=args['epsilon'])
-            yhat = model(imageU + r_vadv)
+            yhat = model(imageU + r_vadv, training=False)
             v_loss = kl_with_logit(predU, yhat)
             
             '''entropy'''

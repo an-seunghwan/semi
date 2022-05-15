@@ -10,7 +10,7 @@ def augment(x, trans_range=2):
                             (trans_range, trans_range),
                             (trans_range, trans_range), 
                             (0, 0)], mode='REFLECT')
-    # x = tf.image.random_saturation(x, lower=0.6, upper=1.4)
+    x = tf.image.random_saturation(x, lower=0.6, upper=1.4)
     x = tf.map_fn(lambda batch: tf.image.random_crop(batch, size=(32, 32, 3)), x, parallel_iterations=cpu_count())
     return x
 #%%
@@ -35,7 +35,7 @@ def generate_virtual_adversarial_perturbation(model, x, y, xi=1e-6, eps=8.0, num
     for i in range(num_iters):
         with tf.GradientTape() as tape:
             tape.watch(d)
-            yhat = model(x + xi * d)
+            yhat = model(x + xi * d, training=False)
             dist = kl_with_logit(y, yhat)
         d = _l2_normalize(tape.gradient(dist, [d])[0])
     return eps * d
