@@ -1,2 +1,12 @@
-dgm | mean: 0.727, std: 0.002
+pi | mean: 17.530, std: 0.151
+
+mixmatch | mean: 5.914, std: 0.356
+
+plcb | mean: 7.818, std: 0.180
+
+dgm | mean: 27.304, std: 0.249
+
+partedvae | mean: 33.998, std: 1.664
+
+shotvae | mean: 6.454, std: 0.275
 
