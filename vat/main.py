@@ -195,10 +195,8 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             imageU = augment(imageU)
         
         # normalize
-        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)),
-                             std=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)))
-        # channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
-        #                      std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
+                             std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         imageL -= channel_stats['mean']
         imageL /= channel_stats['std']
         imageU -= channel_stats['mean']
@@ -217,7 +215,7 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             with tape.stop_recording():
                 r_vadv = generate_virtual_adversarial_perturbation(model, imageU, predU, eps=args['epsilon'])
             yhat = model(imageU + r_vadv)
-            v_loss = kl_with_logit(predU, yhat)
+            v_loss = kl_with_logit(tf.stop_gradient(predU), yhat)
             
             '''entropy'''
             predU = tf.nn.softmax(predU, axis=-1)
@@ -253,16 +251,14 @@ def validate(dataset, model, epoch, args, split):
 
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
-        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)),
-                             std=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)))
-        # channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
-        #                      std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
+                             std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
         image -= channel_stats['mean']
         image /= channel_stats['std']
         
         pred = model(image, training=False)
-        pred = tf.clip_by_value(pred, 1e-10, 1.0)
         pred = tf.nn.softmax(pred, axis=-1)
+        pred = tf.clip_by_value(pred, 1e-10, 1.0)
         ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))
         ce_loss_avg(ce_loss)
         accuracy(tf.argmax(pred, axis=1, output_type=tf.int32), 
