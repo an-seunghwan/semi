@@ -30,23 +30,23 @@ with open("accuracy.txt", "w") as file:
         dir = '/Users/anseunghwan/Documents/GitHub/semi/{}/logs/cifar10_4000'.format(model)
         model_list = [d for d in os.listdir(dir) if d != '.DS_Store']
         
-        inception = []
         error = []
+        inception = []
         for i in range(len(model_list)):
             with open(dir + '/' + model_list[i] + '/result.txt', 'r') as f:
                 result = f.readlines()
             result = ' '.join(result) 
-            
-            """Inception Score"""
-            idx1 = re.search(' mean: ', result).span()[1]
-            idx2 = re.search(', std: ', result).span()[0]
-            inception.append(float(result[idx1:idx2]))
             
             """test classification error"""
             idx1 = re.search('TEST classification error: ', result).span()[1]
             idx2 = re.search('%', result).span()[0]
             error.append(float(result[idx1:idx2]))
             
-        file.write("{} | Inception Score | mean: {:.3f}, std: {:.3f}\n".format(model, np.mean(inception), np.std(inception)))
-        file.write("{} | test classification error | mean: {:.3f}, std: {:.3f}\n\n".format(model, np.mean(error), np.std(error)))
+            """Inception Score"""
+            idx1 = re.search(' mean: ', result).span()[1]
+            idx2 = re.search(', std: ', result).span()[0]
+            inception.append(float(result[idx1:idx2]))
+            
+        file.write("{} | test classification error | mean: {:.3f}, std: {:.3f}\n".format(model, np.mean(error), np.std(error)))
+        file.write("{} | Inception Score | mean: {:.3f}, std: {:.3f}\n\n".format(model, np.mean(inception), np.std(inception)))
 #%%

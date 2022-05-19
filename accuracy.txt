@@ -6,12 +6,12 @@ mixmatch | test classification error | mean: 5.914, std: 0.356
 
 plcb | test classification error | mean: 7.818, std: 0.180
 
-dgm | Inception Score | mean: 1.862, std: 0.019
 dgm | test classification error | mean: 27.304, std: 0.246
+dgm | Inception Score | mean: 1.862, std: 0.019
 
-partedvae | Inception Score | mean: 1.728, std: 0.192
 partedvae | test classification error | mean: 33.996, std: 1.666
+partedvae | Inception Score | mean: 1.728, std: 0.192
 
-shotvae | Inception Score | mean: 3.428, std: 0.048
 shotvae | test classification error | mean: 6.454, std: 0.275
+shotvae | Inception Score | mean: 3.428, std: 0.048
 
