@@ -1,12 +1,17 @@
-pi | mean: 17.530, std: 0.151
+pi | test classification error | mean: 17.530, std: 0.151
 
-mixmatch | mean: 5.914, std: 0.356
+vat | test classification error | mean: 17.026, std: 0.505
 
-plcb | mean: 7.818, std: 0.180
+mixmatch | test classification error | mean: 5.914, std: 0.356
 
-dgm | mean: 27.304, std: 0.249
+plcb | test classification error | mean: 7.818, std: 0.180
 
-partedvae | mean: 33.998, std: 1.664
+dgm | Inception Score | mean: 1.862, std: 0.019
+dgm | test classification error | mean: 27.304, std: 0.246
 
-shotvae | mean: 6.454, std: 0.275
+partedvae | Inception Score | mean: 1.728, std: 0.192
+partedvae | test classification error | mean: 33.996, std: 1.666
+
+shotvae | Inception Score | mean: 3.428, std: 0.048
+shotvae | test classification error | mean: 6.454, std: 0.275
 
