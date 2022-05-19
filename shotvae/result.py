@@ -221,27 +221,6 @@ plt.savefig('{}/style_interpolation_nonsmooth.png'.format(model_path),
 plt.show()
 plt.close()
 #%%
-# figure = plt.figure(figsize=(25, 5))
-# for num, (i, j, class_idx) in enumerate([(0, 5, 1), (0, 2, 7)]):
-#     interpolation_idx = np.where([tf.argmax(y, axis=-1).numpy() == class_idx])[1]
-#     inter = np.linspace(z[interpolation_idx[i]], z[interpolation_idx[j]], 8)
-#     inter_recon = model.decode_sample(inter, tf.one_hot([class_idx] * 8, depth=num_classes), training=False)
-    
-#     plt.subplot(2, 8+2, 10*num+1)    
-#     plt.imshow(x[interpolation_idx[i]])
-#     plt.axis('off')
-#     for i in range(8):
-#         plt.subplot(2, 8+2, 10*num+i+2)
-#         plt.imshow(inter_recon[i])
-#         plt.axis('off')
-#     plt.subplot(2, 8+2, 10*num+10)
-#     plt.imshow(x[interpolation_idx[j]])
-#     plt.axis('off')
-# plt.savefig('{}/interpolation.png'.format(model_path),
-#             dpi=200, bbox_inches="tight", pad_inches=0.1)
-# plt.show()
-# plt.close()
-#%%
 '''manipulation'''
 idx = [11, 3, 15, 23, 34, 81]
 plt.figure(figsize=(10, 6))
@@ -373,76 +352,4 @@ plt.savefig('{}/shotvae_interpolation1.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
 plt.show()
 plt.close()
-#%%
-# '''FID'''
-# inception_model = K.applications.InceptionV3(include_top=False, weights="imagenet", pooling='avg')
-
-# autotune = tf.data.AUTOTUNE
-# batch = lambda dataset: dataset.batch(batch_size=100, drop_remainder=False).prefetch(autotune)
-# iterator_train = iter(batch(datasetU))
-# iterator_test = iter(batch(test_dataset))
-# #%%
-# def compute_embeddings(data_iterator, count):
-#     image_embeddings = []
-#     for _ in tqdm.tqdm(range(count)):
-#         images = next(data_iterator)[0]
-#         # images = tf.pad(images, 
-#         #                 [[0, 0],
-#         #                  [150-16, 149-16],
-#         #                  [150-16, 149-16],
-#         #                  [0, 0]], 
-#         #                 'CONSTANT')
-#         images = tf.image.resize(images, (299, 299), 'nearest')
-#         images = K.applications.inception_v3.preprocess_input(images)
-#         embeddings = inception_model.predict(images)
-#         image_embeddings.extend(embeddings)
-#     return np.array(image_embeddings)
-
-# # 10,000 random images from train dataset (unlabeled)
-# real_image_embeddings1 = compute_embeddings(iterator_train, 10000 // 100)
-# real_image_embeddings2 = compute_embeddings(iterator_test, 10000 // 100)
-# #%%
-# # 10,000 generated images from sampled latent variables
-# np.random.seed(1)
-# generated_image_embeddings = []
-# for i in tqdm.tqdm(range(num_classes)):
-#     for _ in range(10):
-#         latents = np.random.normal(size=(100, args['ldc']))
-#         y_ = np.zeros((100, num_classes))
-#         y_[:, i] = 1.
-#         images = model.decode_sample(latents, y_, training=False)
-#         # images = tf.pad(images, 
-#         #                 [[0, 0],
-#         #                  [150-16, 149-16],
-#         #                  [150-16, 149-16],
-#         #                  [0, 0]], 
-#         #                 'CONSTANT')
-#         images = tf.image.resize(images, (299, 299), 'nearest')
-#         images = K.applications.inception_v3.preprocess_input(images)
-#         embeddings = inception_model.predict(images)
-#         generated_image_embeddings.extend(embeddings)
-# generated_image_embeddings = np.array(generated_image_embeddings)
-# #%%
-# import scipy
-# def calculate_fid(real_embeddings, generated_embeddings):
-#     # calculate mean and covariance statistics
-#     mu1, sigma1 = real_embeddings.mean(axis=0), np.cov(real_embeddings, rowvar=False)
-#     mu2, sigma2 = generated_embeddings.mean(axis=0), np.cov(generated_embeddings,  rowvar=False)
-#     # calculate sum squared difference between means
-#     ssdiff = np.sum((mu1 - mu2)**2.0)
-#     # calculate sqrt of product between cov
-#     covmean = scipy.linalg.sqrtm(sigma1.dot(sigma2))
-#     # check and correct imaginary numbers from sqrt
-#     if np.iscomplexobj(covmean):
-#         covmean = covmean.real
-#     # calculate score
-#     fid = ssdiff + np.trace(sigma1 + sigma2 - 2.0 * covmean)
-#     return fid
-# #%%
-# fid = calculate_fid(real_image_embeddings1, real_image_embeddings2)
-# print('baseline FID: {:.2f}'.format(fid))
-# fid = calculate_fid(real_image_embeddings1, generated_image_embeddings)
-# print('FID (with train): {:.2f}'.format(fid))
-# fid = calculate_fid(real_image_embeddings2, generated_image_embeddings)
-# print('FID (with test): {:.2f}'.format(fid))
 #%%
