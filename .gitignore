@@ -21,3 +21,4 @@ parted-vae-main
 dgm/result_.py
 partedvae/result_.py
 shotvae/result_.py
+preprocess_.py

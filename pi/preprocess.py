@@ -8,28 +8,14 @@ from tqdm import tqdm
 def download_dataset(dataset_name):
     train = None
     test = None
-    if dataset_name == 'svhn':
-        dataset = tfds.load(name='svhn_cropped')
-        train = dataset['train']
-        test = dataset['test']
     
-    elif dataset_name == 'svhn+extra':
-        dataset = tfds.load(name='svhn_cropped')
-        train = dataset['train']
-        train.concatenate(dataset['extra'])
-        test = dataset['test']
+    assert dataset_name == 'cifar10'
     
-    elif dataset_name == 'cifar10':
-        dataset = tfds.load(name='cifar10')
-        train = dataset['train']
-        test = dataset['test']
+    dataset = tfds.load(name=dataset_name)
+    train = dataset['train']
+    test = dataset['test']
     
-    elif dataset_name == 'cifar100':
-        dataset = tfds.load(name='cifar100')
-        train = dataset['train']
-        test = dataset['test']
-        
-    return  train, test
+    return train, test
 #%%
 def _list_to_tf_dataset(dataset, args):
     def _dataset_gen():

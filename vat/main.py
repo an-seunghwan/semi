@@ -2,8 +2,8 @@
 import argparse
 import os
 
-# os.chdir(r'D:\semi\vat') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/vat') # main directory (repository)
+os.chdir(r'D:\semi\vat') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/vat') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -195,8 +195,10 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             imageU = augment(imageU)
         
         # normalize
-        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
-                             std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        # channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
+        #                      std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)),
+                             std=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)))
         imageL -= channel_stats['mean']
         imageL /= channel_stats['std']
         imageU -= channel_stats['mean']
