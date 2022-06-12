@@ -1,6 +1,3 @@
 dataset: "cifar10"
 epsilon: 8
 top_bn: False
-
-learning_rate: 0.003
-epoch_decay_start: 500

@@ -19,8 +19,6 @@ current_time = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
 from preprocess import fetch_dataset
 from model import VAT
 from utils import generate_virtual_adversarial_perturbation, kl_with_logit, augment
-
-from tensorflow.keras.preprocessing.image import ImageDataGenerator
 #%%
 import ast
 def arg_as_list(s):
@@ -89,15 +87,7 @@ def main():
 
     log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
-    datasetL, datasetU, val_dataset, _, num_classes = fetch_dataset(args, log_path)
-    
-    # test dataset
-    (_, _), (x_test, y_test) = tf.keras.datasets.cifar10.load_data()
-    """ZCA whitening"""
-    datagen = ImageDataGenerator(zca_whitening=True)
-    datagen.fit(x_test.astype('float32'))
-    test_dataset = [datagen, x_test, y_test]
-    
+    datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
     total_length = sum(1 for _ in datasetU)
     
     model = VAT(num_classes, args['top_bn'])
@@ -105,7 +95,8 @@ def main():
     model.summary()
     
     '''optimizer'''
-    optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
+    # optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
+    optimizer = K.optimizers.SGD(learning_rate=args['learning_rate'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -119,8 +110,8 @@ def main():
         if epoch > args['epoch_decay_start']:
             decayed_lr = (args['epochs'] - epoch) * optimizer.lr / (args['epochs'] - args['epoch_decay_start'])
             optimizer.lr = decayed_lr
-            optimizer.beta_1 = 0.5
-            optimizer.beta_2 = 0.999
+            # optimizer.beta_1 = 0.5
+            # optimizer.beta_2 = 0.999
             
         loss, ce_loss, v_loss, ent_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length, test_accuracy_print)
         val_ce_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
@@ -261,43 +252,23 @@ def validate(dataset, model, epoch, args, split):
     ce_loss_avg = tf.keras.metrics.Mean()
     accuracy = tf.keras.metrics.Accuracy()
 
-    if split == "Test":
-        [datagen, x_test, y_test] = dataset
-        for image, label in datagen.flow(x_test, y_test, batch_size=args['batch_size']):
-            image /= 255.
-            # channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
-            #                      std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
-            channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)),
-                                std=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)))
-            image -= channel_stats['mean']
-            image /= channel_stats['std']
-            
-            pred = model(image, training=False)
-            pred = tf.nn.softmax(pred, axis=-1)
-            pred = tf.clip_by_value(pred, 1e-10, 1.0)
-            ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))
-            ce_loss_avg(ce_loss)
-            accuracy(tf.argmax(pred, axis=1, output_type=tf.int32), 
-                    tf.argmax(label, axis=1, output_type=tf.int32))
-        print(f'Epoch {epoch:04d}: {split}, CE: {ce_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
-    else:
-        dataset = dataset.batch(args['batch_size'])
-        for image, label in dataset:
-            # channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
-            #                      std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
-            channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)),
-                                std=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)))
-            image -= channel_stats['mean']
-            image /= channel_stats['std']
-            
-            pred = model(image, training=False)
-            pred = tf.nn.softmax(pred, axis=-1)
-            pred = tf.clip_by_value(pred, 1e-10, 1.0)
-            ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))
-            ce_loss_avg(ce_loss)
-            accuracy(tf.argmax(pred, axis=1, output_type=tf.int32), 
-                    tf.argmax(label, axis=1, output_type=tf.int32))
-        print(f'Epoch {epoch:04d}: {split}, CE: {ce_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
+    dataset = dataset.batch(args['batch_size'])
+    for image, label in dataset:
+        # channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
+        #                      std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)),
+                            std=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)))
+        image -= channel_stats['mean']
+        image /= channel_stats['std']
+        
+        pred = model(image, training=False)
+        pred = tf.nn.softmax(pred, axis=-1)
+        pred = tf.clip_by_value(pred, 1e-10, 1.0)
+        ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))
+        ce_loss_avg(ce_loss)
+        accuracy(tf.argmax(pred, axis=1, output_type=tf.int32), 
+                tf.argmax(label, axis=1, output_type=tf.int32))
+    print(f'Epoch {epoch:04d}: {split}, CE: {ce_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
     return ce_loss_avg, accuracy
 #%%
