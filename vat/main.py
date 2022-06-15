@@ -96,7 +96,19 @@ def main():
     
     '''optimizer'''
     # optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
-    optimizer = K.optimizers.SGD(learning_rate=args['learning_rate'])
+    class GCAdam(K.optimizers.Adam):
+        def get_gradients(self, loss, params):
+            grads = []
+            gradients = super().get_gradients()
+            for grad in gradients:
+                grad_len = len(grad.shape)
+                if grad_len > 1:
+                    axis = list(range(grad_len - 1))
+                    grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
+                grads.append(grad)
+            return grads
+    optimizer = GCAdam(learning_rate=1e-4)
+    # optimizer = K.optimizers.SGD(learning_rate=args['learning_rate'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -110,8 +122,8 @@ def main():
         if epoch > args['epoch_decay_start']:
             decayed_lr = (args['epochs'] - epoch) * optimizer.lr / (args['epochs'] - args['epoch_decay_start'])
             optimizer.lr = decayed_lr
-            # optimizer.beta_1 = 0.5
-            # optimizer.beta_2 = 0.999
+            optimizer.beta_1 = 0.5
+            optimizer.beta_2 = 0.999
             
         loss, ce_loss, v_loss, ent_loss, accuracy = train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_length, test_accuracy_print)
         val_ce_loss, val_accuracy = validate(val_dataset, model, epoch, args, split='Validation')
