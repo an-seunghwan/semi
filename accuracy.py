@@ -8,6 +8,7 @@ import re
 import tensorflow as tf
 from tensorboard.backend.event_processing.event_accumulator import EventAccumulator
 #%%
+"""Table 1"""
 with open("accuracy.txt", "w") as file:
     for model in ['pi', 'vat', 'mixmatch', 'plcb']: 
         dir = '/Users/anseunghwan/Documents/GitHub/semi/{}/logs/cifar10_4000'.format(model)
