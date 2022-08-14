@@ -2,8 +2,8 @@
 import argparse
 import os
 
-# os.chdir(r'D:\semi\vat') # main directory (repository)
-os.chdir('/home1/prof/jeon/an/semi/vat') # main directory (repository)
+os.chdir(r'D:\semi\vat') # main directory (repository)
+# os.chdir('/home1/prof/jeon/an/semi/vat') # main directory (repository)
 
 import numpy as np
 import tensorflow as tf
@@ -95,7 +95,20 @@ def main():
     model.summary()
     
     '''optimizer'''
-    optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
+    # optimizer = K.optimizers.Adam(learning_rate=args['learning_rate'])
+    class GCAdam(K.optimizers.Adam):
+        def get_gradients(self, loss, params):
+            grads = []
+            gradients = super().get_gradients()
+            for grad in gradients:
+                grad_len = len(grad.shape)
+                if grad_len > 1:
+                    axis = list(range(grad_len - 1))
+                    grad -= tf.reduce_mean(grad, axis=axis, keep_dims=True)
+                grads.append(grad)
+            return grads
+    optimizer = GCAdam(learning_rate=1e-4)
+    # optimizer = K.optimizers.SGD(learning_rate=args['learning_rate'])
     
     train_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/train')
     val_writer = tf.summary.create_file_writer(f'{log_path}/{current_time}/val')
@@ -195,8 +208,10 @@ def train(datasetL, datasetU, model, optimizer, epoch, args, num_classes, total_
             imageU = augment(imageU)
         
         # normalize
-        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
-                             std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        # channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
+        #                      std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)),
+                             std=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)))
         imageL -= channel_stats['mean']
         imageL /= channel_stats['std']
         imageU -= channel_stats['mean']
@@ -251,8 +266,10 @@ def validate(dataset, model, epoch, args, split):
 
     dataset = dataset.batch(args['batch_size'])
     for image, label in dataset:
-        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
-                             std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        # channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.4914, 0.4822, 0.4465]), tf.float32), (1, 1, 1, 3)),
+        #                      std=tf.reshape(tf.cast(np.array([0.2470, 0.2435, 0.2616]), tf.float32), (1, 1, 1, 3)))
+        channel_stats = dict(mean=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)),
+                            std=tf.reshape(tf.cast(np.array([0.5, 0.5, 0.5]), tf.float32), (1, 1, 1, 3)))
         image -= channel_stats['mean']
         image /= channel_stats['std']
         
@@ -262,7 +279,7 @@ def validate(dataset, model, epoch, args, split):
         ce_loss = - tf.reduce_mean(tf.reduce_sum(label * tf.math.log(tf.clip_by_value(pred, 1e-10, 1.0)), axis=-1))
         ce_loss_avg(ce_loss)
         accuracy(tf.argmax(pred, axis=1, output_type=tf.int32), 
-                 tf.argmax(label, axis=1, output_type=tf.int32))
+                tf.argmax(label, axis=1, output_type=tf.int32))
     print(f'Epoch {epoch:04d}: {split}, CE: {ce_loss_avg.result():.4f}, Accuracy: {accuracy.result():.3%}')
     
     return ce_loss_avg, accuracy
