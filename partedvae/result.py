@@ -118,10 +118,10 @@ datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args,
 model_path = log_path + '/{}'.format('20220426-154532')
 model_ = K.models.load_model(model_path + '/model')
 model = VAE(
-    num_classes=num_classes,
-    latent_dim=args['z_dim'], 
-    u_dim=args['u_dim'],
-    depth=args['depth'], width=args['width'], slope=args['slope']
+    num_classes,
+    args['z_dim'], 
+    args['u_dim'],
+    3, args['depth'], args['width'], args['slope']
 )
 model.build(input_shape=(None, 32, 32, 3))
 model.set_weights(model_.get_weights()) 
@@ -298,8 +298,8 @@ x = tf.cast(x, tf.float32) / 255.
 
 _, _, z, _, _, u = model.encode(x, training=False)
 #%%
-fig, axes = plt.subplots(2, 10, figsize=(25, 5))
-for idx, (class_idx, i, j) in enumerate([[1, 0, 5], [7, 0, 2]]):
+fig, axes = plt.subplots(4, 10, figsize=(30, 12))
+for idx, (class_idx, i, j) in enumerate([[0, 4, 5], [1, 0, 5], [7, 0, 2], [8, 0, 2]]):
     interpolation_idx = np.where(np.argmax(y, axis=-1) == class_idx)[0]
 
     z_inter = np.linspace(z[interpolation_idx[i]], z[interpolation_idx[j]], 8)
@@ -315,11 +315,12 @@ for idx, (class_idx, i, j) in enumerate([[1, 0, 5], [7, 0, 2]]):
     axes.flatten()[idx*10 + 9].axis('off')
 plt.savefig('{}/partedvae_interpolation1.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.tight_layout()
 plt.show()
 plt.close()
 #%%
-fig, axes = plt.subplots(2, 10, figsize=(25, 5))
-for idx, (class_idx1, class_idx2, i, j) in enumerate([[1, 0, 6, 4], [7, 8, 1, 2]]):
+fig, axes = plt.subplots(4, 10, figsize=(30, 12))
+for idx, (class_idx1, class_idx2, i, j) in enumerate([[0, 8, 5, 0], [1, 7, 0, 0], [1, 0, 6, 4], [7, 8, 1, 2]]):
     interpolation_idx1 = np.where(np.argmax(y, axis=-1) == class_idx1)[0]
     interpolation_idx2 = np.where(np.argmax(y, axis=-1) == class_idx2)[0]
 
@@ -336,6 +337,7 @@ for idx, (class_idx1, class_idx2, i, j) in enumerate([[1, 0, 6, 4], [7, 8, 1, 2]
     axes.flatten()[idx*10 + 9].axis('off')
 plt.savefig('{}/partedvae_interpolation2.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.tight_layout()
 plt.show()
 plt.close()
 #%%
