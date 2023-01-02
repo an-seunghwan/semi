@@ -107,7 +107,7 @@ class WideResNet(K.models.Model):
 # e(tf.random.normal((10, 32, 32, 3))).shape
 #%%
 class Decoder(K.models.Model):
-    def __init__(self, channel, activation, name="Decoder", **kwargs):
+    def __init__(self, channel, name="Decoder", **kwargs):
         super(Decoder, self).__init__(name=name, **kwargs)
         self.feature_num = 32
         self.nChannels = [self.feature_num * d for d in [8, 4, 2, 1]]
@@ -135,7 +135,7 @@ class Decoder(K.models.Model):
                 layers.BatchNormalization(),
                 layers.ReLU(),
                 
-                layers.Conv2D(filters=channel, kernel_size=4, strides=1, padding='same', activation=activation)
+                layers.Conv2D(filters=channel, kernel_size=4, strides=1, padding='same', activation='sigmoid')
             ]
         )
     
@@ -159,7 +159,6 @@ class VAE(K.models.Model):
                 slope=0.1,
                 temperature=0.67,
                 sigmoid_coef=1,
-                activation='sigmoid',
                 input_dim=(None, 32, 32, 3), 
                 name='VAE', **kwargs):
         super(VAE, self).__init__(name=name, **kwargs)
@@ -187,7 +186,7 @@ class VAE(K.models.Model):
         self.u_mean_layer = layers.Dense(u_dim, activation='linear')
         self.u_logvar_layer = layers.Dense(u_dim, activation='linear')
         
-        self.decoder = Decoder(output_channel, activation)
+        self.decoder = Decoder(output_channel)
         
         self.u_prior_means = self.add_weight(shape=(num_classes, u_dim),
                                             initializer='random_normal',
