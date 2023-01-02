@@ -134,8 +134,7 @@ log_path = f'logs/{args["dataset"]}_{args["labeled_examples"]}'
 
 datasetL, datasetU, val_dataset, test_dataset, num_classes = fetch_dataset(args, log_path)
 
-# model_path = r'D:\semi\shotvae\logs\cifar10_4000\7.change_dataset\seed1\20220120-191853'
-model_path = r'D:\semi\shotvae\logs\cifar10_4000\20220414-110056'
+model_path = r'D:\semi\shotvae\logs\cifar10_4000\20220411-190056'
 model_name = [x for x in os.listdir(model_path) if x.endswith('.h5')][0]
 model = VAE(num_classes=num_classes, depth=args['depth'], width=args['width'], slope=args['slope'],
             latent_dim=args['ldc'], temperature=args['temperature'])
@@ -334,8 +333,8 @@ x = tf.cast(x, tf.float32) / 255.
 
 _, _, _, z, _, xhat = model([x, y], training=False)
 #%%
-fig, axes = plt.subplots(2, 10, figsize=(25, 5))
-for idx, (class_idx, i, j) in enumerate([[1, 0, 5], [7, 0, 2]]):
+fig, axes = plt.subplots(4, 10, figsize=(30, 12))
+for idx, (class_idx, i, j) in enumerate([[0, 4, 5], [1, 0, 5], [7, 0, 2], [8, 0, 2]]):
     interpolation_idx = np.where(np.argmax(y, axis=-1) == class_idx)[0]
 
     inter = np.linspace(z[interpolation_idx[i]], z[interpolation_idx[j]], 8)
@@ -350,6 +349,7 @@ for idx, (class_idx, i, j) in enumerate([[1, 0, 5], [7, 0, 2]]):
     axes.flatten()[idx*10 + 9].axis('off')
 plt.savefig('{}/shotvae_interpolation1.png'.format(model_path),
             dpi=200, bbox_inches="tight", pad_inches=0.1)
+plt.tight_layout()
 plt.show()
 plt.close()
 #%%
