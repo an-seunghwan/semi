@@ -22,3 +22,7 @@ dgm/result_.py
 partedvae/result_.py
 shotvae/result_.py
 preprocess_.py
+*.err
+*.out
+args.txt
+plcb/svhn/assets/pretrained
